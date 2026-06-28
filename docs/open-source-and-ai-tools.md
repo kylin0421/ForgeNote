@@ -2,7 +2,7 @@
 
 ## 开源底座
 
-知学工坊基于 Open Notebook 开源项目开发。原项目提供成熟的 AI notebook 能力，包括资料管理、笔记、RAG 问答、模型配置、SurrealDB 数据层和 Next.js/FastAPI 工程结构。
+智学工坊基于 Open Notebook 开源项目开发。原项目提供成熟的 AI notebook 能力，包括资料管理、笔记、RAG 问答、模型配置、SurrealDB 数据层和 Next.js/FastAPI 工程结构。
 
 本项目保留 MIT License，并保留 LICENSE 中的原版权声明。参赛团队在此基础上完成了面向赛题的二次开发：
 
