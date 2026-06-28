@@ -11,6 +11,7 @@ import {
   useUpdateEpisodeProfile,
   useLanguages,
 } from '@/lib/hooks/use-podcasts'
+import { useModelDefaults } from '@/lib/hooks/use-models'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import {
   Dialog,
@@ -70,9 +71,16 @@ export function EpisodeProfileFormDialog({
   const createProfile = useCreateEpisodeProfile()
   const updateProfile = useUpdateEpisodeProfile()
   const { data: languages = [] } = useLanguages()
+  const { data: modelDefaults } = useModelDefaults()
 
   const getDefaults = useCallback((): EpisodeProfileFormValues => {
     const firstSpeaker = speakerProfiles[0]?.name ?? ''
+    const defaultPodcastModel =
+      modelDefaults?.default_podcast_model ??
+      modelDefaults?.default_learning_asset_model ??
+      modelDefaults?.default_transformation_model ??
+      modelDefaults?.default_chat_model ??
+      ''
 
     if (initialData) {
       return {
@@ -91,13 +99,13 @@ export function EpisodeProfileFormDialog({
       name: '',
       description: '',
       speaker_config: firstSpeaker,
-      outline_llm: '',
-      transcript_llm: '',
+      outline_llm: defaultPodcastModel,
+      transcript_llm: defaultPodcastModel,
       language: null,
       default_briefing: '',
       num_segments: 5,
     }
-  }, [initialData, speakerProfiles])
+  }, [initialData, modelDefaults, speakerProfiles])
 
   const {
     control,

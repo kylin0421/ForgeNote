@@ -70,6 +70,9 @@ class ExecuteChatRequest(BaseModel):
     model_override: Optional[str] = Field(
         None, description="Optional model override for this message"
     )
+    auto_update_profile: bool = Field(
+        True, description="Whether this chat message should update the learning profile"
+    )
 
 
 class ExecuteChatResponse(BaseModel):
@@ -80,6 +83,9 @@ class ExecuteChatResponse(BaseModel):
 class BuildContextRequest(BaseModel):
     notebook_id: str = Field(..., description="Notebook ID")
     context_config: Dict[str, Any] = Field(..., description="Context configuration")
+    query: Optional[str] = Field(
+        None, description="Optional user query for retrieval-focused context"
+    )
 
 
 class BuildContextResponse(BaseModel):
@@ -392,6 +398,21 @@ async def execute_chat(request: ExecuteChatRequest):
         # Update session timestamp
         await session.save()
 
+        if notebook:
+            try:
+                from api.learning_service import record_learning_profile_event
+
+                await record_learning_profile_event(
+                    str(notebook.id),
+                    "chat_message",
+                    f"User asked in notebook chat: {request.message}",
+                    request.auto_update_profile,
+                )
+            except Exception as profile_error:
+                logger.warning(
+                    f"Unable to update learning profile from chat: {profile_error}"
+                )
+
         # Convert messages to response format
         messages: list[ChatMessage] = []
         for msg in result.get("messages", []):
@@ -427,7 +448,7 @@ async def build_context(request: BuildContextRequest):
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
 
-        context_data: dict[str, list[dict[str, str]]] = {"sources": [], "notes": []}
+        context_data: dict[str, list[dict[str, Any]]] = {"sources": [], "notes": []}
         total_content = ""
 
         # Process context configuration if provided
@@ -455,7 +476,55 @@ async def build_context(request: BuildContextRequest):
                         context_data["sources"].append(source_context)
                         total_content += str(source_context)
                     elif "full content" in status:
-                        source_context = await source.get_context(context_size="long")
+                        source_context = None
+                        if request.query and request.query.strip():
+                            try:
+                                from open_notebook.utils.semantic_index import (
+                                    is_llm_bm25_backend,
+                                    llm_bm25_search,
+                                )
+
+                                if await is_llm_bm25_backend():
+                                    chunks = await llm_bm25_search(
+                                        request.query,
+                                        results=8,
+                                        source=True,
+                                        note=False,
+                                        source_ids=[full_source_id],
+                                    )
+                                    if chunks:
+                                        chunk_contexts = [
+                                            {
+                                                "chunk_id": chunk.get("candidate_id"),
+                                                "source_id": chunk.get("parent_id"),
+                                                "title": chunk.get("title"),
+                                                "raw_text": chunk.get("content"),
+                                                "summary": chunk.get("summary"),
+                                                "keywords": chunk.get("keywords", []),
+                                                "relevance": chunk.get("relevance"),
+                                            }
+                                            for chunk in chunks
+                                        ]
+                                        source_context = {
+                                            "id": source.id,
+                                            "title": source.title,
+                                            "retrieval": "llm_bm25",
+                                            "query": request.query,
+                                            "chunks": chunk_contexts,
+                                            "full_text": "\n\n".join(
+                                                str(chunk.get("content") or "")
+                                                for chunk in chunks
+                                            ),
+                                        }
+                            except Exception as e:
+                                logger.warning(
+                                    f"LLM-BM25 context retrieval failed for source {source_id}: {str(e)}"
+                                )
+
+                        if source_context is None:
+                            source_context = await source.get_context(
+                                context_size="long"
+                            )
                         context_data["sources"].append(source_context)
                         total_content += str(source_context)
                 except Exception as e:

@@ -11,6 +11,7 @@ from api.models import (
     RebuildStatusResponse,
 )
 from open_notebook.database.repository import repo_query
+from open_notebook.domain.content_settings import ContentSettings
 
 router = APIRouter()
 
@@ -36,6 +37,8 @@ async def start_rebuild(request: RebuildRequest):
         # Estimate total items (quick count query)
         # This is a rough estimate before the command runs
         total_estimate = 0
+        settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
+        llm_bm25_backend = settings.embedding_backend == "llm_bm25"
 
         if request.include_sources:
             if request.mode == "existing":
@@ -45,7 +48,8 @@ async def start_rebuild(request: RebuildRequest):
                     SELECT VALUE count(array::distinct(
                         SELECT VALUE source.id
                         FROM source_embedding
-                        WHERE embedding != none AND array::len(embedding) > 0
+                        WHERE (embedding != none AND array::len(embedding) > 0)
+                            OR index_backend = "llm_bm25"
                     )) as count FROM {}
                     """
                 )
@@ -60,7 +64,7 @@ async def start_rebuild(request: RebuildRequest):
             elif result:
                 total_estimate += result[0] if isinstance(result[0], int) else 0
 
-        if request.include_notes:
+        if request.include_notes and not llm_bm25_backend:
             if request.mode == "existing":
                 result = await repo_query(
                     "SELECT VALUE count() as count FROM note WHERE embedding != none AND array::len(embedding) > 0 GROUP ALL"
@@ -75,7 +79,7 @@ async def start_rebuild(request: RebuildRequest):
             elif result:
                 total_estimate += result[0] if isinstance(result[0], int) else 0
 
-        if request.include_insights:
+        if request.include_insights and not llm_bm25_backend:
             if request.mode == "existing":
                 result = await repo_query(
                     "SELECT VALUE count() as count FROM source_insight WHERE embedding != none AND array::len(embedding) > 0 GROUP ALL"

@@ -8,16 +8,20 @@ from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command
 
 from open_notebook.config import DATA_FOLDER
+from open_notebook.ai.provider_registration import register_runtime_ai_providers
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.podcasts.models import (
     EpisodeProfile,
     PodcastEpisode,
     SpeakerProfile,
+    _resolve_default_podcast_model_config,
     _resolve_model_config,
 )
+from open_notebook.utils.command_cancellation import raise_if_command_canceled
 
 try:
-    from podcast_creator import configure, create_podcast
+    from podcast_creator import configure
+    from open_notebook.podcasts.robust_creator import create_podcast_with_repair
 except ImportError as e:
     logger.error(f"Failed to import podcast_creator: {e}")
     raise ValueError("podcast_creator library not available")
@@ -53,6 +57,7 @@ class PodcastGenerationInput(CommandInput):
     speaker_profile: str
     episode_name: str
     content: str
+    notebook_id: Optional[str] = None
     briefing_suffix: Optional[str] = None
 
 
@@ -74,8 +79,16 @@ async def generate_podcast_command(
     Real podcast generation using podcast-creator library with Episode Profiles
     """
     start_time = time.time()
+    register_runtime_ai_providers()
+    resolved_model_summary = ""
 
     try:
+        command_id = (
+            str(input_data.execution_context.command_id)
+            if input_data.execution_context
+            else None
+        )
+        await raise_if_command_canceled(command_id)
         logger.info(
             f"Starting podcast generation for episode: {input_data.episode_name}"
         )
@@ -132,6 +145,12 @@ async def generate_podcast_command(
             f"transcript: {transcript_provider}/{transcript_model_name}, "
             f"tts: {tts_provider}/{tts_model_name}"
         )
+        resolved_model_summary = (
+            "Resolved models: "
+            f"outline={outline_provider}/{outline_model_name}; "
+            f"transcript={transcript_provider}/{transcript_model_name}; "
+            f"tts={tts_provider}/{tts_model_name}"
+        )
 
         # 4. Load all profiles and configure podcast-creator
         episode_profiles = await repo_query("SELECT * FROM episode_profile")
@@ -158,9 +177,23 @@ async def generate_podcast_command(
                     ep_dict["outline_provider"] = prov
                     ep_dict["outline_model"] = model
                     ep_dict["outline_config"] = conf
+                else:
+                    prov, model, conf = await _resolve_default_podcast_model_config(
+                        ep_name
+                    )
+                    ep_dict["outline_provider"] = prov
+                    ep_dict["outline_model"] = model
+                    ep_dict["outline_config"] = conf
                 if ep_dict.get("transcript_llm"):
                     prov, model, conf = await _resolve_model_config(
                         str(ep_dict["transcript_llm"])
+                    )
+                    ep_dict["transcript_provider"] = prov
+                    ep_dict["transcript_model"] = model
+                    ep_dict["transcript_config"] = conf
+                else:
+                    prov, model, conf = await _resolve_default_podcast_model_config(
+                        ep_name
                     )
                     ep_dict["transcript_provider"] = prov
                     ep_dict["transcript_model"] = model
@@ -212,16 +245,34 @@ async def generate_podcast_command(
         if input_data.briefing_suffix:
             briefing += f"\n\nAdditional instructions: {input_data.briefing_suffix}"
 
+        episode_profile_snapshot = full_model_dump(episode_profile.model_dump())
+        episode_profile_snapshot.update(
+            {
+                "outline_provider": outline_provider,
+                "outline_model": outline_model_name,
+                "transcript_provider": transcript_provider,
+                "transcript_model": transcript_model_name,
+            }
+        )
+        speaker_profile_snapshot = full_model_dump(speaker_profile.model_dump())
+        speaker_profile_snapshot.update(
+            {
+                "tts_provider": tts_provider,
+                "tts_model": tts_model_name,
+            }
+        )
+
         # Create the record for the episode and associate with the ongoing command
         episode = PodcastEpisode(
             name=input_data.episode_name,
-            episode_profile=full_model_dump(episode_profile.model_dump()),
-            speaker_profile=full_model_dump(speaker_profile.model_dump()),
+            episode_profile=episode_profile_snapshot,
+            speaker_profile=speaker_profile_snapshot,
             command=ensure_record_id(input_data.execution_context.command_id)
             if input_data.execution_context
             else None,
             briefing=briefing,
             content=input_data.content,
+            notebook_id=input_data.notebook_id,
             audio_file=None,
             transcript=None,
             outline=None,
@@ -243,8 +294,9 @@ async def generate_podcast_command(
 
         # 8. Generate podcast using podcast-creator
         logger.info("Starting podcast generation with podcast-creator...")
+        await raise_if_command_canceled(command_id)
 
-        result = await create_podcast(
+        result = await create_podcast_with_repair(
             content=input_data.content,
             briefing=briefing,
             episode_name=episode_dir_name,
@@ -252,6 +304,7 @@ async def generate_podcast_command(
             speaker_config=speaker_profile.name,
             episode_profile=episode_profile.name,
         )
+        await raise_if_command_canceled(command_id)
 
         episode.audio_file = (
             str(result.get("final_output_file_path")) if result else None
@@ -296,5 +349,7 @@ async def generate_podcast_command(
                 "The model may be putting all output inside <think> tags, leaving nothing to parse. "
                 "Try using gpt-4o, gpt-4o-mini, or gpt-4-turbo instead in your episode profile."
             )
+        if resolved_model_summary and resolved_model_summary not in error_msg:
+            error_msg += f"\n\n{resolved_model_summary}"
 
         raise RuntimeError(error_msg) from e

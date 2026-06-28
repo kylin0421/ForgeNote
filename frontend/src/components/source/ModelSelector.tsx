@@ -23,6 +23,7 @@ import { Settings2, Sparkles } from 'lucide-react'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { modelProviderLabel } from '@/lib/utils/models'
 
 interface ModelSelectorProps {
   currentModel?: string
@@ -123,7 +124,7 @@ export function ModelSelector({
                     </span>
                     {defaultModel?.provider && (
                       <span className="text-xs text-muted-foreground ml-2">
-                        {defaultModel.provider}
+                        {modelProviderLabel(defaultModel)}
                       </span>
                     )}
                   </div>
@@ -138,7 +139,7 @@ export function ModelSelector({
                       <div className="flex items-center justify-between w-full">
                         <span>{model.name}</span>
                         <span className="text-xs text-muted-foreground ml-2">
-                          {model.provider}
+                          {modelProviderLabel(model)}
                         </span>
                       </div>
                     </SelectItem>

@@ -30,9 +30,7 @@ import { Separator } from '@/components/ui/separator'
 import {
   Book,
   Search,
-  Mic,
   Bot,
-  Shuffle,
   Settings,
   LogOut,
   ChevronLeft,
@@ -45,6 +43,12 @@ import {
 
 const getNavigation = (t: TFunction) => [
   {
+    title: '学习',
+    items: [
+      { name: t('navigation.notebooks'), href: '/notebooks', icon: Book },
+    ],
+  },
+  {
     title: t('navigation.collect'),
     items: [
       { name: t('navigation.sources'), href: '/sources', icon: FileText },
@@ -53,28 +57,20 @@ const getNavigation = (t: TFunction) => [
   {
     title: t('navigation.process'),
     items: [
-      { name: t('navigation.notebooks'), href: '/notebooks', icon: Book },
       { name: t('navigation.askAndSearch'), href: '/search', icon: Search },
-    ],
-  },
-  {
-    title: t('navigation.create'),
-    items: [
-      { name: t('navigation.podcasts'), href: '/podcasts', icon: Mic },
     ],
   },
   {
     title: t('navigation.manage'),
     items: [
       { name: t('navigation.models'), href: '/settings/api-keys', icon: Bot },
-      { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle },
       { name: t('navigation.settings'), href: '/settings', icon: Settings },
       { name: t('navigation.advanced'), href: '/advanced', icon: Wrench },
     ],
   },
 ] as const
 
-type CreateTarget = 'source' | 'notebook' | 'podcast'
+type CreateTarget = 'source' | 'notebook'
 
 export function AppSidebar() {
   const { t } = useTranslation()
@@ -82,7 +78,7 @@ export function AppSidebar() {
   const pathname = usePathname()
   const { logout } = useAuth()
   const { isCollapsed, toggleCollapse } = useSidebarStore()
-  const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
+  const { openSourceDialog, openNotebookDialog } = useCreateDialogs()
 
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const [isMac, setIsMac] = useState(true) // Default to Mac for SSR
@@ -97,10 +93,8 @@ export function AppSidebar() {
 
     if (target === 'source') {
       openSourceDialog()
-    } else if (target === 'notebook') {
+    } else {
       openNotebookDialog()
-    } else if (target === 'podcast') {
-      openPodcastDialog()
     }
   }
 
@@ -108,7 +102,7 @@ export function AppSidebar() {
     <TooltipProvider delayDuration={0}>
       <div
         className={cn(
-          'app-sidebar flex h-full flex-col bg-sidebar border-sidebar-border border-r transition-all duration-300',
+          'app-sidebar fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar border-sidebar-border border-r shadow-sm transition-all duration-300',
           isCollapsed ? 'w-16' : 'w-64'
         )}
       >
@@ -122,7 +116,7 @@ export function AppSidebar() {
             <div className="relative flex items-center justify-center w-full">
               <Image
                 src="/logo.svg"
-                alt="Open Notebook"
+                alt="智学工坊"
                 width={32}
                 height={32}
                 className="transition-opacity group-hover:opacity-0"
@@ -139,9 +133,9 @@ export function AppSidebar() {
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <Image src="/logo.svg" alt={t('common.appName')} width={32} height={32} />
+                <Image src="/logo.svg" alt="智学工坊" width={32} height={32} />
                 <span className="text-base font-medium text-sidebar-foreground">
-                  {t('common.appName')}
+                  智学工坊
                 </span>
               </div>
               <Button
@@ -225,16 +219,6 @@ export function AppSidebar() {
                 >
                    <Book className="h-4 w-4" />
                   {t('common.notebook')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
-                    handleCreateSelection('podcast')
-                  }}
-                  className="gap-2"
-                >
-                   <Mic className="h-4 w-4" />
-                  {t('common.podcast')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

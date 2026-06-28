@@ -12,6 +12,8 @@ from loguru import logger
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.base import ObjectModel, RecordModel
 from open_notebook.exceptions import ConfigurationError
+from open_notebook.ai.model_specs import build_model_runtime_spec
+from open_notebook.ai.provider_registration import register_runtime_ai_providers
 
 ModelType = Union[LanguageModel, EmbeddingModel, SpeechToTextModel, TextToSpeechModel]
 
@@ -68,7 +70,18 @@ class DefaultModels(RecordModel):
     default_speech_to_text_model: Optional[str] = None
     # default_vision_model: Optional[str]
     default_embedding_model: Optional[str] = None
+    default_retrieval_model: Optional[str] = None
     default_tools_model: Optional[str] = None
+    default_rag_model: Optional[str] = None
+    default_resource_search_model: Optional[str] = None
+    default_learning_asset_model: Optional[str] = None
+    default_study_guide_model: Optional[str] = None
+    default_quiz_model: Optional[str] = None
+    default_flashcards_model: Optional[str] = None
+    default_mind_map_model: Optional[str] = None
+    default_reading_model: Optional[str] = None
+    default_code_lab_model: Optional[str] = None
+    default_podcast_model: Optional[str] = None
 
     @classmethod
     async def get_instance(cls) -> "DefaultModels":
@@ -98,6 +111,13 @@ class DefaultModels(RecordModel):
 class ModelManager:
     def __init__(self):
         pass  # No caching needed
+
+    def _first_model_id(self, defaults: DefaultModels, *field_names: str) -> Optional[str]:
+        for field_name in field_names:
+            value = getattr(defaults, field_name, None)
+            if value:
+                return value
+        return None
 
     async def get_model(self, model_id: str, **kwargs) -> Optional[ModelType]:
         """Get a model by ID. Esperanto will cache the actual model instance."""
@@ -144,8 +164,18 @@ class ModelManager:
         # Merge any additional kwargs (e.g. temperature)
         config.update(kwargs)
 
-        # Normalize provider name: DB stores underscores but Esperanto expects hyphens
-        provider = model.provider.replace("_", "-")
+        register_runtime_ai_providers()
+        spec = build_model_runtime_spec(
+            provider=model.provider,
+            model_type=model.type,
+            model_name=model.name,
+            config=config,
+        )
+        for warning in spec.warnings:
+            logger.warning(
+                f"Model {model.id or model.name} compatibility warning: {warning}"
+            )
+        provider = spec.runtime_provider
 
         # Create model based on type (Esperanto will cache the instance)
         if model.type == "language":
@@ -230,13 +260,104 @@ class ModelManager:
         model_id = None
 
         if model_type == "chat":
-            model_id = defaults.default_chat_model
+            model_id = self._first_model_id(defaults, "default_chat_model")
         elif model_type == "transformation":
-            model_id = (
-                defaults.default_transformation_model or defaults.default_chat_model
+            model_id = self._first_model_id(
+                defaults,
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
+            )
+        elif model_type == "retrieval":
+            model_id = self._first_model_id(
+                defaults,
+                "default_rag_model",
+                "default_retrieval_model",
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
             )
         elif model_type == "tools":
-            model_id = defaults.default_tools_model or defaults.default_chat_model
+            model_id = self._first_model_id(
+                defaults,
+                "default_resource_search_model",
+                "default_tools_model",
+                "default_rag_model",
+                "default_retrieval_model",
+                "default_chat_model",
+            )
+        elif model_type == "resource_search":
+            model_id = self._first_model_id(
+                defaults,
+                "default_resource_search_model",
+                "default_tools_model",
+                "default_rag_model",
+                "default_retrieval_model",
+                "default_chat_model",
+            )
+        elif model_type == "learning_asset":
+            model_id = self._first_model_id(
+                defaults,
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
+            )
+        elif model_type == "asset_study_guide":
+            model_id = self._first_model_id(
+                defaults,
+                "default_study_guide_model",
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
+            )
+        elif model_type == "asset_quiz":
+            model_id = self._first_model_id(
+                defaults,
+                "default_quiz_model",
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
+            )
+        elif model_type == "asset_flashcards":
+            model_id = self._first_model_id(
+                defaults,
+                "default_flashcards_model",
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
+            )
+        elif model_type == "asset_mind_map":
+            model_id = self._first_model_id(
+                defaults,
+                "default_mind_map_model",
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
+            )
+        elif model_type == "asset_reading":
+            model_id = self._first_model_id(
+                defaults,
+                "default_reading_model",
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
+            )
+        elif model_type == "asset_code_lab":
+            model_id = self._first_model_id(
+                defaults,
+                "default_code_lab_model",
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
+            )
+        elif model_type == "podcast":
+            model_id = self._first_model_id(
+                defaults,
+                "default_podcast_model",
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
+            )
         elif model_type == "embedding":
             model_id = defaults.default_embedding_model
         elif model_type == "text_to_speech":
@@ -244,7 +365,13 @@ class ModelManager:
         elif model_type == "speech_to_text":
             model_id = defaults.default_speech_to_text_model
         elif model_type == "large_context":
-            model_id = defaults.large_context_model
+            model_id = self._first_model_id(
+                defaults,
+                "large_context_model",
+                "default_learning_asset_model",
+                "default_rag_model",
+                "default_chat_model",
+            )
 
         if not model_id:
             logger.warning(

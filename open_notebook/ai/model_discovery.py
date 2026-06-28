@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 import httpx
 from loguru import logger
 
+from open_notebook.ai.model_specs import infer_provider_specific_model_type
 from open_notebook.ai.models import Model
 from open_notebook.database.repository import repo_query
 from open_notebook.domain.credential import Credential
@@ -147,6 +148,8 @@ DEEPGRAM_MODEL_TYPES = {
 
 DASHSCOPE_MODEL_TYPES = {
     "language": ["qwen"],
+    "speech_to_text": ["qwen3-asr", "qwen-asr"],
+    "text_to_speech": ["qwen3-tts", "qwen-tts", "cosyvoice"],
 }
 
 MINIMAX_MODEL_TYPES = {
@@ -161,9 +164,15 @@ def classify_model_type(model_name: str, provider: str) -> str:
     Returns one of: language, embedding, speech_to_text, text_to_speech
     """
     name_lower = model_name.lower()
+    provider_lower = provider.lower()
+
+    provider_specific = infer_provider_specific_model_type(model_name, provider_lower)
+    if provider_specific:
+        return provider_specific
 
     type_mappings = {
         "openai": OPENAI_MODEL_TYPES,
+        "openai_compatible": OPENAI_MODEL_TYPES,
         "google": GOOGLE_MODEL_TYPES,
         "ollama": OLLAMA_MODEL_TYPES,
         "mistral": MISTRAL_MODEL_TYPES,
@@ -177,7 +186,7 @@ def classify_model_type(model_name: str, provider: str) -> str:
         "minimax": MINIMAX_MODEL_TYPES,
     }
 
-    mapping = type_mappings.get(provider, {})
+    mapping = type_mappings.get(provider_lower, {})
 
     # Check each type in order of specificity
     for model_type in ["speech_to_text", "text_to_speech", "embedding", "language"]:

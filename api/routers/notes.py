@@ -1,4 +1,5 @@
-from typing import List, Literal, Optional
+import asyncio
+from typing import Awaitable, Callable, List, Literal, Optional, TypeVar
 
 from fastapi import APIRouter, HTTPException, Query
 from loguru import logger
@@ -8,6 +9,39 @@ from open_notebook.domain.notebook import Note
 from open_notebook.exceptions import InvalidInputError, NotFoundError
 
 router = APIRouter()
+T = TypeVar("T")
+
+
+def _is_retryable_transaction_conflict(error: Exception) -> bool:
+    message = str(error).lower()
+    return (
+        "transaction" in message
+        and ("conflict" in message or "can be retried" in message)
+    )
+
+
+async def _with_transaction_retry(
+    operation: Callable[[], Awaitable[T]],
+    action: str,
+    max_attempts: int = 5,
+) -> T:
+    delay_seconds = 0.05
+    for attempt in range(max_attempts):
+        try:
+            return await operation()
+        except Exception as error:
+            is_last_attempt = attempt == max_attempts - 1
+            if is_last_attempt or not _is_retryable_transaction_conflict(error):
+                raise
+
+            logger.warning(
+                f"Retrying {action} after transaction conflict "
+                f"({attempt + 1}/{max_attempts}): {error}"
+            )
+            await asyncio.sleep(delay_seconds)
+            delay_seconds *= 2
+
+    raise RuntimeError(f"Failed to complete {action}")
 
 
 @router.get("/notes", response_model=List[NoteResponse])
@@ -73,20 +107,25 @@ async def create_note(note_data: NoteCreate):
                 status_code=400, detail="note_type must be 'human' or 'ai'"
             )
 
-        new_note = Note(
-            title=title,
-            content=note_data.content,
-            note_type=note_type,
-        )
-        command_id = await new_note.save()
-
         # Add to notebook if specified
         if note_data.notebook_id:
             from open_notebook.domain.notebook import Notebook
 
             # Verify the notebook exists (raises NotFoundError -> 404)
             await Notebook.get(note_data.notebook_id)
-            await new_note.add_to_notebook(note_data.notebook_id)
+
+        new_note = Note(
+            title=title,
+            content=note_data.content,
+            note_type=note_type,
+        )
+        command_id = await _with_transaction_retry(new_note.save, "note create")
+
+        if note_data.notebook_id:
+            await _with_transaction_retry(
+                lambda: new_note.add_to_notebook(note_data.notebook_id),
+                "note notebook relation",
+            )
 
         return NoteResponse(
             id=new_note.id or "",

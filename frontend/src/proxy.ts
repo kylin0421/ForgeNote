@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server'
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Redirect root to notebooks
+  // Redirect root to the learning records workspace.
   if (pathname === '/') {
     return NextResponse.redirect(new URL('/notebooks', request.url))
   }

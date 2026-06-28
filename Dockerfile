@@ -6,13 +6,14 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Install system dependencies required for building certain Python packages
 # Add Node.js 22.x LTS for building frontend
-# NOTE: gcc/g++/make removed - uv should download pre-built wheels. Add back if build fails.
-# NOTE: gcc/g++/make required for some python dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# NOTE: gcc/g++/make are required for some Python dependencies.
+RUN apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
     curl \
     build-essential \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs \
+    && apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Set build optimization environment variables
@@ -69,12 +70,15 @@ FROM python:3.12-slim-trixie AS runtime
 
 # Install only runtime system dependencies (no build tools)
 # Add Node.js 22.x LTS for running frontend
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+RUN apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 upgrade -y \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
     ffmpeg \
     supervisor \
     curl \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs \
+    && apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv using the official method
@@ -89,7 +93,7 @@ COPY --from=builder /app/.venv /app/.venv
 # Copy the source code (the rest)
 COPY . /app
 
-# Copy pre-downloaded tiktoken encoding from builder (outside /data/ — volume-mount safe)
+# Copy pre-downloaded tiktoken encoding from builder (outside /data/, volume-mount safe)
 COPY --from=builder /app/tiktoken-cache /app/tiktoken-cache
 
 # Ensure uv uses the existing venv without attempting network operations

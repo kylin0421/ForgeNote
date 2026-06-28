@@ -10,6 +10,7 @@ import {
 } from '@/lib/hooks/use-podcasts'
 import { useModels } from '@/lib/hooks/use-models'
 import { EpisodeProfileFormDialog } from '@/components/podcasts/forms/EpisodeProfileFormDialog'
+import { modelDisplayName } from '@/lib/utils/models'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,7 +67,7 @@ export function EpisodeProfilesPanel({
   const modelNameMap = useMemo(() => {
     const map: Record<string, string> = {}
     for (const m of models) {
-      map[m.id] = `${m.provider} / ${m.name}`
+      map[m.id] = modelDisplayName(m)
     }
     return map
   }, [models])

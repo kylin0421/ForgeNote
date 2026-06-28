@@ -81,6 +81,7 @@ class PodcastService:
                 "speaker_profile": speaker_profile_name,
                 "episode_name": episode_name,
                 "content": str(content),
+                "notebook_id": notebook_id,
                 "briefing_suffix": briefing_suffix,
             }
 

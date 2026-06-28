@@ -1,5 +1,5 @@
 """
-Unified embedding utilities for Open Notebook.
+Unified embedding utilities for ZhiXue.
 
 Provides centralized embedding generation with support for:
 - Single text embedding (with automatic chunking and mean pooling for large texts)
@@ -132,6 +132,11 @@ async def generate_embeddings(
     if not texts:
         return []
 
+    if command_id:
+        from open_notebook.utils.command_cancellation import raise_if_command_canceled
+
+        await raise_if_command_canceled(command_id)
+
     # Lazy import to avoid circular dependency
     from open_notebook.ai.models import model_manager
 
@@ -172,6 +177,9 @@ async def generate_embeddings(
     total_batches = (len(texts) + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE
 
     for batch_idx in range(total_batches):
+        if command_id:
+            await raise_if_command_canceled(command_id)
+
         start = batch_idx * EMBEDDING_BATCH_SIZE
         end = start + EMBEDDING_BATCH_SIZE
         batch = texts[start:end]
@@ -180,6 +188,8 @@ async def generate_embeddings(
             try:
                 batch_embeddings = await embedding_model.aembed(batch)
                 all_embeddings.extend(batch_embeddings)
+                if command_id:
+                    await raise_if_command_canceled(command_id)
                 break
             except Exception as e:
                 cmd_context = f" (command: {command_id})" if command_id else ""
@@ -190,6 +200,8 @@ async def generate_embeddings(
                         f"using model '{model_name}'{cmd_context}: {e}. Retrying..."
                     )
                     await asyncio.sleep(EMBEDDING_RETRY_DELAY)
+                    if command_id:
+                        await raise_if_command_canceled(command_id)
                 else:
                     logger.debug(
                         f"Embedding batch {batch_idx + 1}/{total_batches} "

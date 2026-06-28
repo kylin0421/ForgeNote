@@ -50,16 +50,16 @@ DEFINE INDEX IF NOT EXISTS idx_episode_command ON TABLE episode COLUMNS command 
 
 --Sample data
 
-insert into episode_profile 
+insert into episode_profile
 [
             {
                 name: "tech_discussion",
                 description: "Technical discussion between 2 experts",
                 speaker_config: "tech_experts",
                 outline_provider: "openai",
-                outline_model: "gpt-5-mini",
-                transcript_provider: "openai", 
-                transcript_model: "gpt-5-mini",
+                outline_model: "deepseek-v4-flash",
+                transcript_provider: "openai",
+                transcript_model: "deepseek-v4-flash",
                 default_briefing: "Create an engaging technical discussion about the provided content. Focus on practical insights, real-world applications, and detailed explanations that would interest developers and technical professionals.",
                 num_segments: 5
             },
@@ -68,9 +68,9 @@ insert into episode_profile
                 description: "Single expert explaining complex topics",
                 speaker_config: "solo_expert",
                 outline_provider: "openai",
-                outline_model: "gpt-5-mini",
+                outline_model: "deepseek-v4-flash",
                 transcript_provider: "openai",
-                transcript_model: "gpt-5-mini", 
+                transcript_model: "deepseek-v4-flash",
                 default_briefing: "Create an educational explanation of the provided content. Break down complex concepts into digestible segments, use analogies and examples, and maintain an engaging teaching style.",
                 "num_segments":4            },
             {
@@ -78,9 +78,9 @@ insert into episode_profile
                 description: "Business-focused analysis and discussion",
                 speaker_config: "business_panel",
                 outline_provider: "openai",
-                outline_model: "gpt-5-mini",
+                outline_model: "deepseek-v4-flash",
                 transcript_provider: "openai",
-                transcript_model: "gpt-5-mini",
+                transcript_model: "deepseek-v4-flash",
                 default_briefing: "Analyze the provided content from a business perspective. Discuss market implications, strategic insights, competitive advantages, and actionable business intelligence.",
                 "num_segments":6            }
         ];
@@ -91,7 +91,7 @@ insert into speaker_profile
                 name: "tech_experts",
                 description: "Two technical experts for tech discussions",
                 tts_provider: "openai",
-                tts_model: "gpt-4o-mini-tts",
+                tts_model: "qwen3-tts-instruct-flash",
                 speakers: [
                     {
                         name: "Dr. Alex Chen",
@@ -101,7 +101,7 @@ insert into speaker_profile
                     },
                     {
                         name: "Jamie Rodriguez",
-                        voice_id: "alloy", 
+                        voice_id: "alloy",
                         backstory: "Full-stack engineer and tech entrepreneur. Loves practical applications and real-world implementations.",
                         personality: "Enthusiastic, practical-minded, great at explaining implementation details and trade-offs"
                     }
@@ -111,7 +111,7 @@ insert into speaker_profile
                 name: "solo_expert",
                 description: "Single expert for educational content",
                 tts_provider: "openai",
-                tts_model: "gpt-4o-mini-tts",
+                tts_model: "qwen3-tts-instruct-flash",
                 speakers: [
                     {
                         name: "Professor Sarah Kim",
@@ -124,8 +124,8 @@ insert into speaker_profile
             {
                 name: "business_panel",
                 description: "Business analysis panel with diverse perspectives",
-                tts_provider: "openai", 
-                tts_model: "gpt-4o-mini-tts",
+                tts_provider: "openai",
+                tts_model: "qwen3-tts-instruct-flash",
                 speakers: [
                     {
                         name: "Marcus Thompson",
@@ -134,13 +134,13 @@ insert into speaker_profile
                         personality: "Strategic thinker, data-driven, excellent at identifying key insights and implications"
                     },
                     {
-                        name: "Elena Vasquez", 
+                        name: "Elena Vasquez",
                         voice_id: "shimmer",
                         backstory: "Serial entrepreneur and investor. Focuses on practical implementation and execution.",
                         personality: "Action-oriented, pragmatic, brings startup experience and execution focus"
                     },
                     {
-                        name: "Johny Bing", 
+                        name: "Johny Bing",
                         voice_id: "ash",
                         backstory: "Youtube celebrity and business mogul. Focuses on practical implementation and execution.",
                         personality: "Controversial, likes to question ideas and concepts. He brings a fresh perspective and always has a point to make."
@@ -148,5 +148,3 @@ insert into speaker_profile
                 ]
             }
         ];
-
-

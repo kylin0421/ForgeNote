@@ -177,6 +177,7 @@ DEFAULT_TEST_VOICES = {
     "openai_compatible": "alloy",
     "deepgram": "aura-2-thalia-en",
     "xai": "eve",
+    "dashscope": "Cherry",
 }
 
 
@@ -239,6 +240,8 @@ def _normalize_error_message(error_msg: str) -> Tuple[bool, str]:
 
     if "401" in error_msg or "unauthorized" in lower:
         return False, "Invalid API key"
+    elif "quota" in lower or "free tier" in lower:
+        return False, "Provider quota exhausted or free-tier-only mode is blocking this request"
     elif "403" in error_msg or "forbidden" in lower:
         return False, "API key lacks required permissions"
     elif "rate" in lower and "limit" in lower:
@@ -288,7 +291,8 @@ async def test_individual_model(model) -> Tuple[bool, str]:
 
         elif model.type == "text_to_speech":
             # For ElevenLabs, look up first available voice (API uses voice_id, not name)
-            voice = DEFAULT_TEST_VOICES.get(model.provider)
+            provider = getattr(esp_model, "provider", model.provider)
+            voice = DEFAULT_TEST_VOICES.get(provider) or DEFAULT_TEST_VOICES.get(model.provider)
             if not voice and hasattr(esp_model, "available_voices"):
                 try:
                     voices = esp_model.available_voices
@@ -300,10 +304,11 @@ async def test_individual_model(model) -> Tuple[bool, str]:
                 voice = "alloy"  # fallback
 
             result = await esp_model.agenerate_speech(
-                text="Hello from Open Notebook", voice=voice
+                text="Hello from ZhiXue", voice=voice
             )
-            if result and hasattr(result, "content"):
-                size = len(result.content)
+            audio_data = getattr(result, "audio_data", None)
+            if audio_data:
+                size = len(audio_data)
                 return True, f"Audio generated: {size} bytes"
             return True, "Speech generation successful"
 

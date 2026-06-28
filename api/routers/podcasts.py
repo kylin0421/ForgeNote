@@ -19,6 +19,7 @@ router = APIRouter()
 class PodcastEpisodeResponse(BaseModel):
     id: str
     name: str
+    notebook_id: Optional[str] = None
     episode_profile: dict
     speaker_profile: dict
     briefing: str
@@ -119,6 +120,7 @@ async def list_podcast_episodes():
                 PodcastEpisodeResponse(
                     id=str(episode.id),
                     name=episode.name,
+                    notebook_id=episode.notebook_id,
                     episode_profile=episode.episode_profile,
                     speaker_profile=episode.speaker_profile,
                     briefing=episode.briefing,
@@ -170,6 +172,7 @@ async def get_podcast_episode(episode_id: str):
         return PodcastEpisodeResponse(
             id=str(episode.id),
             name=episode.name,
+            notebook_id=episode.notebook_id,
             episode_profile=episode.episode_profile,
             speaker_profile=episode.speaker_profile,
             briefing=episode.briefing,
@@ -255,6 +258,7 @@ async def retry_podcast_episode(episode_id: str):
             episode_profile_name=ep_profile_name,
             speaker_profile_name=sp_profile_name,
             episode_name=episode_name,
+            notebook_id=episode.notebook_id,
             content=content,
         )
 

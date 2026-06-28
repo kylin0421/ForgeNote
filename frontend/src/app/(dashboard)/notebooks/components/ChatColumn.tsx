@@ -16,9 +16,18 @@ interface ChatColumnProps {
   contextSelections: ContextSelections
   sources: SourceListResponse[]
   sourcesLoading: boolean
+  autoUpdateProfile?: boolean
+  useProfileSource?: boolean
 }
 
-export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoading }: ChatColumnProps) {
+export function ChatColumn({
+  notebookId,
+  contextSelections,
+  sources,
+  sourcesLoading,
+  autoUpdateProfile = true,
+  useProfileSource = true,
+}: ChatColumnProps) {
   const { t } = useTranslation()
 
   // Fetch notes for this notebook
@@ -29,7 +38,9 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
     notebookId,
     sources,
     notes,
-    contextSelections
+    contextSelections,
+    autoUpdateProfile,
+    useProfileSource,
   })
 
   // Calculate context stats for indicator

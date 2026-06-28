@@ -79,7 +79,7 @@ PROVIDER_MODALITIES: Dict[str, List[str]] = {
     "vertex": ["language", "embedding", "text_to_speech"],
     "azure": ["language", "embedding", "speech_to_text", "text_to_speech"],
     "openai_compatible": ["language", "embedding", "speech_to_text", "text_to_speech"],
-    "dashscope": ["language"],
+    "dashscope": ["language", "speech_to_text", "text_to_speech"],
     "minimax": ["language"],
 }
 
@@ -484,6 +484,18 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
     api_key = config.get("api_key")
     base_url = config.get("base_url")
 
+    def model_payload(
+        name: str,
+        discovered_provider: str,
+        description: Optional[str] = None,
+    ) -> dict:
+        return {
+            "name": name,
+            "provider": discovered_provider,
+            "model_type": classify_model_type(name, discovered_provider),
+            "description": description,
+        }
+
     def models_endpoint(url: str) -> str:
         trimmed = url.rstrip("/")
         if trimmed.endswith("/models"):
@@ -521,10 +533,7 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
     if provider in STATIC_MODELS:
         if not api_key and provider != "ollama":
             return []
-        return [
-            {"name": m, "provider": provider}
-            for m in STATIC_MODELS[provider]
-        ]
+        return [model_payload(m, provider) for m in STATIC_MODELS[provider]]
 
     # API-based discovery URLs (OpenAI-style /models endpoints)
     url_map = {
@@ -546,11 +555,7 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
                 response.raise_for_status()
                 data = response.json()
                 return [
-                    {
-                        "name": m.get("name", ""),
-                        "provider": "ollama",
-                        "model_type": classify_model_type(m.get("name", ""), "ollama"),
-                    }
+                    model_payload(m.get("name", ""), "ollama")
                     for m in data.get("models", [])
                     if m.get("name")
                 ]
@@ -574,7 +579,7 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
                 response.raise_for_status()
                 data = response.json()
                 return [
-                    {"name": m.get("id", ""), "provider": "openai_compatible"}
+                    model_payload(m.get("id", ""), "openai_compatible")
                     for m in data.get("data", [])
                     if m.get("id")
                 ]
@@ -595,7 +600,7 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
                 response.raise_for_status()
                 data = response.json()
                 return [
-                    {"name": m.get("id", ""), "provider": "azure"}
+                    model_payload(m.get("id", ""), "azure")
                     for m in data.get("data", [])
                     if m.get("id")
                 ]
@@ -613,7 +618,7 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
             "gemini-1.5-flash",
             "text-embedding-005",
         ]
-        return [{"name": m, "provider": "vertex"} for m in VERTEX_MODELS]
+        return [model_payload(m, "vertex") for m in VERTEX_MODELS]
 
     if provider == "google":
         try:
@@ -627,11 +632,11 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
                 response.raise_for_status()
                 data = response.json()
                 return [
-                    {
-                        "name": model.get("name", "").replace("models/", ""),
-                        "provider": "google",
-                        "description": model.get("displayName"),
-                    }
+                    model_payload(
+                        model.get("name", "").replace("models/", ""),
+                        "google",
+                        model.get("displayName"),
+                    )
                     for model in data.get("models", [])
                     if model.get("name")
                 ]
@@ -657,11 +662,7 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
             data = response.json()
 
             return [
-                {
-                    "name": m.get("id", ""),
-                    "provider": provider,
-                    "description": m.get("name"),
-                }
+                model_payload(m.get("id", ""), provider, m.get("name"))
                 for m in data.get("data", [])
                 if m.get("id")
             ]

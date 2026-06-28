@@ -4,6 +4,7 @@ from loguru import logger
 from pydantic import ConfigDict, Field, field_validator
 from surrealdb import RecordID
 
+from open_notebook.ai.model_specs import build_model_runtime_spec
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.base import ObjectModel
 
@@ -26,7 +27,34 @@ async def _resolve_model_config(model_id: str) -> Tuple[str, str, dict]:
         from open_notebook.ai.key_provider import provision_provider_keys
 
         await provision_provider_keys(model.provider)
-    return (model.provider, model.name, config)
+    spec = build_model_runtime_spec(
+        provider=model.provider,
+        model_type=model.type,
+        model_name=model.name,
+        config=config,
+    )
+    for warning in spec.warnings:
+        logger.warning(f"Podcast model {model.id or model.name} compatibility warning: {warning}")
+    return (spec.runtime_provider, model.name, config)
+
+
+async def _resolve_default_podcast_model_config(profile_name: str) -> Tuple[str, str, dict]:
+    from open_notebook.ai.models import DefaultModels
+
+    defaults = await DefaultModels.get_instance()
+    model_id = (
+        getattr(defaults, "default_podcast_model", None)
+        or getattr(defaults, "default_learning_asset_model", None)
+        or getattr(defaults, "default_transformation_model", None)
+        or getattr(defaults, "default_chat_model", None)
+    )
+    if not model_id:
+        raise ValueError(
+            f"Episode profile '{profile_name}' has no model configured and no "
+            "podcast/default learning model is available. Configure a podcast "
+            "script model in Settings -> Models."
+        )
+    return await _resolve_model_config(str(model_id))
 
 
 class EpisodeProfile(ObjectModel):
@@ -97,19 +125,13 @@ class EpisodeProfile(ObjectModel):
     async def resolve_outline_config(self) -> Tuple[str, str, dict]:
         """Resolve outline model -> (provider, model_name, config_dict)"""
         if not self.outline_llm:
-            raise ValueError(
-                f"Episode profile '{self.name}' has no outline model configured. "
-                "Please update the profile to select an outline model."
-            )
+            return await _resolve_default_podcast_model_config(self.name)
         return await _resolve_model_config(self.outline_llm)
 
     async def resolve_transcript_config(self) -> Tuple[str, str, dict]:
         """Resolve transcript model -> (provider, model_name, config_dict)"""
         if not self.transcript_llm:
-            raise ValueError(
-                f"Episode profile '{self.name}' has no transcript model configured. "
-                "Please update the profile to select a transcript model."
-            )
+            return await _resolve_default_podcast_model_config(self.name)
         return await _resolve_model_config(self.transcript_llm)
 
     @classmethod
@@ -213,6 +235,9 @@ class PodcastEpisode(ObjectModel):
     )
     briefing: str = Field(..., description="Full briefing used for generation")
     content: str = Field(..., description="Source content")
+    notebook_id: Optional[str] = Field(
+        default=None, description="Notebook that requested this podcast episode"
+    )
     audio_file: Optional[str] = Field(
         default=None, description="Path to generated audio file"
     )

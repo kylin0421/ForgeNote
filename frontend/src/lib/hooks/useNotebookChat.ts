@@ -21,9 +21,25 @@ interface UseNotebookChatParams {
   sources: SourceListResponse[]
   notes: NoteResponse[]
   contextSelections: ContextSelections
+  autoUpdateProfile?: boolean
+  useProfileSource?: boolean
 }
 
-export function useNotebookChat({ notebookId, sources, notes, contextSelections }: UseNotebookChatParams) {
+const LEARNING_PROFILE_TOPIC = 'learning_profile'
+const LEARNING_PROFILE_TITLE = '学习画像'
+
+function isLearningProfileSource(source: SourceListResponse) {
+  return source.title === LEARNING_PROFILE_TITLE || source.topics?.includes(LEARNING_PROFILE_TOPIC)
+}
+
+export function useNotebookChat({
+  notebookId,
+  sources,
+  notes,
+  contextSelections,
+  autoUpdateProfile = true,
+  useProfileSource = true,
+}: UseNotebookChatParams) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
@@ -130,7 +146,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   })
 
   // Build context from sources and notes based on user selections
-  const buildContext = useCallback(async () => {
+  const buildContext = useCallback(async (query?: string) => {
     // Build context_config mapping IDs to selection modes
     const context_config: { sources: Record<string, string>, notes: Record<string, string> } = {
       sources: {},
@@ -139,6 +155,11 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
 
     // Map source selections
     sources.forEach(source => {
+      if (!useProfileSource && isLearningProfileSource(source)) {
+        context_config.sources[source.id] = 'not in'
+        return
+      }
+
       const mode = contextSelections.sources[source.id]
       if (mode === 'insights') {
         context_config.sources[source.id] = 'insights'
@@ -162,7 +183,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     // Call API to build context with actual content
     const response = await chatApi.buildContext({
       notebook_id: notebookId,
-      context_config
+      context_config,
+      query
     })
 
     // Store token and char counts
@@ -170,7 +192,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setCharCount(response.char_count)
 
     return response.context
-  }, [notebookId, sources, notes, contextSelections])
+  }, [notebookId, sources, notes, contextSelections, useProfileSource])
 
   // Send message (synchronous, no streaming)
   const sendMessage = useCallback(async (message: string, modelOverride?: string) => {
@@ -214,12 +236,13 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
 
     try {
       // Build context and send message
-      const context = await buildContext()
+      const context = await buildContext(message)
       const response = await chatApi.sendMessage({
         session_id: sessionId,
         message,
         context,
-        model_override: modelOverride ?? (currentSession?.model_override ?? undefined)
+        model_override: modelOverride ?? (currentSession?.model_override ?? undefined),
+        auto_update_profile: autoUpdateProfile,
       })
 
       // Update messages with API response
@@ -241,6 +264,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     currentSessionId,
     currentSession,
     pendingModelOverride,
+    autoUpdateProfile,
     buildContext,
     refetchCurrentSession,
     queryClient,

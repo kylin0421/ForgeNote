@@ -791,8 +791,18 @@ async def update_source(source_id: str, source_update: SourceUpdate):
             source.title = source_update.title
         if source_update.topics is not None:
             source.topics = source_update.topics
+        content_changed = source_update.content is not None
+        if content_changed:
+            source.full_text = source_update.content
+            await repo_query(
+                "DELETE source_embedding WHERE source = $source_id",
+                {"source_id": ensure_record_id(source.id)},
+            )
 
         await source.save()
+        command_id = None
+        if content_changed and source_update.embed and source.full_text:
+            command_id = await source.vectorize()
 
         embedded_chunks = await source.get_embedded_chunks()
         return SourceResponse(
@@ -810,6 +820,8 @@ async def update_source(source_id: str, source_update: SourceUpdate):
             embedded_chunks=embedded_chunks,
             created=str(source.created),
             updated=str(source.updated),
+            command_id=command_id,
+            status="queued" if command_id else None,
         )
     except HTTPException:
         raise

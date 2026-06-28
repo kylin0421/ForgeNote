@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
-import { NotebookHeader } from '../components/NotebookHeader'
+import { InlineEdit } from '@/components/common/InlineEdit'
 import { SourcesColumn } from '../components/SourcesColumn'
 import { NotesColumn } from '../components/NotesColumn'
 import { ChatColumn } from '../components/ChatColumn'
-import { useNotebook } from '@/lib/hooks/use-notebooks'
+import { useNotebook, useUpdateNotebook } from '@/lib/hooks/use-notebooks'
 import { useNotebookSources } from '@/lib/hooks/use-sources'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
@@ -35,11 +35,14 @@ export type { ContextMode, ContextSelections, NoteContextMode }
 export default function NotebookPage() {
   const { t } = useTranslation()
   const params = useParams()
+  const searchParams = useSearchParams()
 
   // Ensure the notebook ID is properly decoded from URL
   const notebookId = params?.id ? decodeURIComponent(params.id as string) : ''
+  const initialSourceSearch = searchParams.get('sourceSearch') ?? ''
 
   const { data: notebook, isLoading: notebookLoading } = useNotebook(notebookId)
+  const updateNotebook = useUpdateNotebook()
   const {
     sources,
     isLoading: sourcesLoading,
@@ -57,7 +60,15 @@ export default function NotebookPage() {
   const isDesktop = useIsDesktop()
 
   // Mobile tab state (Sources, Notes, or Chat)
-  const [mobileActiveTab, setMobileActiveTab] = useState<'sources' | 'notes' | 'chat'>('chat')
+  const [mobileActiveTab, setMobileActiveTab] = useState<'sources' | 'notes' | 'chat'>(
+    initialSourceSearch ? 'sources' : 'chat'
+  )
+
+  useEffect(() => {
+    if (initialSourceSearch) {
+      setMobileActiveTab('sources')
+    }
+  }, [initialSourceSearch])
 
   // Context selection state
   const [contextSelections, setContextSelections] = useState<ContextSelections>({
@@ -72,6 +83,35 @@ export default function NotebookPage() {
 
   // Same idea for notes loaded later (notes are binary: included/off).
   const [noteContextDefault, setNoteContextDefault] = useState<NoteContextDefault>('include')
+
+  const [learningProfileOptions, setLearningProfileOptions] = useState({
+    autoUpdateProfile: true,
+    useProfileSource: true,
+  })
+
+  useEffect(() => {
+    if (!notebookId) return
+    try {
+      const stored = window.localStorage.getItem(`learning-profile-options:${notebookId}`)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        setLearningProfileOptions({
+          autoUpdateProfile: parsed.autoUpdateProfile !== false,
+          useProfileSource: parsed.useProfileSource !== false,
+        })
+      }
+    } catch {
+      // Ignore malformed local state.
+    }
+  }, [notebookId])
+
+  useEffect(() => {
+    if (!notebookId) return
+    window.localStorage.setItem(
+      `learning-profile-options:${notebookId}`,
+      JSON.stringify(learningProfileOptions)
+    )
+  }, [notebookId, learningProfileOptions])
 
   // Initialize and update selections when sources load or change
   useEffect(() => {
@@ -132,6 +172,15 @@ export default function NotebookPage() {
     }))
   }
 
+  const handleUpdateNotebookName = async (name: string) => {
+    if (!name || name === notebook?.name) return
+
+    await updateNotebook.mutateAsync({
+      id: notebookId,
+      data: { name },
+    })
+  }
+
   if (notebookLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -152,13 +201,21 @@ export default function NotebookPage() {
   }
 
   return (
-    <AppShell>
-      <div className="flex flex-col flex-1 min-h-0">
-        <div className="flex-shrink-0 p-6 pb-0">
-          <NotebookHeader notebook={notebook} />
-        </div>
-
-        <div className="flex-1 p-6 pt-6 overflow-x-auto flex flex-col">
+    <AppShell
+      title={
+        <InlineEdit
+          id="notebook-top-title"
+          name="notebook-top-title"
+          value={notebook.name}
+          onSave={handleUpdateNotebookName}
+          className="max-w-full truncate text-xl font-semibold tracking-tight"
+          inputClassName="h-9 max-w-md text-xl font-semibold tracking-tight"
+          placeholder={t('notebooks.namePlaceholder')}
+        />
+      }
+    >
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 p-6 overflow-x-auto overflow-y-auto flex flex-col">
           {/* Mobile: Tabbed interface - only render on mobile to avoid double-mounting */}
           {!isDesktop && (
             <>
@@ -169,13 +226,13 @@ export default function NotebookPage() {
                       <FileText className="h-4 w-4" />
                       {t('navigation.sources')}
                     </TabsTrigger>
-                    <TabsTrigger value="notes" className="gap-2">
-                      <StickyNote className="h-4 w-4" />
-                      {t('common.notes')}
-                    </TabsTrigger>
                     <TabsTrigger value="chat" className="gap-2">
                       <MessageSquare className="h-4 w-4" />
                       {t('common.chat')}
+                    </TabsTrigger>
+                    <TabsTrigger value="notes" className="gap-2">
+                      <StickyNote className="h-4 w-4" />
+                      Studio
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
@@ -196,6 +253,8 @@ export default function NotebookPage() {
                     hasNextPage={hasNextPage}
                     isFetchingNextPage={isFetchingNextPage}
                     fetchNextPage={fetchNextPage}
+                    initialResourceSearchGoal={initialSourceSearch}
+                    autoCollectInitialResourceSearch
                   />
                 )}
                 {mobileActiveTab === 'notes' && (
@@ -203,6 +262,10 @@ export default function NotebookPage() {
                     notes={notes}
                     isLoading={notesLoading}
                     notebookId={notebookId}
+                    notebookName={notebook?.name}
+                    sources={sources}
+                    profileOptions={learningProfileOptions}
+                    onProfileOptionsChange={setLearningProfileOptions}
                     contextSelections={contextSelections.notes}
                     onContextModeChange={handleNoteContextModeChange}
                     onBulkContextModeChange={handleBulkNoteContext}
@@ -214,6 +277,8 @@ export default function NotebookPage() {
                     contextSelections={contextSelections}
                     sources={sources}
                     sourcesLoading={sourcesLoading}
+                    autoUpdateProfile={learningProfileOptions.autoUpdateProfile}
+                    useProfileSource={learningProfileOptions.useProfileSource}
                   />
                 )}
               </div>
@@ -242,31 +307,39 @@ export default function NotebookPage() {
                 hasNextPage={hasNextPage}
                 isFetchingNextPage={isFetchingNextPage}
                 fetchNextPage={fetchNextPage}
+                initialResourceSearchGoal={initialSourceSearch}
+                autoCollectInitialResourceSearch
+              />
+            </div>
+
+            {/* Chat Column - always expanded, takes remaining space */}
+            <div className="transition-all duration-150 flex-1 min-w-0">
+              <ChatColumn
+                notebookId={notebookId}
+                contextSelections={contextSelections}
+                sources={sources}
+                sourcesLoading={sourcesLoading}
+                autoUpdateProfile={learningProfileOptions.autoUpdateProfile}
+                useProfileSource={learningProfileOptions.useProfileSource}
               />
             </div>
 
             {/* Notes Column */}
             <div className={cn(
               'transition-all duration-150',
-              notesCollapsed ? 'w-12 flex-shrink-0' : 'flex-none basis-1/3'
+              notesCollapsed ? 'w-12 flex-shrink-0' : 'flex-none basis-1/3 lg:pr-6 lg:-mr-6'
             )}>
               <NotesColumn
                 notes={notes}
                 isLoading={notesLoading}
                 notebookId={notebookId}
+                notebookName={notebook?.name}
+                sources={sources}
+                profileOptions={learningProfileOptions}
+                onProfileOptionsChange={setLearningProfileOptions}
                 contextSelections={contextSelections.notes}
                 onContextModeChange={handleNoteContextModeChange}
                 onBulkContextModeChange={handleBulkNoteContext}
-              />
-            </div>
-
-            {/* Chat Column - always expanded, takes remaining space */}
-            <div className="transition-all duration-150 flex-1 min-w-0 lg:pr-6 lg:-mr-6">
-              <ChatColumn
-                notebookId={notebookId}
-                contextSelections={contextSelections}
-                sources={sources}
-                sourcesLoading={sourcesLoading}
               />
             </div>
           </div>

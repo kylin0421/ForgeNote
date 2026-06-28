@@ -56,6 +56,7 @@ export interface SettingsResponse {
   default_content_processing_engine_doc?: string
   default_content_processing_engine_url?: string
   default_embedding_option?: string
+  embedding_backend?: string
   auto_delete_files?: string
   youtube_preferred_languages?: string[]
 }
@@ -122,6 +123,8 @@ export interface UpdateSourceRequest {
   type?: 'link' | 'upload' | 'text'
   url?: string
   content?: string
+  embed?: boolean
+  topics?: string[]
 }
 
 export interface APIError {
@@ -221,6 +224,7 @@ export interface SendNotebookChatMessageRequest {
     notes: Array<Record<string, unknown>>
   }
   model_override?: string
+  auto_update_profile?: boolean
 }
 
 export interface BuildContextRequest {
@@ -229,6 +233,7 @@ export interface BuildContextRequest {
     sources: Record<string, string>
     notes: Record<string, string>
   }
+  query?: string
 }
 
 export interface BuildContextResponse {

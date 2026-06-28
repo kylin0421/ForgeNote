@@ -58,9 +58,186 @@ class AskResponse(BaseModel):
     question: str = Field(..., description="Original question")
 
 
+# Learning multi-agent models
+LearningOutputKind = Literal[
+    "study_guide",
+    "quiz",
+    "flashcards",
+    "mind_map",
+    "reading",
+    "code_lab",
+]
+
+
+class LearningOrchestrationRequest(BaseModel):
+    message: str = Field(
+        "",
+        description="Natural language learning request from the student",
+    )
+    mode: Literal["chat", "collect", "generate"] = Field(
+        "generate",
+        description="Learning interaction mode: chat, collect sources, or generate assets",
+    )
+    course: str = Field(
+        "人工智能导论",
+        description="Target university course or module",
+    )
+    major: Optional[str] = Field(
+        None,
+        description="Student major or academic background",
+    )
+    goal: Optional[str] = Field(
+        None,
+        description="Student learning goal",
+    )
+    learning_history: Optional[List[str]] = Field(
+        default_factory=list,
+        description="Recent learning behaviors, mistakes, or completed topics",
+    )
+    requested_outputs: List[LearningOutputKind] = Field(
+        default_factory=lambda: [
+            "study_guide",
+            "quiz",
+            "flashcards",
+            "mind_map",
+            "reading",
+            "code_lab",
+        ],
+        description="Asset types the learner explicitly asked the system to generate",
+    )
+    accepted_resource_ids: List[str] = Field(
+        default_factory=list,
+        description="Collected resource ids the learner has accepted for this run",
+    )
+    learning_record_id: Optional[str] = Field(
+        None,
+        description="Notebook id used as the persisted learning record",
+    )
+    auto_update_profile: bool = Field(
+        True,
+        description="Whether this learning input should update the persisted learning profile source",
+    )
+    use_profile_source: bool = Field(
+        True,
+        description="Whether the persisted learning profile source should be used as generation context",
+    )
+
+
+class LearningProfileEventRequest(BaseModel):
+    learning_record_id: str = Field(..., description="Notebook id for the profile")
+    event_type: str = Field(..., description="Learning event type")
+    summary: str = Field(..., description="Short evidence summary to append")
+    auto_update_profile: bool = Field(
+        True,
+        description="Whether this event should update the learning profile",
+    )
+
+
+class LearningProfileSourceResponse(BaseModel):
+    source_id: Optional[str] = None
+    title: str
+    content: str
+    updated: Optional[str] = None
+    updated_profile: bool = False
+
+
+class LearningProfileDimension(BaseModel):
+    name: str
+    value: str
+    evidence: str
+    confidence: float = Field(..., ge=0, le=1)
+
+
+class LearningResource(BaseModel):
+    kind: LearningOutputKind
+    type: str
+    title: str
+    agent: str
+    format: str
+    summary: str
+    content: str
+    tags: List[str] = Field(default_factory=list)
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class LearningCollectedResource(BaseModel):
+    id: str
+    title: str
+    source_type: str
+    query: str
+    reason: str
+    url: Optional[str] = None
+    snippet: Optional[str] = None
+    provider: Optional[str] = None
+    quality_score: Optional[float] = Field(
+        None,
+        ge=0,
+        le=1,
+        description="Agentic search quality score for this resource",
+    )
+    resource_kind: Optional[str] = Field(
+        None,
+        description="Detected learning resource kind, such as paper, lecture notes, docs, or tutorial",
+    )
+    learning_value: Optional[str] = Field(
+        None,
+        description="Short explanation of how this resource helps the learner",
+    )
+    search_intent: Optional[str] = Field(
+        None,
+        description="The agentic search intent that found or selected this resource",
+    )
+    adoption_status: Literal["recommended", "accepted", "rejected", "user_upload"] = (
+        "recommended"
+    )
+
+
+class LearningPathStep(BaseModel):
+    order: int
+    title: str
+    objective: str
+    activities: List[str]
+    resources: List[str]
+    checkpoint: str
+
+
+class LearningAgentStage(BaseModel):
+    id: str
+    name: str
+    role: str
+    status: Literal["queued", "running", "completed", "failed"]
+    progress: int = Field(..., ge=0, le=100)
+    output: str
+
+
+class LearningSafetyReport(BaseModel):
+    status: Literal["passed", "needs_review"]
+    checks: List[str]
+    revisions: List[str] = Field(default_factory=list)
+
+
+class LearningEvaluation(BaseModel):
+    score: int = Field(..., ge=0, le=100)
+    strengths: List[str]
+    risks: List[str]
+    next_adjustments: List[str]
+
+
+class LearningOrchestrationResponse(BaseModel):
+    profile: List[LearningProfileDimension]
+    collected_resources: List[LearningCollectedResource]
+    resources: List[LearningResource]
+    learning_path: List[LearningPathStep]
+    recommendations: List[str]
+    tutor_answer: str
+    evaluation: LearningEvaluation
+    safety_report: LearningSafetyReport
+    trace: List[LearningAgentStage]
+
+
 # Models API models
 class ModelCreate(BaseModel):
-    name: str = Field(..., description="Model name (e.g., gpt-5-mini, claude, gemini)")
+    name: str = Field(..., description="Model name (e.g., deepseek-v4-flash, claude, gemini)")
     provider: str = Field(
         ..., description="Provider name (e.g., openai, anthropic, gemini)"
     )
@@ -73,10 +250,23 @@ class ModelCreate(BaseModel):
     )
 
 
+class ModelSpecResponse(BaseModel):
+    provider: str
+    runtime_provider: str
+    api_protocol: str
+    model_type: str
+    model_name: str
+    batch_tts_supported: bool = True
+    warnings: List[str] = Field(default_factory=list)
+
+
 class ModelResponse(BaseModel):
     id: str
     name: str
     provider: str
+    runtime_provider: Optional[str] = None
+    api_protocol: Optional[str] = None
+    model_spec: Optional[ModelSpecResponse] = None
     type: str
     credential: Optional[str] = None
     created: str
@@ -90,7 +280,18 @@ class DefaultModelsResponse(BaseModel):
     default_text_to_speech_model: Optional[str] = None
     default_speech_to_text_model: Optional[str] = None
     default_embedding_model: Optional[str] = None
+    default_retrieval_model: Optional[str] = None
     default_tools_model: Optional[str] = None
+    default_rag_model: Optional[str] = None
+    default_resource_search_model: Optional[str] = None
+    default_learning_asset_model: Optional[str] = None
+    default_study_guide_model: Optional[str] = None
+    default_quiz_model: Optional[str] = None
+    default_flashcards_model: Optional[str] = None
+    default_mind_map_model: Optional[str] = None
+    default_reading_model: Optional[str] = None
+    default_code_lab_model: Optional[str] = None
+    default_podcast_model: Optional[str] = None
 
 
 class ProviderAvailabilityResponse(BaseModel):
@@ -260,6 +461,7 @@ class SettingsResponse(BaseModel):
     default_content_processing_engine_doc: Optional[str] = None
     default_content_processing_engine_url: Optional[str] = None
     default_embedding_option: Optional[str] = None
+    embedding_backend: Optional[str] = None
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
 
@@ -268,6 +470,7 @@ class SettingsUpdate(BaseModel):
     default_content_processing_engine_doc: Optional[str] = None
     default_content_processing_engine_url: Optional[str] = None
     default_embedding_option: Optional[str] = None
+    embedding_backend: Optional[str] = None
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
 
@@ -327,7 +530,11 @@ class SourceCreate(BaseModel):
 
 class SourceUpdate(BaseModel):
     title: Optional[str] = Field(None, description="Source title")
+    content: Optional[str] = Field(
+        None, description="Updated text content for text sources"
+    )
     topics: Optional[List[str]] = Field(None, description="Source topics")
+    embed: bool = Field(False, description="Whether to re-embed updated text content")
 
 
 class SourceResponse(BaseModel):

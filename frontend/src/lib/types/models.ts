@@ -2,6 +2,17 @@ export interface Model {
   id: string
   name: string
   provider: string
+  runtime_provider?: string | null
+  api_protocol?: string | null
+  model_spec?: {
+    provider: string
+    runtime_provider: string
+    api_protocol: string
+    model_type: string
+    model_name: string
+    batch_tts_supported: boolean
+    warnings: string[]
+  } | null
   type: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
   credential?: string | null
   created: string
@@ -22,7 +33,18 @@ export interface ModelDefaults {
   default_text_to_speech_model?: string | null
   default_speech_to_text_model?: string | null
   default_embedding_model?: string | null
+  default_retrieval_model?: string | null
   default_tools_model?: string | null
+  default_rag_model?: string | null
+  default_resource_search_model?: string | null
+  default_learning_asset_model?: string | null
+  default_study_guide_model?: string | null
+  default_quiz_model?: string | null
+  default_flashcards_model?: string | null
+  default_mind_map_model?: string | null
+  default_reading_model?: string | null
+  default_code_lab_model?: string | null
+  default_podcast_model?: string | null
 }
 
 export interface ProviderAvailability {
@@ -35,7 +57,7 @@ export interface ProviderAvailability {
 export interface DiscoveredModel {
   name: string
   provider: string
-  model_type: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
+  model_type?: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
   description?: string
 }
 

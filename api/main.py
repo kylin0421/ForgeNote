@@ -24,6 +24,7 @@ from api.routers import (
     episode_profiles,
     insights,
     languages,
+    learning,
     models,
     notebooks,
     notes,
@@ -145,6 +146,18 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Podcast profile migration encountered errors: {e}")
         # Non-fatal: profiles can be migrated manually via UI
 
+    # Align built-in podcast speaker profiles with the centrally managed
+    # default TTS model. This repairs older records where the default changed
+    # but the speaker profiles still point at a previous model.
+    try:
+        from api.model_sync_service import sync_speaker_profiles_to_tts
+        from open_notebook.ai.models import DefaultModels
+
+        defaults = await DefaultModels.get_instance()
+        await sync_speaker_profiles_to_tts(defaults.default_text_to_speech_model)
+    except Exception as e:
+        logger.warning(f"Default TTS speaker profile sync encountered errors: {e}")
+
     logger.success("API initialization completed successfully")
 
     # Yield control to the application
@@ -155,8 +168,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Open Notebook API",
-    description="API for Open Notebook - Research Assistant",
+    title="智学工坊 API",
+    description="API for personalized learning multi-agent orchestration",
     lifespan=lifespan,
 )
 
@@ -310,11 +323,12 @@ app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
 app.include_router(credentials.router, prefix="/api", tags=["credentials"])
 app.include_router(languages.router, prefix="/api", tags=["languages"])
+app.include_router(learning.router, prefix="/api", tags=["learning"])
 
 
 @app.get("/")
 async def root():
-    return {"message": "Open Notebook API is running"}
+    return {"message": "智学工坊 API is running"}
 
 
 @app.get("/health")

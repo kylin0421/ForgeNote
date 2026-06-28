@@ -1,0 +1,9 @@
+-- Rollback Migration 16: remove LLM-enriched BM25 metadata fields.
+
+REMOVE FIELD IF EXISTS raw_text ON TABLE source_embedding;
+REMOVE FIELD IF EXISTS summary ON TABLE source_embedding;
+REMOVE FIELD IF EXISTS keywords ON TABLE source_embedding;
+REMOVE FIELD IF EXISTS hypothetical_questions ON TABLE source_embedding;
+REMOVE FIELD IF EXISTS entities ON TABLE source_embedding;
+REMOVE FIELD IF EXISTS contains ON TABLE source_embedding;
+REMOVE FIELD IF EXISTS index_backend ON TABLE source_embedding;

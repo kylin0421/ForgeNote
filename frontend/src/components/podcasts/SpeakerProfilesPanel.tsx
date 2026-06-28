@@ -10,6 +10,7 @@ import {
 } from '@/lib/hooks/use-podcasts'
 import { useModels } from '@/lib/hooks/use-models'
 import { SpeakerProfileFormDialog } from '@/components/podcasts/forms/SpeakerProfileFormDialog'
+import { modelDisplayName } from '@/lib/utils/models'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,7 +60,7 @@ export function SpeakerProfilesPanel({
   const modelNameMap = useMemo(() => {
     const map: Record<string, string> = {}
     for (const m of models) {
-      map[m.id] = `${m.provider} / ${m.name}`
+      map[m.id] = modelDisplayName(m)
     }
     return map
   }, [models])

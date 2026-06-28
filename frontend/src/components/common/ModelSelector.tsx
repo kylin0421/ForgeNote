@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/label'
 import { useModels } from '@/lib/hooks/use-models'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { modelProviderLabel, modelWarnings } from '@/lib/utils/models'
 
 interface ModelSelectorProps {
   id?: string
@@ -33,6 +34,8 @@ export function ModelSelector({
 
   // Filter models by type
   const filteredModels = models?.filter(model => model.type === modelType) || []
+  const selectedModel = filteredModels.find(model => model.id === value)
+  const warnings = selectedModel ? modelWarnings(selectedModel) : []
   return (
     <div className="space-y-2">
       {label && <Label htmlFor={selectId}>{label}</Label>}
@@ -54,13 +57,18 @@ export function ModelSelector({
               <SelectItem key={model.id} value={model.id}>
                 <div className="flex items-center justify-between w-full">
                   <span>{model.name}</span>
-                  <span className="text-xs text-muted-foreground ml-2">{model.provider}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{modelProviderLabel(model)}</span>
                 </div>
               </SelectItem>
             ))
           )}
         </SelectContent>
       </Select>
+      {warnings.length > 0 && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          {warnings[0]}
+        </p>
+      )}
     </div>
   )
 }

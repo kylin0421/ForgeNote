@@ -1,0 +1,11 @@
+-- Migration 16: Add LLM-enriched BM25 metadata to source_embedding.
+-- content remains the indexed search document. raw_text stores the original
+-- chunk used for final answer generation.
+
+DEFINE FIELD IF NOT EXISTS raw_text ON TABLE source_embedding TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS summary ON TABLE source_embedding TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS keywords ON TABLE source_embedding TYPE option<array<string>>;
+DEFINE FIELD IF NOT EXISTS hypothetical_questions ON TABLE source_embedding TYPE option<array<string>>;
+DEFINE FIELD IF NOT EXISTS entities ON TABLE source_embedding TYPE option<array<string>>;
+DEFINE FIELD IF NOT EXISTS contains ON TABLE source_embedding FLEXIBLE TYPE option<object>;
+DEFINE FIELD IF NOT EXISTS index_backend ON TABLE source_embedding TYPE option<string>;

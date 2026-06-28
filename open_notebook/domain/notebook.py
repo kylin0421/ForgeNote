@@ -304,6 +304,13 @@ class Asset(BaseModel):
 class SourceEmbedding(ObjectModel):
     table_name: ClassVar[str] = "source_embedding"
     content: str
+    raw_text: Optional[str] = None
+    summary: Optional[str] = None
+    keywords: Optional[List[str]] = None
+    hypothetical_questions: Optional[List[str]] = None
+    entities: Optional[List[str]] = None
+    contains: Optional[Dict[str, Any]] = None
+    index_backend: Optional[str] = None
 
     async def get_source(self) -> "Source":
         try:
@@ -764,5 +771,30 @@ async def vector_search(
         return search_results
     except Exception as e:
         logger.error(f"Error performing vector search: {str(e)}")
+        logger.exception(e)
+        raise DatabaseOperationError(e)
+
+
+async def semantic_search(
+    keyword: str,
+    results: int,
+    source: bool = True,
+    note: bool = True,
+    minimum_score=0.2,
+):
+    if not keyword:
+        raise InvalidInputError("Search keyword cannot be empty")
+    try:
+        from open_notebook.utils.semantic_index import configured_semantic_search
+
+        return await configured_semantic_search(
+            keyword,
+            results,
+            source,
+            note,
+            minimum_score,
+        )
+    except Exception as e:
+        logger.error(f"Error performing semantic search: {str(e)}")
         logger.exception(e)
         raise DatabaseOperationError(e)

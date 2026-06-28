@@ -27,6 +27,9 @@ async def test_legacy_embed_chunk_processes_stale_queue_payload(monkeypatch):
     monkeypatch.setattr(
         embedding_commands, "ensure_record_id", lambda value: f"record:{value}"
     )
+    monkeypatch.setattr(
+        embedding_commands, "is_llm_bm25_backend", AsyncMock(return_value=False)
+    )
 
     result = await embedding_commands.legacy_embed_chunk_command(
         embedding_commands.LegacyEmbedChunkInput(

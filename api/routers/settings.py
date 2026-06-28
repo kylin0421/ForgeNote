@@ -18,6 +18,7 @@ async def get_settings():
             default_content_processing_engine_doc=settings.default_content_processing_engine_doc,
             default_content_processing_engine_url=settings.default_content_processing_engine_url,
             default_embedding_option=settings.default_embedding_option,
+            embedding_backend=settings.embedding_backend,
             auto_delete_files=settings.auto_delete_files,
             youtube_preferred_languages=settings.youtube_preferred_languages,
         )
@@ -57,6 +58,13 @@ async def update_settings(settings_update: SettingsUpdate):
                 Literal["ask", "always", "never"],
                 settings_update.default_embedding_option,
             )
+        if settings_update.embedding_backend is not None:
+            from typing import Literal, cast
+
+            settings.embedding_backend = cast(
+                Literal["embedding_api", "llm_bm25"],
+                settings_update.embedding_backend,
+            )
         if settings_update.auto_delete_files is not None:
             from typing import Literal, cast
 
@@ -74,6 +82,7 @@ async def update_settings(settings_update: SettingsUpdate):
             default_content_processing_engine_doc=settings.default_content_processing_engine_doc,
             default_content_processing_engine_url=settings.default_content_processing_engine_url,
             default_embedding_option=settings.default_embedding_option,
+            embedding_backend=settings.embedding_backend,
             auto_delete_files=settings.auto_delete_files,
             youtube_preferred_languages=settings.youtube_preferred_languages,
         )

@@ -52,6 +52,7 @@ export interface Language {
 export interface PodcastEpisode {
   id: string
   name: string
+  notebook_id?: string | null
   episode_profile: EpisodeProfile
   speaker_profile: SpeakerProfile
   briefing: string

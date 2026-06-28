@@ -9,6 +9,7 @@ from open_notebook.database.repository import ensure_record_id
 from open_notebook.domain.notebook import Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import ConfigurationError
+from open_notebook.utils.command_cancellation import raise_if_command_canceled
 
 try:
     from open_notebook.graphs.source import source_graph
@@ -67,6 +68,12 @@ async def process_source_command(
     start_time = time.time()
 
     try:
+        command_id = (
+            str(input_data.execution_context.command_id)
+            if input_data.execution_context
+            else None
+        )
+        await raise_if_command_canceled(command_id)
         logger.info(f"Starting source processing for source: {input_data.source_id}")
         logger.info(f"Notebook IDs: {input_data.notebook_ids}")
         logger.info(f"Transformations: {input_data.transformations}")
@@ -100,6 +107,7 @@ async def process_source_command(
 
         # 3. Process source with all notebooks
         logger.info(f"Processing source with {len(input_data.notebook_ids)} notebooks")
+        await raise_if_command_canceled(command_id)
 
         # Execute source_graph with all notebooks
         result = await source_graph.ainvoke(
@@ -111,6 +119,7 @@ async def process_source_command(
                 "source_id": input_data.source_id,  # Add the source_id to the state
             }
         )
+        await raise_if_command_canceled(command_id)
 
         processed_source = result["source"]
 
@@ -211,6 +220,12 @@ async def run_transformation_command(
     start_time = time.time()
 
     try:
+        command_id = (
+            str(input_data.execution_context.command_id)
+            if input_data.execution_context
+            else None
+        )
+        await raise_if_command_canceled(command_id)
         logger.info(
             f"Running transformation {input_data.transformation_id} "
             f"on source {input_data.source_id}"
@@ -232,6 +247,7 @@ async def run_transformation_command(
         await transform_graph.ainvoke(
             input=dict(source=source, transformation=transformation)
         )
+        await raise_if_command_canceled(command_id)
 
         processing_time = time.time() - start_time
         logger.info(

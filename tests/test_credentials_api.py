@@ -143,6 +143,7 @@ class TestCredentialModelDiscovery:
             {
                 "name": "custom-openai-model",
                 "provider": "openai",
+                "model_type": "language",
                 "description": None,
             }
         ]
@@ -238,6 +239,8 @@ class TestAudioProviderWiring:
         assert "speech_to_text" in PROVIDER_MODALITIES["mistral"]
         assert "text_to_speech" in PROVIDER_MODALITIES["mistral"]
         assert "text_to_speech" in PROVIDER_MODALITIES["xai"]
+        assert "text_to_speech" in PROVIDER_MODALITIES["dashscope"]
+        assert "speech_to_text" in PROVIDER_MODALITIES["dashscope"]
         assert PROVIDER_MODALITIES["deepgram"] == ["text_to_speech"]
 
     def test_deepgram_has_env_and_test_model(self):
@@ -246,6 +249,165 @@ class TestAudioProviderWiring:
 
         assert PROVIDER_ENV_CONFIG["deepgram"]["required"] == ["DEEPGRAM_API_KEY"]
         assert TEST_MODELS["deepgram"][1] == "text_to_speech"
+
+
+class TestModelRuntimeSpecs:
+    """Tests for provider/runtime/protocol inference used by model settings."""
+
+    def test_qwen_audio_models_are_classified_from_compatible_listings(self):
+        from open_notebook.ai.model_discovery import classify_model_type
+
+        assert (
+            classify_model_type("qwen3-tts-instruct-flash", "openai_compatible")
+            == "text_to_speech"
+        )
+        assert (
+            classify_model_type("qwen3-asr-flash-2026-02-10", "openai_compatible")
+            == "speech_to_text"
+        )
+
+    def test_qwen_batch_tts_routes_to_dashscope_protocol(self):
+        from open_notebook.ai.model_specs import build_model_runtime_spec
+
+        spec = build_model_runtime_spec(
+            "openai",
+            "text_to_speech",
+            "qwen3-tts-instruct-flash",
+        )
+
+        assert spec.runtime_provider == "dashscope"
+        assert spec.api_protocol == "dashscope-http-tts"
+        assert spec.batch_tts_supported is True
+        assert spec.warnings == []
+
+    def test_qwen_realtime_tts_routes_to_dashscope_protocol(self):
+        from open_notebook.ai.model_specs import build_model_runtime_spec
+
+        spec = build_model_runtime_spec(
+            "openai",
+            "text_to_speech",
+            "qwen3-tts-flash-realtime",
+        )
+
+        assert spec.runtime_provider == "dashscope"
+        assert spec.api_protocol == "dashscope-realtime-tts"
+        assert spec.batch_tts_supported is True
+        assert spec.warnings == []
+
+    def test_qwen_vc_realtime_tts_reports_pipeline_warning(self):
+        from open_notebook.ai.model_specs import build_model_runtime_spec
+
+        spec = build_model_runtime_spec(
+            "openai",
+            "text_to_speech",
+            "qwen3-tts-vc-realtime-2026-01-15",
+        )
+
+        assert spec.runtime_provider == "dashscope"
+        assert spec.api_protocol == "dashscope-voice-conversion"
+        assert spec.batch_tts_supported is False
+        assert spec.warnings
+
+    def test_dashscope_realtime_adapter_helpers(self):
+        import io
+        import wave
+
+        from open_notebook.ai.dashscope_tts import DashScopeTextToSpeechModel
+
+        model = DashScopeTextToSpeechModel(
+            model_name="qwen3-tts-flash-realtime",
+            api_key="test-key",
+            base_url="https://dashscope.aliyuncs.com/api/v1",
+        )
+
+        assert model._realtime_url() == (
+            "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+            "?model=qwen3-tts-flash-realtime"
+        )
+        wav_bytes = model._wav_from_pcm(b"\x00\x00" * model.REALTIME_SAMPLE_RATE)
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+            assert wav_file.getframerate() == model.REALTIME_SAMPLE_RATE
+            assert wav_file.getnchannels() == 1
+            assert wav_file.getsampwidth() == 2
+            assert wav_file.getnframes() == model.REALTIME_SAMPLE_RATE
+
+    @pytest.mark.asyncio
+    async def test_dashscope_realtime_adapter_streams_audio(self, monkeypatch):
+        import base64
+        import io
+        import json
+        import wave
+
+        import websockets
+
+        from open_notebook.ai.dashscope_tts import DashScopeTextToSpeechModel
+
+        pcm_audio = b"\x00\x00" * 24000
+
+        class FakeWebSocket:
+            def __init__(self):
+                self.sent = []
+                self.events = iter(
+                    [
+                        {"type": "session.created", "session": {"id": "sess_test"}},
+                        {"type": "session.updated", "session": {"id": "sess_test"}},
+                        {
+                            "type": "response.audio.delta",
+                            "delta": base64.b64encode(pcm_audio).decode("ascii"),
+                            "response_id": "resp_test",
+                        },
+                        {"type": "response.audio.done"},
+                        {"type": "response.done", "response": {"status": "completed"}},
+                        {"type": "session.finished"},
+                    ]
+                )
+
+            async def send(self, message):
+                self.sent.append(json.loads(message))
+
+            async def recv(self):
+                return json.dumps(next(self.events))
+
+        fake_socket = FakeWebSocket()
+
+        class FakeConnect:
+            async def __aenter__(self):
+                return fake_socket
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        def fake_connect(*args, **kwargs):
+            return FakeConnect()
+
+        monkeypatch.setattr(websockets, "connect", fake_connect)
+
+        model = DashScopeTextToSpeechModel(
+            model_name="qwen3-tts-flash-realtime",
+            api_key="test-key",
+            base_url="https://dashscope.aliyuncs.com/api/v1",
+        )
+
+        response = await model.agenerate_speech(
+            "Hello from realtime TTS",
+            voice="Cherry",
+            max_audio_attempts=1,
+        )
+
+        assert response.content_type == "audio/wav"
+        assert response.metadata["realtime_tts"]["api_protocol"] == "dashscope-realtime-tts"
+        assert response.metadata["realtime_tts"]["session_id"] == "sess_test"
+        sent_types = [event["type"] for event in fake_socket.sent]
+        assert sent_types == [
+            "session.update",
+            "input_text_buffer.append",
+            "input_text_buffer.commit",
+            "session.finish",
+        ]
+
+        with wave.open(io.BytesIO(response.audio_data), "rb") as wav_file:
+            assert wav_file.getframerate() == 24000
+            assert wav_file.getnframes() == 24000
 
 
 class TestAudioMatrixWiring:

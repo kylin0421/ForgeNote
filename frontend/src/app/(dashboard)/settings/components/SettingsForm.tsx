@@ -19,6 +19,7 @@ const settingsSchema = z.object({
   default_content_processing_engine_doc: z.enum(['auto', 'docling', 'simple']).optional(),
   default_content_processing_engine_url: z.enum(['auto', 'firecrawl', 'jina', 'simple']).optional(),
   default_embedding_option: z.enum(['ask', 'always', 'never']).optional(),
+  embedding_backend: z.enum(['embedding_api', 'llm_bm25']).optional(),
   auto_delete_files: z.enum(['yes', 'no']).optional(),
 })
 
@@ -31,6 +32,7 @@ export function SettingsForm() {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     doc: false,
     url: false,
+    searchBackend: false,
     embedding: false,
     files: false
   })
@@ -48,6 +50,7 @@ export function SettingsForm() {
       default_content_processing_engine_doc: undefined,
       default_content_processing_engine_url: undefined,
       default_embedding_option: undefined,
+      embedding_backend: undefined,
       auto_delete_files: undefined,
     }
   })
@@ -63,6 +66,7 @@ export function SettingsForm() {
         default_content_processing_engine_doc: settings.default_content_processing_engine_doc as 'auto' | 'docling' | 'simple',
         default_content_processing_engine_url: settings.default_content_processing_engine_url as 'auto' | 'firecrawl' | 'jina' | 'simple',
         default_embedding_option: settings.default_embedding_option as 'ask' | 'always' | 'never',
+        embedding_backend: settings.embedding_backend as 'embedding_api' | 'llm_bm25',
         auto_delete_files: settings.auto_delete_files as 'yes' | 'no',
       }
       reset(formData)
@@ -184,6 +188,40 @@ export function SettingsForm() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          <div className="space-y-3">
+            <Label htmlFor="embedding_backend">{t('settings.embeddingBackend')}</Label>
+            <Controller
+              name="embedding_backend"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  key={field.value}
+                  name={field.name}
+                  value={field.value || ''}
+                  onValueChange={field.onChange}
+                  disabled={field.disabled || isLoading}
+                >
+                  <SelectTrigger id="embedding_backend" className="w-full">
+                    <SelectValue placeholder={t('settings.embeddingBackendPlaceholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="embedding_api">{t('settings.embeddingApiBackend')}</SelectItem>
+                    <SelectItem value="llm_bm25">{t('settings.llmBm25Backend')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            <Collapsible open={expandedSections.searchBackend} onOpenChange={() => toggleSection('searchBackend')}>
+              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.searchBackend ? 'rotate-180' : ''}`} />
+                {t('settings.helpMeChoose')}
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
+                <p>{t('settings.embeddingBackendHelp')}</p>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+
            <div className="space-y-3">
             <Label htmlFor="embedding">{t('settings.defaultEmbeddingOption')}</Label>
             <Controller

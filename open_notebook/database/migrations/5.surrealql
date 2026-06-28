@@ -166,4 +166,3 @@ UPSERT open_notebook:default_prompts
         - Output ONLY the requested content, without acknowledgements of the task and additional chatting. Don't start with \"Sure, I can help you with that.\" or \"Here is the information you requested:\". Just provide the content.
         - Do not stop in the middle of the generation to ask me questions. Execute my request completely. 
         "};
-

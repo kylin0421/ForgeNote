@@ -64,6 +64,40 @@ class TestNoteCreation:
         data = response.json()
         assert data["command_id"] is None
 
+    @patch("api.routers.notes.asyncio.sleep", new_callable=AsyncMock)
+    @patch("api.routers.notes.Note")
+    def test_create_note_retries_transaction_conflict(
+        self, mock_note_cls, mock_sleep, client
+    ):
+        """Test that transient SurrealDB transaction conflicts are retried."""
+        mock_note = AsyncMock()
+        mock_note.id = "note:retry123"
+        mock_note.title = "Retry Note"
+        mock_note.content = "Some content"
+        mock_note.note_type = "human"
+        mock_note.created = "2026-01-01T00:00:00Z"
+        mock_note.updated = "2026-01-01T00:00:00Z"
+        mock_note.save.side_effect = [
+            RuntimeError(
+                "Failed to commit transaction due to a read or write conflict. "
+                "This transaction can be retried"
+            ),
+            "command:embed-retry",
+        ]
+        mock_note.add_to_notebook = AsyncMock()
+        mock_note_cls.return_value = mock_note
+
+        response = client.post(
+            "/api/notes",
+            json={"content": "Some content", "note_type": "human"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["command_id"] == "command:embed-retry"
+        assert mock_note.save.await_count == 2
+        mock_sleep.assert_awaited_once()
+
 
 class TestNoteUpdate:
     """Test suite for Note update endpoint."""

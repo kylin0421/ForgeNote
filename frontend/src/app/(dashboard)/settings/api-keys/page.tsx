@@ -57,6 +57,7 @@ import { Credential, CreateCredentialRequest, UpdateCredentialRequest, Discovere
 import { Model, ModelDefaults } from '@/lib/types/models'
 import { MigrationBanner, ModelTestResultDialog } from '@/components/settings'
 import { EmbeddingModelChangeDialog } from '@/components/settings/EmbeddingModelChangeDialog'
+import { modelProviderLabel, modelWarnings } from '@/lib/utils/models'
 
 type ModelType = 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
 
@@ -105,7 +106,7 @@ const PROVIDER_MODALITIES: Record<string, ModelType[]> = {
   azure: ['language', 'embedding', 'text_to_speech', 'speech_to_text'],
   vertex: ['language', 'embedding', 'text_to_speech'],
   openai_compatible: ['language', 'embedding', 'text_to_speech', 'speech_to_text'],
-  dashscope: ['language'],
+  dashscope: ['language', 'speech_to_text', 'text_to_speech'],
   minimax: ['language'],
 }
 
@@ -124,7 +125,7 @@ const PROVIDER_DOCS: Record<string, string> = {
   deepgram: 'https://console.deepgram.com/',
   azure: 'https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/OpenAI',
   vertex: 'https://cloud.google.com/vertex-ai/docs/start/cloud-environment',
-  openai_compatible: 'https://github.com/lfnovo/open-notebook/blob/main/docs/5-CONFIGURATION/openai-compatible.md',
+  openai_compatible: 'https://platform.openai.com/docs/api-reference',
   dashscope: 'https://help.aliyun.com/zh/model-studio/getting-started/',
   minimax: 'https://platform.minimaxi.com/document/Guides',
 }
@@ -151,6 +152,9 @@ const TYPE_LABELS: Record<ModelType, string> = {
   text_to_speech: 'TTS',
   speech_to_text: 'STT',
 }
+
+const modelTypeLabel = (type?: string) =>
+  type && type in TYPE_LABELS ? TYPE_LABELS[type as ModelType] : type
 
 // =============================================================================
 // Credential Form Dialog
@@ -483,12 +487,19 @@ function DiscoverModelsDialog({
     setCustomModelSelected(false)
   }, [searchQuery])
 
+  useEffect(() => {
+    setSelectedModels(new Set())
+  }, [selectedType])
+
   // Filter discovered models by search query
   const filteredModels = useMemo(() => {
-    if (!searchQuery.trim()) return discoveredModels
+    const typeFiltered = discoveredModels.filter(
+      m => !m.model_type || m.model_type === selectedType
+    )
+    if (!searchQuery.trim()) return typeFiltered
     const q = searchQuery.toLowerCase()
-    return discoveredModels.filter(m => m.name.toLowerCase().includes(q))
-  }, [discoveredModels, searchQuery])
+    return typeFiltered.filter(m => m.name.toLowerCase().includes(q))
+  }, [discoveredModels, searchQuery, selectedType])
 
   // Show custom model option when search doesn't exactly match any discovered model
   const showCustomOption = useMemo(() => {
@@ -503,7 +514,7 @@ function DiscoverModelsDialog({
       .map(m => ({
         name: m.name,
         provider: m.provider,
-        model_type: selectedType,
+        model_type: m.model_type || selectedType,
       }))
     if (customModelSelected && showCustomOption) {
       selected.push({
@@ -625,6 +636,11 @@ function DiscoverModelsDialog({
                     className="rounded"
                   />
                   <span className="truncate">{model.name}</span>
+                  {model.model_type && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+                      {modelTypeLabel(model.model_type)}
+                    </span>
+                  )}
                   {model.description && model.description !== model.name && (
                     <span className="text-xs text-muted-foreground truncate">({model.description})</span>
                   )}
@@ -813,9 +829,16 @@ function CredentialItem({
   if (defaults) {
     const slotMap: Record<string, string | null | undefined> = {
       'Chat': defaults.default_chat_model,
-      'Transform': defaults.default_transformation_model,
-      'Tools': defaults.default_tools_model,
-      'Large Ctx': defaults.large_context_model,
+      'RAG': defaults.default_rag_model ?? defaults.default_retrieval_model,
+      'Search': defaults.default_resource_search_model ?? defaults.default_tools_model,
+      'Assets': defaults.default_learning_asset_model ?? defaults.default_transformation_model,
+      'Guide': defaults.default_study_guide_model,
+      'Quiz': defaults.default_quiz_model,
+      'Cards': defaults.default_flashcards_model,
+      'Map': defaults.default_mind_map_model,
+      'Reading': defaults.default_reading_model,
+      'Code': defaults.default_code_lab_model,
+      'Podcast': defaults.default_podcast_model,
       'Embedding': defaults.default_embedding_model,
       'TTS': defaults.default_text_to_speech_model,
       'STT': defaults.default_speech_to_text_model,
@@ -1133,20 +1156,35 @@ function DefaultModelSelectors({
     id: string
   }
 
+  const modelText = (key: string, fallback: string) => {
+    const value = t(key)
+    return value === key ? fallback : value
+  }
+
   const primaryConfigs: DefaultConfig[] = [
-    { key: 'default_chat_model', label: t('models.chatModelLabel'), description: t('models.chatModelDesc'), modelType: 'language', required: true, id: `${generatedId}-chat` },
+    { key: 'default_chat_model', label: modelText('models.conversationModelLabel', 'Conversation tutor'), description: modelText('models.conversationModelDesc', 'Used for notebook chat and instant tutoring.'), modelType: 'language', required: true, id: `${generatedId}-chat` },
+    { key: 'default_rag_model', label: modelText('models.ragModelLabel', 'RAG answer model'), description: modelText('models.ragModelDesc', 'Used to answer questions over selected sources and notes.'), modelType: 'language', required: true, id: `${generatedId}-rag` },
+    { key: 'default_resource_search_model', label: modelText('models.resourceSearchModelLabel', 'Resource search agent'), description: modelText('models.resourceSearchModelDesc', 'Plans web searches and reranks learning resources.'), modelType: 'language', id: `${generatedId}-resource-search` },
+    { key: 'default_learning_asset_model', label: modelText('models.learningAssetModelLabel', 'General asset generator'), description: modelText('models.learningAssetModelDesc', 'Fallback model for all generated study assets.'), modelType: 'language', required: true, id: `${generatedId}-asset` },
     { key: 'default_embedding_model', label: t('models.embeddingModelLabel'), description: t('models.embeddingModelDesc'), modelType: 'embedding', required: true, id: `${generatedId}-embed` },
+  ]
+
+  const assetConfigs: DefaultConfig[] = [
+    { key: 'default_study_guide_model', label: modelText('models.studyGuideModelLabel', 'Study guide'), description: modelText('models.studyGuideModelDesc', 'Generates long-form Markdown explanations.'), modelType: 'language', id: `${generatedId}-study-guide` },
+    { key: 'default_quiz_model', label: modelText('models.quizModelLabel', 'Quiz'), description: modelText('models.quizModelDesc', 'Generates diagnostic and practice questions.'), modelType: 'language', id: `${generatedId}-quiz` },
+    { key: 'default_flashcards_model', label: modelText('models.flashcardsModelLabel', 'Flashcards'), description: modelText('models.flashcardsModelDesc', 'Generates concise recall cards.'), modelType: 'language', id: `${generatedId}-flashcards` },
+    { key: 'default_mind_map_model', label: modelText('models.mindMapModelLabel', 'Mind map'), description: modelText('models.mindMapModelDesc', 'Generates Mermaid-compatible knowledge maps.'), modelType: 'language', id: `${generatedId}-mind-map` },
+    { key: 'default_reading_model', label: modelText('models.readingModelLabel', 'Reading'), description: modelText('models.readingModelDesc', 'Generates extension-reading guides.'), modelType: 'language', id: `${generatedId}-reading` },
+    { key: 'default_code_lab_model', label: modelText('models.codeLabModelLabel', 'Code lab'), description: modelText('models.codeLabModelDesc', 'Generates practical coding labs and examples.'), modelType: 'language', id: `${generatedId}-code-lab` },
+    { key: 'default_podcast_model', label: modelText('models.podcastScriptModelLabel', 'Podcast script'), description: modelText('models.podcastScriptModelDesc', 'Generates podcast outlines and dialogue scripts.'), modelType: 'language', id: `${generatedId}-podcast` },
+  ]
+
+  const mediaConfigs: DefaultConfig[] = [
     { key: 'default_text_to_speech_model', label: t('models.ttsModelLabel'), description: t('models.ttsModelDesc'), modelType: 'text_to_speech', id: `${generatedId}-tts` },
     { key: 'default_speech_to_text_model', label: t('models.sttModelLabel'), description: t('models.sttModelDesc'), modelType: 'speech_to_text', id: `${generatedId}-stt` },
   ]
 
-  const advancedConfigs: DefaultConfig[] = [
-    { key: 'default_transformation_model', label: t('models.transformationModelLabel'), description: t('models.transformationModelDesc'), modelType: 'language', required: true, id: `${generatedId}-transform` },
-    { key: 'default_tools_model', label: t('models.toolsModelLabel'), description: t('models.toolsModelDesc'), modelType: 'language', id: `${generatedId}-tools` },
-    { key: 'large_context_model', label: t('models.largeContextModelLabel'), description: t('models.largeContextModelDesc'), modelType: 'language', id: `${generatedId}-large` },
-  ]
-
-  const defaultConfigs = [...primaryConfigs, ...advancedConfigs]
+  const defaultConfigs = [...primaryConfigs, ...assetConfigs, ...mediaConfigs]
 
   const handleChange = (key: keyof ModelDefaults, value: string) => {
     if (key === 'default_embedding_model') {
@@ -1203,8 +1241,8 @@ function DefaultModelSelectors({
           </Alert>
         )}
 
-        {/* Primary models: Chat, Embedding, TTS, STT */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Primary purpose models */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {primaryConfigs.map(config => {
             const available = getModelsForType(config.modelType)
             const currentValue = watch(config.key) || undefined
@@ -1236,7 +1274,7 @@ function DefaultModelSelectors({
                         <SelectItem key={model.id} value={model.id}>
                           <div className="flex items-center justify-between w-full">
                             <span>{model.name}</span>
-                            <span className="text-xs text-muted-foreground ml-2">{model.provider}</span>
+                            <span className="text-xs text-muted-foreground ml-2">{modelProviderLabel(model)}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -1253,11 +1291,13 @@ function DefaultModelSelectors({
           })}
         </div>
 
-        {/* Advanced models: Transformation, Tools, Large Context */}
+        {/* Asset generation models */}
         <div className="border-t pt-3">
-          <p className="text-xs text-muted-foreground mb-3">{t('navigation.advanced')}</p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {advancedConfigs.map(config => {
+          <p className="text-xs font-medium text-muted-foreground mb-3">
+            {modelText('models.assetSpecificModels', 'Asset-specific generation')}
+          </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {assetConfigs.map(config => {
                 const available = getModelsForType(config.modelType)
                 const currentValue = watch(config.key) || undefined
                 const isValid = currentValue && available.some(m => m.id === currentValue)
@@ -1288,7 +1328,7 @@ function DefaultModelSelectors({
                             <SelectItem key={model.id} value={model.id}>
                               <div className="flex items-center justify-between w-full">
                                 <span>{model.name}</span>
-                                <span className="text-xs text-muted-foreground ml-2">{model.provider}</span>
+                                <span className="text-xs text-muted-foreground ml-2">{modelProviderLabel(model)}</span>
                               </div>
                             </SelectItem>
                           ))}
@@ -1305,6 +1345,69 @@ function DefaultModelSelectors({
                 )
               })}
             </div>
+        </div>
+
+        {/* Voice models */}
+        <div className="border-t pt-3">
+          <p className="text-xs font-medium text-muted-foreground mb-3">
+            {modelText('models.voiceModels', 'Voice and audio')}
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {mediaConfigs.map(config => {
+              const available = getModelsForType(config.modelType)
+              const currentValue = watch(config.key) || undefined
+              const isValid = currentValue && available.some(m => m.id === currentValue)
+              const currentModel = currentValue ? available.find(m => m.id === currentValue) : undefined
+              const warnings = currentModel ? modelWarnings(currentModel) : []
+
+              return (
+                <div key={config.key} className="space-y-1">
+                  <Label htmlFor={config.id} className="text-xs">
+                    {config.label}
+                    {config.required && <span className="text-destructive ml-0.5">*</span>}
+                  </Label>
+                  <div className="flex gap-1">
+                    <Select
+                      value={currentValue || ""}
+                      onValueChange={(v) => handleChange(config.key, v)}
+                    >
+                      <SelectTrigger
+                        id={config.id}
+                        className={`h-8 text-xs ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
+                      >
+                        <SelectValue placeholder={
+                          config.required && !isValid && available.length > 0
+                            ? t('models.requiredModelPlaceholder')
+                            : t('models.selectModelPlaceholder')
+                        } />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {available.sort((a, b) => a.name.localeCompare(b.name)).map(model => (
+                          <SelectItem key={model.id} value={model.id}>
+                            <div className="flex items-center justify-between w-full">
+                              <span>{model.name}</span>
+                              <span className="text-xs text-muted-foreground ml-2">{modelProviderLabel(model)}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!config.required && currentValue && (
+                      <Button variant="ghost" size="icon" onClick={() => handleChange(config.key, "")} className="h-8 w-8 shrink-0">
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">{config.description}</p>
+                  {warnings.length > 0 && (
+                    <p className="text-[10px] leading-tight text-amber-600 dark:text-amber-400">
+                      {warnings[0]}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       </CardContent>
 
@@ -1435,9 +1538,7 @@ export default function ApiKeysPage() {
           {/* Help link */}
           <div className="border-t pt-4">
             <a
-              href="https://github.com/lfnovo/open-notebook/blob/main/docs/5-CONFIGURATION/ai-providers.md"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="https://platform.openai.com/docs/api-reference"
               className="text-sm text-primary hover:underline"
             >
               {t('apiKeys.learnMore')}

@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { modelsApi } from '@/lib/api/models'
+import { QUERY_KEYS } from '@/lib/api/query-client'
 import { useToast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
@@ -92,8 +93,13 @@ export function useUpdateModelDefaults() {
 
   return useMutation({
     mutationFn: (data: Partial<ModelDefaults>) => modelsApi.updateDefaults(data),
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: MODEL_QUERY_KEYS.defaults })
+      if ('default_text_to_speech_model' in variables) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.speakerProfiles })
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.episodeProfiles })
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.podcastEpisodes })
+      }
       toast({
         title: t('common.success'),
         description: t('models.saveSuccess'),

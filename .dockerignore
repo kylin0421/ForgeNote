@@ -17,7 +17,11 @@ env
 
 # Frontend
 frontend/node_modules
-frontend/.next
+frontend/.next/*
+!frontend/.next/standalone
+!frontend/.next/standalone/**
+!frontend/.next/static
+!frontend/.next/static/**
 frontend/dist
 frontend/out
 frontend/.env*

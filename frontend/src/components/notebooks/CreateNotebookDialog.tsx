@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { useCreateNotebook } from '@/lib/hooks/use-notebooks'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import type { NotebookResponse } from '@/lib/types/api'
 
 const createNotebookSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -30,9 +31,10 @@ type CreateNotebookFormData = z.infer<typeof createNotebookSchema>
 interface CreateNotebookDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCreated?: (notebook: NotebookResponse) => void
 }
 
-export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialogProps) {
+export function CreateNotebookDialog({ open, onOpenChange, onCreated }: CreateNotebookDialogProps) {
   const { t } = useTranslation()
   const createNotebook = useCreateNotebook()
   const {
@@ -52,9 +54,10 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
   const closeDialog = () => onOpenChange(false)
 
   const onSubmit = async (data: CreateNotebookFormData) => {
-    await createNotebook.mutateAsync(data)
+    const created = await createNotebook.mutateAsync(data)
     closeDialog()
     reset()
+    onCreated?.(created)
   }
 
   useEffect(() => {

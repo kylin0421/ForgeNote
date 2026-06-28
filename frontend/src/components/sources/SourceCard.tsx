@@ -23,7 +23,8 @@ import {
   CheckCircle,
   AlertTriangle,
   Loader2,
-  Unlink
+  Unlink,
+  Database
 } from 'lucide-react'
 import { useSourceStatus } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -37,6 +38,8 @@ interface SourceCardProps {
   onDelete?: (sourceId: string) => void
   onRetry?: (sourceId: string) => void
   onRefreshContent?: (sourceId: string) => void
+  onEmbed?: (sourceId: string) => void
+  isEmbedding?: boolean
   onRemoveFromNotebook?: (sourceId: string) => void
   onClick?: (sourceId: string) => void
   onRefresh?: () => void
@@ -114,6 +117,8 @@ function SourceCardImpl({
   onDelete,
   onRetry,
   onRefreshContent,
+  onEmbed,
+  isEmbedding = false,
   onRemoveFromNotebook,
   onRefresh,
   className,
@@ -198,6 +203,12 @@ function SourceCardImpl({
     }
   }
 
+  const handleEmbed = () => {
+    if (onEmbed) {
+      onEmbed(source.id)
+    }
+  }
+
   const handleDelete = () => {
     if (onDelete) {
       onDelete(source.id)
@@ -219,6 +230,7 @@ function SourceCardImpl({
   const isProcessing: boolean = currentStatus === 'new' || currentStatus === 'running' || currentStatus === 'queued'
   const isFailed: boolean = currentStatus === 'failed'
   const isCompleted: boolean = currentStatus === 'completed'
+  const canEmbed = isCompleted && !source.embedded && Boolean(onEmbed)
 
   return (
     <Card
@@ -408,6 +420,28 @@ function SourceCardImpl({
           </div>
         ) : null}
 
+        {canEmbed ? (
+          <div className="flex gap-2 pt-2 border-t">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation()
+                handleEmbed()
+              }}
+              disabled={isEmbedding}
+              className="h-7 text-xs"
+            >
+              {isEmbedding ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <Database className="h-3 w-3 mr-1" />
+              )}
+              创建嵌入
+            </Button>
+          </div>
+        ) : null}
+
         {/* Processing progress indicator */}
         {isProcessing && typeof statusData?.processing_info?.progress === 'number' && (
           <div className="mt-3 pt-2 border-t">
@@ -466,6 +500,8 @@ function areEqual(prev: SourceCardProps, next: SourceCardProps): boolean {
     topicsEqual(p.topics, n.topics) &&
     prev.contextMode === next.contextMode &&
     prev.showRemoveFromNotebook === next.showRemoveFromNotebook &&
+    prev.isEmbedding === next.isEmbedding &&
+    Boolean(prev.onEmbed) === Boolean(next.onEmbed) &&
     prev.className === next.className
   )
 }

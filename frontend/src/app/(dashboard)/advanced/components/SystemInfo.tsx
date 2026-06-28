@@ -79,13 +79,11 @@ export function SystemInfo() {
             )}
           </div>
 
-          {/* GitHub Repository Link */}
+          {/* Product settings link */}
           {config?.hasUpdate && (
             <div className="pt-2 border-t">
               <a
-                href="https://github.com/lfnovo/open-notebook"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="/settings/api-keys"
                 className="text-sm text-primary hover:underline inline-flex items-center gap-1"
               >
                 {t('advanced.viewOnGithub')}

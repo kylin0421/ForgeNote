@@ -34,6 +34,24 @@ class CommandJobStatusResponse(BaseModel):
     progress: Optional[Dict[str, Any]] = None
 
 
+class CommandJobLogResponse(BaseModel):
+    job_id: str
+    status: str
+    app: Optional[str] = None
+    command: Optional[str] = None
+    args: Optional[Dict[str, Any]] = None
+    result: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    created: Optional[str] = None
+    updated: Optional[str] = None
+    log: List[str] = Field(default_factory=list)
+
+
+class DismissCommandJobResponse(BaseModel):
+    job_id: str
+    dismissed: bool
+
+
 @router.post("/commands/jobs", response_model=CommandJobResponse)
 async def execute_command(request: CommandExecutionRequest):
     """
@@ -85,16 +103,36 @@ async def get_command_job_status(job_id: str):
         )
 
 
+@router.get("/commands/jobs/{job_id}/log", response_model=CommandJobLogResponse)
+async def get_command_job_log(job_id: str):
+    """Get persisted failure details for a command job."""
+    try:
+        log_data = await CommandService.get_command_log(job_id)
+        return CommandJobLogResponse(**log_data)
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error fetching job log: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Failed to fetch command job log"
+        )
+
+
 @router.get("/commands/jobs", response_model=List[Dict[str, Any]])
 async def list_command_jobs(
     command_filter: Optional[str] = Query(None, description="Filter by command name"),
     status_filter: Optional[str] = Query(None, description="Filter by status"),
     limit: int = Query(50, description="Maximum number of jobs to return"),
+    include_dismissed: bool = Query(False, description="Include dismissed jobs"),
 ):
     """List command jobs with optional filtering"""
     try:
         jobs = await CommandService.list_command_jobs(
-            command_filter=command_filter, status_filter=status_filter, limit=limit
+            command_filter=command_filter,
+            status_filter=status_filter,
+            limit=limit,
+            include_dismissed=include_dismissed,
         )
         return jobs
 
@@ -102,6 +140,22 @@ async def list_command_jobs(
         logger.error(f"Error listing command jobs: {str(e)}")
         raise HTTPException(
             status_code=500, detail="Failed to list command jobs"
+        )
+
+
+@router.delete("/commands/jobs/{job_id}/dismiss", response_model=DismissCommandJobResponse)
+async def dismiss_command_job(job_id: str):
+    """Dismiss a failed command job from queue monitors."""
+    try:
+        success = await CommandService.dismiss_command_job(job_id)
+        return DismissCommandJobResponse(job_id=job_id, dismissed=success)
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error dismissing command job: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Failed to dismiss command job"
         )
 
 

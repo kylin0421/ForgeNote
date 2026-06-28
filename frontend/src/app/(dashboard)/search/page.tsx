@@ -18,6 +18,7 @@ import { Search, ChevronDown, AlertCircle, Settings, Save, MessageCircleQuestion
 import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
+import { useSettings } from '@/lib/hooks/use-settings'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { StreamingResponse } from '@/components/search/StreamingResponse'
@@ -62,6 +63,7 @@ export default function SearchPage() {
   const ask = useAsk()
   const { data: modelDefaults, isLoading: modelsLoading } = useModelDefaults()
   const { data: availableModels } = useModels()
+  const { data: settings, isLoading: settingsLoading } = useSettings()
   const { openModal } = useModalManager()
 
   const modelNameById = useMemo(() => {
@@ -77,6 +79,14 @@ export default function SearchPage() {
   }
 
   const hasEmbeddingModel = !!modelDefaults?.default_embedding_model
+  const defaultRagModel =
+    modelDefaults?.default_rag_model ||
+    modelDefaults?.default_retrieval_model ||
+    modelDefaults?.default_learning_asset_model ||
+    modelDefaults?.default_transformation_model ||
+    modelDefaults?.default_chat_model
+  const hasRetrievalLlm = !!defaultRagModel
+  const hasSemanticSearchBackend = hasEmbeddingModel || (settings?.embedding_backend === 'llm_bm25' && hasRetrievalLlm)
 
   // Track if we've already auto-triggered from URL params
   const hasAutoTriggeredRef = useRef(false)
@@ -102,16 +112,16 @@ export default function SearchPage() {
   }
 
   const handleAsk = useCallback(() => {
-    if (!askQuestion.trim() || !modelDefaults?.default_chat_model) return
+    if (!askQuestion.trim() || !defaultRagModel) return
 
     const models = customModels || {
-      strategy: modelDefaults.default_chat_model,
-      answer: modelDefaults.default_chat_model,
-      finalAnswer: modelDefaults.default_chat_model
+      strategy: defaultRagModel,
+      answer: defaultRagModel,
+      finalAnswer: defaultRagModel
     }
 
     ask.sendAsk(askQuestion, models)
-  }, [askQuestion, modelDefaults, customModels, ask])
+  }, [askQuestion, defaultRagModel, customModels, ask])
 
   // Auto-trigger search/ask when arriving with URL params
   useEffect(() => {
@@ -124,11 +134,11 @@ export default function SearchPage() {
     if (urlMode === 'search') {
       handleSearch()
       hasAutoTriggeredRef.current = true
-    } else if (urlMode === 'ask' && modelDefaults?.default_chat_model) {
+    } else if (urlMode === 'ask' && defaultRagModel) {
       handleAsk()
       hasAutoTriggeredRef.current = true
     }
-  }, [urlQuery, urlMode, modelsLoading, modelDefaults, handleSearch, handleAsk])
+  }, [urlQuery, urlMode, modelsLoading, defaultRagModel, handleSearch, handleAsk])
 
   // Handle URL param changes while on page (e.g., from command palette again)
   useEffect(() => {
@@ -209,7 +219,7 @@ export default function SearchPage() {
                 </div>
 
                 {/* Models Display */}
-                {!hasEmbeddingModel ? (
+                {!hasSemanticSearchBackend ? (
                   <div className="flex items-center gap-2 p-3 text-sm text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950/20 rounded-md">
                     <AlertCircle className="h-4 w-4" />
                     <span>{t('searchPage.noEmbeddingModel')}</span>
@@ -234,13 +244,13 @@ export default function SearchPage() {
                       </div>
                       <div className="flex gap-2 text-xs flex-wrap">
                         <Badge variant="secondary">
-                          {t('searchPage.strategy')}: {resolveModelName(customModels?.strategy || modelDefaults?.default_chat_model)}
+                          {t('searchPage.strategy')}: {resolveModelName(customModels?.strategy || defaultRagModel)}
                         </Badge>
                         <Badge variant="secondary">
-                          {t('searchPage.answer')}: {resolveModelName(customModels?.answer || modelDefaults?.default_chat_model)}
+                          {t('searchPage.answer')}: {resolveModelName(customModels?.answer || defaultRagModel)}
                         </Badge>
                         <Badge variant="secondary">
-                          {t('searchPage.final')}: {resolveModelName(customModels?.finalAnswer || modelDefaults?.default_chat_model)}
+                          {t('searchPage.final')}: {resolveModelName(customModels?.finalAnswer || defaultRagModel)}
                         </Badge>
                       </div>
                     </div>
@@ -288,9 +298,9 @@ export default function SearchPage() {
                   open={showAdvancedModels}
                   onOpenChange={setShowAdvancedModels}
                   defaultModels={{
-                    strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
-                    answer: customModels?.answer || modelDefaults?.default_chat_model || '',
-                    finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
+                    strategy: customModels?.strategy || defaultRagModel || '',
+                    answer: customModels?.answer || defaultRagModel || '',
+                    finalAnswer: customModels?.finalAnswer || defaultRagModel || ''
                   }}
                   onSave={setCustomModels}
                 />
@@ -357,7 +367,7 @@ export default function SearchPage() {
                   {/* Search Type */}
                   <div className="space-y-2" role="group" aria-labelledby="search-type-label">
                     <span id="search-type-label" className="text-sm font-medium leading-none">{t('searchPage.searchType')}</span>
-                    {!hasEmbeddingModel && (
+                    {!hasSemanticSearchBackend && (
                       <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500">
                         <AlertCircle className="h-4 w-4" />
                         <span>{t('searchPage.vectorSearchWarning')}</span>
@@ -367,7 +377,7 @@ export default function SearchPage() {
                       name="search-type"
                       value={searchType}
                       onValueChange={(value: 'text' | 'vector') => setSearchType(value)}
-                      disabled={modelsLoading || searchMutation.isPending}
+                      disabled={modelsLoading || settingsLoading || searchMutation.isPending}
                     >
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="text" id="text" />
@@ -379,11 +389,11 @@ export default function SearchPage() {
                         <RadioGroupItem
                           value="vector"
                           id="vector"
-                          disabled={!hasEmbeddingModel || searchMutation.isPending}
+                          disabled={!hasSemanticSearchBackend || searchMutation.isPending}
                         />
                         <Label
                           htmlFor="vector"
-                          className={`font-normal ${!hasEmbeddingModel ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'}`}
+                          className={`font-normal ${!hasSemanticSearchBackend ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'}`}
                         >
                           {t('searchPage.vectorSearch')}
                         </Label>

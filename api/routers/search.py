@@ -7,7 +7,8 @@ from loguru import logger
 
 from api.models import AskRequest, AskResponse, SearchRequest, SearchResponse
 from open_notebook.ai.models import Model, model_manager
-from open_notebook.domain.notebook import text_search, vector_search
+from open_notebook.domain.content_settings import ContentSettings
+from open_notebook.domain.notebook import semantic_search, text_search, vector_search
 from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 from open_notebook.graphs.ask import graph as ask_graph
 
@@ -19,14 +20,21 @@ async def search_knowledge_base(search_request: SearchRequest):
     """Search the knowledge base using text or vector search."""
     try:
         if search_request.type == "vector":
-            # Check if embedding model is available for vector search
-            if not await model_manager.get_embedding_model():
+            settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
+            backend = settings.embedding_backend or "embedding_api"
+            # Check if the selected semantic backend is available.
+            if backend == "embedding_api" and not await model_manager.get_embedding_model():
                 raise HTTPException(
                     status_code=400,
                     detail="Vector search requires an embedding model. Please configure one in the Models section.",
                 )
+            if backend == "llm_bm25" and not await model_manager.get_default_model("retrieval"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="LLM-BM25 search requires a chat or transformation model. Please configure one in the Models section.",
+                )
 
-            results = await vector_search(
+            results = await semantic_search(
                 keyword=search_request.query,
                 results=search_request.limit,
                 source=search_request.search_sources,
@@ -135,11 +143,17 @@ async def ask_knowledge_base(ask_request: AskRequest):
                 detail=f"Final answer model {ask_request.final_answer_model} not found",
             )
 
-        # Check if embedding model is available
-        if not await model_manager.get_embedding_model():
+        settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
+        backend = settings.embedding_backend or "embedding_api"
+        if backend == "embedding_api" and not await model_manager.get_embedding_model():
             raise HTTPException(
                 status_code=400,
                 detail="Ask feature requires an embedding model. Please configure one in the Models section.",
+            )
+        if backend == "llm_bm25" and not await model_manager.get_default_model("retrieval"):
+            raise HTTPException(
+                status_code=400,
+                detail="Ask feature requires a chat or transformation model for LLM-BM25 search.",
             )
 
         # For streaming response
@@ -187,11 +201,17 @@ async def ask_knowledge_base_simple(ask_request: AskRequest):
                 detail=f"Final answer model {ask_request.final_answer_model} not found",
             )
 
-        # Check if embedding model is available
-        if not await model_manager.get_embedding_model():
+        settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
+        backend = settings.embedding_backend or "embedding_api"
+        if backend == "embedding_api" and not await model_manager.get_embedding_model():
             raise HTTPException(
                 status_code=400,
                 detail="Ask feature requires an embedding model. Please configure one in the Models section.",
+            )
+        if backend == "llm_bm25" and not await model_manager.get_default_model("retrieval"):
+            raise HTTPException(
+                status_code=400,
+                detail="Ask feature requires a chat or transformation model for LLM-BM25 search.",
             )
 
         # Run the ask graph and get final result

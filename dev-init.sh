@@ -1,19 +1,19 @@
 #!/bin/bash
-# Development environment startup for Open Notebook
+# Development environment startup for ZhiXue
 # Assumes SurrealDB is already running externally (per .env config)
 
 set -e
 
-echo "=== Open Notebook Dev Startup ==="
+echo "=== ZhiXue Dev Startup ==="
 
 # Check SurrealDB connectivity
 SURREAL_PORT=${SURREAL_PORT:-8018}
 echo "Checking SurrealDB on port $SURREAL_PORT..."
 if ! nc -z localhost "$SURREAL_PORT" 2>/dev/null; then
-  echo "❌ SurrealDB not reachable on port $SURREAL_PORT. Please start it first."
+  echo "[error] SurrealDB not reachable on port $SURREAL_PORT. Please start it first."
   exit 1
 fi
-echo "✅ SurrealDB is running"
+echo "[ok] SurrealDB is running"
 
 # Install dependencies if needed
 echo "Syncing Python dependencies..."
@@ -35,7 +35,7 @@ sleep 2
 # Start frontend (foreground)
 echo "Starting Next.js frontend (port 3000)..."
 echo ""
-echo "✅ All services starting!"
+echo "[ok] All services starting!"
 echo "  Frontend: http://localhost:3000"
 echo "  API:      http://localhost:5055"
 echo "  API Docs: http://localhost:5055/docs"

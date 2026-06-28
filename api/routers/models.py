@@ -13,8 +13,11 @@ from api.models import (
     ModelResponse,
     ProviderAvailabilityResponse,
 )
+from api.model_sync_service import sync_speaker_profiles_to_tts
 from open_notebook.ai.connection_tester import test_individual_model
 from open_notebook.ai.key_provider import provision_provider_keys
+from open_notebook.ai.model_specs import build_model_runtime_spec
+from open_notebook.ai.provider_registration import register_runtime_ai_providers
 from open_notebook.ai.model_discovery import (
     discover_provider_models,
     get_provider_model_count,
@@ -26,6 +29,31 @@ from open_notebook.domain.credential import Credential
 from open_notebook.exceptions import InvalidInputError, NotFoundError
 
 router = APIRouter()
+
+
+def _model_response_from_values(
+    *,
+    model_id: str,
+    name: str,
+    provider: str,
+    model_type: str,
+    credential: Optional[str],
+    created: str,
+    updated: str,
+) -> ModelResponse:
+    spec = build_model_runtime_spec(provider, model_type, name)
+    return ModelResponse(
+        id=model_id,
+        name=name,
+        provider=provider,
+        runtime_provider=spec.runtime_provider,
+        api_protocol=spec.api_protocol,
+        model_spec=spec.to_dict(),
+        type=model_type,
+        credential=credential,
+        created=created,
+        updated=updated,
+    )
 
 
 # =============================================================================
@@ -178,11 +206,11 @@ async def get_models(
             models = await Model.get_all()
 
         return [
-            ModelResponse(
-                id=model.id,
+            _model_response_from_values(
+                model_id=model.id or "",
                 name=model.name,
                 provider=model.provider,
-                type=model.type,
+                model_type=model.type,
                 credential=model.credential,
                 created=str(model.created),
                 updated=str(model.updated),
@@ -231,11 +259,11 @@ async def create_model(model_data: ModelCreate):
         )
         await new_model.save()
 
-        return ModelResponse(
-            id=new_model.id or "",
+        return _model_response_from_values(
+            model_id=new_model.id or "",
             name=new_model.name,
             provider=new_model.provider,
-            type=new_model.type,
+            model_type=new_model.type,
             credential=new_model.credential,
             created=str(new_model.created),
             updated=str(new_model.updated),
@@ -290,21 +318,46 @@ async def test_model(model_id: str):
         )
 
 
+def _default_models_response(defaults: DefaultModels) -> DefaultModelsResponse:
+    rag_model = getattr(defaults, "default_rag_model", None) or defaults.default_retrieval_model  # type: ignore[attr-defined]
+    resource_search_model = (
+        getattr(defaults, "default_resource_search_model", None)
+        or defaults.default_tools_model  # type: ignore[attr-defined]
+    )
+    learning_asset_model = (
+        getattr(defaults, "default_learning_asset_model", None)
+        or defaults.default_transformation_model  # type: ignore[attr-defined]
+    )
+
+    return DefaultModelsResponse(
+        default_chat_model=defaults.default_chat_model,  # type: ignore[attr-defined]
+        default_transformation_model=learning_asset_model,
+        large_context_model=defaults.large_context_model,  # type: ignore[attr-defined]
+        default_text_to_speech_model=defaults.default_text_to_speech_model,  # type: ignore[attr-defined]
+        default_speech_to_text_model=defaults.default_speech_to_text_model,  # type: ignore[attr-defined]
+        default_embedding_model=defaults.default_embedding_model,  # type: ignore[attr-defined]
+        default_retrieval_model=rag_model,
+        default_tools_model=resource_search_model,
+        default_rag_model=rag_model,
+        default_resource_search_model=resource_search_model,
+        default_learning_asset_model=learning_asset_model,
+        default_study_guide_model=getattr(defaults, "default_study_guide_model", None),
+        default_quiz_model=getattr(defaults, "default_quiz_model", None),
+        default_flashcards_model=getattr(defaults, "default_flashcards_model", None),
+        default_mind_map_model=getattr(defaults, "default_mind_map_model", None),
+        default_reading_model=getattr(defaults, "default_reading_model", None),
+        default_code_lab_model=getattr(defaults, "default_code_lab_model", None),
+        default_podcast_model=getattr(defaults, "default_podcast_model", None),
+    )
+
+
 @router.get("/models/defaults", response_model=DefaultModelsResponse)
 async def get_default_models():
     """Get default model assignments."""
     try:
         defaults = await DefaultModels.get_instance()
 
-        return DefaultModelsResponse(
-            default_chat_model=defaults.default_chat_model,  # type: ignore[attr-defined]
-            default_transformation_model=defaults.default_transformation_model,  # type: ignore[attr-defined]
-            large_context_model=defaults.large_context_model,  # type: ignore[attr-defined]
-            default_text_to_speech_model=defaults.default_text_to_speech_model,  # type: ignore[attr-defined]
-            default_speech_to_text_model=defaults.default_speech_to_text_model,  # type: ignore[attr-defined]
-            default_embedding_model=defaults.default_embedding_model,  # type: ignore[attr-defined]
-            default_tools_model=defaults.default_tools_model,  # type: ignore[attr-defined]
-        )
+        return _default_models_response(defaults)
     except Exception as e:
         logger.error(f"Error fetching default models: {str(e)}")
         raise HTTPException(
@@ -317,42 +370,58 @@ async def update_default_models(defaults_data: DefaultModelsResponse):
     """Update default model assignments."""
     try:
         defaults = await DefaultModels.get_instance()
+        previous_text_to_speech_model = defaults.default_text_to_speech_model
 
-        # Update only provided fields
-        if defaults_data.default_chat_model is not None:
-            defaults.default_chat_model = defaults_data.default_chat_model  # type: ignore[attr-defined]
-        if defaults_data.default_transformation_model is not None:
-            defaults.default_transformation_model = (
-                defaults_data.default_transformation_model
-            )  # type: ignore[attr-defined]
-        if defaults_data.large_context_model is not None:
-            defaults.large_context_model = defaults_data.large_context_model  # type: ignore[attr-defined]
-        if defaults_data.default_text_to_speech_model is not None:
-            defaults.default_text_to_speech_model = (
-                defaults_data.default_text_to_speech_model
-            )  # type: ignore[attr-defined]
-        if defaults_data.default_speech_to_text_model is not None:
-            defaults.default_speech_to_text_model = (
-                defaults_data.default_speech_to_text_model
-            )  # type: ignore[attr-defined]
-        if defaults_data.default_embedding_model is not None:
-            defaults.default_embedding_model = defaults_data.default_embedding_model  # type: ignore[attr-defined]
-        if defaults_data.default_tools_model is not None:
-            defaults.default_tools_model = defaults_data.default_tools_model  # type: ignore[attr-defined]
+        provided = defaults_data.model_fields_set
+        fields = [
+            "default_chat_model",
+            "default_transformation_model",
+            "large_context_model",
+            "default_text_to_speech_model",
+            "default_speech_to_text_model",
+            "default_embedding_model",
+            "default_retrieval_model",
+            "default_tools_model",
+            "default_rag_model",
+            "default_resource_search_model",
+            "default_learning_asset_model",
+            "default_study_guide_model",
+            "default_quiz_model",
+            "default_flashcards_model",
+            "default_mind_map_model",
+            "default_reading_model",
+            "default_code_lab_model",
+            "default_podcast_model",
+        ]
+
+        for field in fields:
+            if field in provided:
+                setattr(defaults, field, getattr(defaults_data, field))
+
+        # Keep legacy fields aligned so older call sites and records continue to work.
+        if "default_rag_model" in provided:
+            defaults.default_retrieval_model = defaults_data.default_rag_model  # type: ignore[attr-defined]
+        if "default_retrieval_model" in provided:
+            defaults.default_rag_model = defaults_data.default_retrieval_model  # type: ignore[attr-defined]
+        if "default_learning_asset_model" in provided:
+            defaults.default_transformation_model = defaults_data.default_learning_asset_model  # type: ignore[attr-defined]
+        if "default_transformation_model" in provided:
+            defaults.default_learning_asset_model = defaults_data.default_transformation_model  # type: ignore[attr-defined]
+        if "default_resource_search_model" in provided:
+            defaults.default_tools_model = defaults_data.default_resource_search_model  # type: ignore[attr-defined]
+        if "default_tools_model" in provided:
+            defaults.default_resource_search_model = defaults_data.default_tools_model  # type: ignore[attr-defined]
 
         await defaults.update()
+        if "default_text_to_speech_model" in provided:
+            await sync_speaker_profiles_to_tts(
+                defaults_data.default_text_to_speech_model,
+                previous_text_to_speech_model,
+            )
 
         # No cache refresh needed - next access will fetch fresh data from DB
 
-        return DefaultModelsResponse(
-            default_chat_model=defaults.default_chat_model,  # type: ignore[attr-defined]
-            default_transformation_model=defaults.default_transformation_model,  # type: ignore[attr-defined]
-            large_context_model=defaults.large_context_model,  # type: ignore[attr-defined]
-            default_text_to_speech_model=defaults.default_text_to_speech_model,  # type: ignore[attr-defined]
-            default_speech_to_text_model=defaults.default_speech_to_text_model,  # type: ignore[attr-defined]
-            default_embedding_model=defaults.default_embedding_model,  # type: ignore[attr-defined]
-            default_tools_model=defaults.default_tools_model,  # type: ignore[attr-defined]
-        )
+        return _default_models_response(defaults)
     except HTTPException:
         raise
     except Exception as e:
@@ -427,6 +496,7 @@ async def get_provider_availability():
         unavailable_providers = [k for k, v in provider_status.items() if not v]
 
         # Get supported model types from Esperanto
+        register_runtime_ai_providers()
         esperanto_available = AIFactory.get_available_providers()
 
         # Build supported types mapping only for available providers
@@ -623,11 +693,11 @@ async def get_models_by_provider(provider: str):
         )
 
         return [
-            ModelResponse(
-                id=model.get("id", ""),
+            _model_response_from_values(
+                model_id=model.get("id", ""),
                 name=model.get("name", ""),
                 provider=model.get("provider", ""),
-                type=model.get("type", ""),
+                model_type=model.get("type", ""),
                 credential=model.get("credential"),
                 created=str(model.get("created", "")),
                 updated=str(model.get("updated", "")),
@@ -728,9 +798,16 @@ async def auto_assign_defaults():
         # Define slot configuration: (slot_name, model_type, current_value)
         slot_configs = [
             ("default_chat_model", "language", defaults.default_chat_model),  # type: ignore[attr-defined]
-            ("default_transformation_model", "language", defaults.default_transformation_model),  # type: ignore[attr-defined]
-            ("default_tools_model", "language", defaults.default_tools_model),  # type: ignore[attr-defined]
-            ("large_context_model", "language", defaults.large_context_model),  # type: ignore[attr-defined]
+            ("default_rag_model", "language", getattr(defaults, "default_rag_model", None) or defaults.default_retrieval_model),  # type: ignore[attr-defined]
+            ("default_resource_search_model", "language", getattr(defaults, "default_resource_search_model", None) or defaults.default_tools_model),  # type: ignore[attr-defined]
+            ("default_learning_asset_model", "language", getattr(defaults, "default_learning_asset_model", None) or defaults.default_transformation_model),  # type: ignore[attr-defined]
+            ("default_study_guide_model", "language", getattr(defaults, "default_study_guide_model", None)),
+            ("default_quiz_model", "language", getattr(defaults, "default_quiz_model", None)),
+            ("default_flashcards_model", "language", getattr(defaults, "default_flashcards_model", None)),
+            ("default_mind_map_model", "language", getattr(defaults, "default_mind_map_model", None)),
+            ("default_reading_model", "language", getattr(defaults, "default_reading_model", None)),
+            ("default_code_lab_model", "language", getattr(defaults, "default_code_lab_model", None)),
+            ("default_podcast_model", "language", getattr(defaults, "default_podcast_model", None)),
             ("default_embedding_model", "embedding", defaults.default_embedding_model),  # type: ignore[attr-defined]
             ("default_text_to_speech_model", "text_to_speech", defaults.default_text_to_speech_model),  # type: ignore[attr-defined]
             ("default_speech_to_text_model", "speech_to_text", defaults.default_speech_to_text_model),  # type: ignore[attr-defined]
@@ -762,10 +839,20 @@ async def auto_assign_defaults():
                 assigned[slot_name] = model_id
                 # Update the defaults object
                 setattr(defaults, slot_name, model_id)
+                if slot_name == "default_rag_model":
+                    defaults.default_retrieval_model = model_id  # type: ignore[attr-defined]
+                elif slot_name == "default_resource_search_model":
+                    defaults.default_tools_model = model_id  # type: ignore[attr-defined]
+                elif slot_name == "default_learning_asset_model":
+                    defaults.default_transformation_model = model_id  # type: ignore[attr-defined]
 
         # Save updated defaults if any assignments were made
         if assigned:
             await defaults.update()
+            if assigned.get("default_text_to_speech_model"):
+                await sync_speaker_profiles_to_tts(
+                    assigned["default_text_to_speech_model"]
+                )
 
         return AutoAssignResult(
             assigned=assigned,
