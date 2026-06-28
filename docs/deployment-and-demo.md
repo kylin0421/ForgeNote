@@ -11,7 +11,7 @@
 
 ## 环境变量
 
-参考 `.env.example`：
+完整配置步骤见 [配置指南](configuration-guide.md)。最小环境变量参考 `.env.example`：
 
 ```bash
 OPEN_NOTEBOOK_ENCRYPTION_KEY=change-me-to-a-secret-string

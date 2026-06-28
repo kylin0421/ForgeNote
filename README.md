@@ -89,6 +89,8 @@ tests/                       后端和学习系统单元测试
 
 ## 本地运行
 
+详细配置步骤见 [配置指南](docs/configuration-guide.md)。如果只是快速启动，可以先按下面命令运行；如果要完整演示资源搜索、学习资产生成、播客和多模型默认项，请先完成配置指南中的模型/API key 设置。
+
 后端：
 
 ```bash
@@ -129,6 +131,7 @@ docker compose up -d --build
 
 - [需求分析说明](docs/requirements-analysis.md)
 - [系统开发说明](docs/system-design.md)
+- [配置指南](docs/configuration-guide.md)
 - [测试说明](docs/testing.md)
 - [部署与演示指南](docs/deployment-and-demo.md)
 - [开源与 AI 工具说明](docs/open-source-and-ai-tools.md)
