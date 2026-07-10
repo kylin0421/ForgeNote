@@ -60,6 +60,7 @@ PROVIDER_ENV_CONFIG: Dict[str, dict] = {
         "required_any": ["OPENAI_COMPATIBLE_BASE_URL", "OPENAI_COMPATIBLE_API_KEY"],
     },
     "dashscope": {"required": ["DASHSCOPE_API_KEY"]},
+    "mimo": {"required_any": ["MIMO_API_KEY", "XIAOMI_MIMO_API_KEY"]},
     "minimax": {"required": ["MINIMAX_API_KEY"]},
 }
 
@@ -80,6 +81,7 @@ PROVIDER_MODALITIES: Dict[str, List[str]] = {
     "azure": ["language", "embedding", "speech_to_text", "text_to_speech"],
     "openai_compatible": ["language", "embedding", "speech_to_text", "text_to_speech"],
     "dashscope": ["language", "speech_to_text", "text_to_speech"],
+    "mimo": ["text_to_speech"],
     "minimax": ["language"],
 }
 
@@ -304,9 +306,11 @@ def create_credential_from_env(provider: str) -> Credential:
     else:
         # Simple API key providers
         config = PROVIDER_ENV_CONFIG.get(provider, {})
-        required = config.get("required", [])
-        env_var = required[0] if required else None
-        api_key = os.environ.get(env_var) if env_var else None
+        env_vars = config.get("required", []) or config.get("required_any", [])
+        api_key = next(
+            (os.environ.get(env_var) for env_var in env_vars if os.environ.get(env_var)),
+            None,
+        )
         return Credential(
             name=name,
             provider=provider,
@@ -527,6 +531,11 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
             "aura-2-apollo-en", "aura-2-arcas-en", "aura-2-asteria-en",
             "aura-2-athena-en", "aura-2-hera-en", "aura-2-hermes-en",
             "aura-2-atlas-en",
+        ],
+        "mimo": [
+            "mimo-v2.5-tts",
+            "mimo-v2.5-tts-voicedesign",
+            "mimo-v2.5-tts-voiceclone",
         ],
     }
 

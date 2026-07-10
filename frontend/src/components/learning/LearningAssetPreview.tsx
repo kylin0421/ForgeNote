@@ -1,11 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import type { TFunction } from 'i18next'
+import { Bold, ExternalLink, GitBranch, Italic, List, Minus, Plus, Star, Table2, Trash2, type LucideIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import type { LearningResource } from '@/lib/types/learning'
@@ -13,6 +14,8 @@ import { cn } from '@/lib/utils'
 
 const ASSET_METADATA_START = '<!-- learning-asset'
 const ASSET_METADATA_END = '-->'
+const MIND_MAP_VISUAL_START = '<!-- mind-map-visual'
+const MIND_MAP_VISUAL_END = '-->'
 
 type QuizQuestion = {
   id: string
@@ -20,6 +23,12 @@ type QuizQuestion = {
   options: string[]
   answer_index: number
   explanation: string
+  source_id?: string
+  source_title?: string
+  source_ref?: string
+  evidence?: string
+  citation?: string
+  location?: string
 }
 
 type Flashcard = {
@@ -35,6 +44,38 @@ type MindMapNode = {
   children: MindMapNode[]
 }
 
+export type MindMapMaterial = {
+  id: string
+  title: string
+  materialType: string
+  description?: string
+  content?: string
+}
+
+type MindMapNodeStyle = {
+  fill?: string
+  line?: string
+  text?: string
+  bold?: boolean
+  italic?: boolean
+}
+
+type VisualMindMapNode = {
+  id: string
+  text: string
+  level: number
+  x: number
+  y: number
+  style?: MindMapNodeStyle
+  sourceRefs?: string[]
+  children: VisualMindMapNode[]
+}
+
+type VisualMindMapDocument = {
+  version: 1
+  nodes: VisualMindMapNode[]
+}
+
 type Token = {
   text: string
   className?: string
@@ -46,12 +87,12 @@ export type LearningAssetInteractionEvent = {
 }
 
 const LEARNING_ASSET_KIND_LABELS: Record<string, string> = {
-  study_guide: 'Study guide',
-  quiz: 'Quiz',
-  flashcards: 'Flashcards',
-  mind_map: 'Mind map',
-  reading: 'Reading',
-  code_lab: 'Code lab',
+  study_guide: '讲解文档',
+  quiz: '测验',
+  flashcards: '知识闪卡',
+  mind_map: '知识导图',
+  reading: '拓展阅读',
+  code_lab: '代码实验',
 }
 
 export function getLearningAssetKindLabel(
@@ -266,6 +307,45 @@ function CodeHighlightedBlock({ code, language, compact, className }: {
           ))}
         </code>
       </pre>
+    </div>
+  )
+}
+
+function MarkdownSnippet({
+  content,
+  className,
+}: {
+  content: string
+  className?: string
+}) {
+  const renderedContent = useMemo(() => normalizeMarkdownContent(content), [content])
+
+  return (
+    <div className={cn('min-w-0 text-sm leading-6 text-foreground', className)}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+          p: ({ children }) => <p className="my-2 whitespace-pre-wrap break-words">{children}</p>,
+          ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
+          ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
+          li: ({ children }) => <li className="pl-1">{children}</li>,
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              {children}
+            </a>
+          ),
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 text-xs">{children}</code>,
+        }}
+      >
+        {renderedContent}
+      </ReactMarkdown>
     </div>
   )
 }
@@ -527,23 +607,99 @@ export function MarkdownLikeAsset({
   )
 }
 
+type ShuffledQuizOption = {
+  originalIndex: number
+  text: string
+}
+
+function quizHash(value: string) {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function seededQuizRandom(seed: number) {
+  let value = seed >>> 0
+  return () => {
+    value += 0x6D2B79F5
+    let next = value
+    next = Math.imul(next ^ (next >>> 15), next | 1)
+    next ^= next + Math.imul(next ^ (next >>> 7), next | 61)
+    return ((next ^ (next >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function shuffleQuizOptions(question: QuizQuestion, attemptSeed: number): ShuffledQuizOption[] {
+  const options = question.options.map((text, originalIndex) => ({ text, originalIndex }))
+  const random = seededQuizRandom(quizHash(`${question.id}:${attemptSeed}`))
+  for (let index = options.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1))
+    const current = options[index]
+    options[index] = options[swapIndex]
+    options[swapIndex] = current
+  }
+  return options
+}
+
+function getQuizQuestionEvidence(question: QuizQuestion, resource: LearningResource) {
+  const sourceId = question.source_id
+  const sourceTitle = question.source_title
+  const location = question.source_ref || question.location
+  const evidence = question.evidence || question.citation
+  const keyword = question.prompt.replace(/[，。！？；：、,.!?;:()[\]{}"'`]/g, ' ').slice(0, 48)
+
+  if (sourceId || sourceTitle || location || evidence) {
+    return {
+      sourceId,
+      sourceTitle: sourceTitle || sourceId || resource.title,
+      location,
+      evidence,
+      keyword,
+    }
+  }
+
+  return {
+    sourceTitle: resource.title,
+    location: '',
+    evidence: `未收到结构化来源字段。请在来源或素材库中搜索题干关键词：“${keyword}”。`,
+    keyword,
+  }
+}
+
 function QuizAsset({
   resource,
   compact = false,
   onLearningEvent,
+  onGenerateSimilarQuiz,
 }: {
   resource: LearningResource
   compact?: boolean
   onLearningEvent?: (event: LearningAssetInteractionEvent) => void
+  onGenerateSimilarQuiz?: (resource: LearningResource) => void
 }) {
   const [answers, setAnswers] = useState<Record<string, number>>({})
   const [currentIndex, setCurrentIndex] = useState(0)
+  const [attemptSeed, setAttemptSeed] = useState(1)
   const questions = getQuizQuestions(resource)
+  const shuffledOptions = useMemo(
+    () =>
+      questions.reduce<Record<string, ShuffledQuizOption[]>>((accumulator, question) => {
+        accumulator[question.id] = shuffleQuizOptions(question, attemptSeed)
+        return accumulator
+      }, {}),
+    [attemptSeed, questions]
+  )
   const currentQuestion = questions[Math.min(currentIndex, questions.length - 1)]
   const answeredCount = Object.keys(answers).length
   const score = questions.reduce((total, question) => {
     return total + (answers[question.id] === question.answer_index ? 1 : 0)
   }, 0)
+  const allAnswered = answeredCount === questions.length
+  const accuracy = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0
+  const allCorrect = score === questions.length
 
   if (questions.length === 0 || !currentQuestion) {
     return <MarkdownLikeAsset content={resource.content} compact={compact} compactHeight="max-h-80" />
@@ -554,6 +710,9 @@ function QuizAsset({
     questionIndex: number,
     optionIndex: number
   ) => {
+    if (answers[question.id] !== undefined) {
+      return
+    }
     const nextAnswers = {
       ...answers,
       [question.id]: optionIndex,
@@ -572,8 +731,51 @@ function QuizAsset({
     })
   }
 
+  const handleRetry = () => {
+    setAnswers({})
+    setCurrentIndex(0)
+    setAttemptSeed((seed) => seed + 1)
+  }
+
   const selected = answers[currentQuestion.id]
   const answered = selected !== undefined
+  const currentOptions = shuffledOptions[currentQuestion.id] ?? currentQuestion.options.map((text, originalIndex) => ({
+    originalIndex,
+    text,
+  }))
+  const evidence = getQuizQuestionEvidence(currentQuestion, resource)
+
+  if (allAnswered) {
+    return (
+      <div
+        className={cn(
+          'flex items-center justify-center',
+          compact ? 'min-h-64' : 'min-h-[360px]'
+        )}
+      >
+        <div
+          className={cn(
+            'flex flex-col items-center gap-5 rounded-lg border px-8 py-10 text-center',
+            allCorrect
+              ? 'border-emerald-500 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-50'
+              : 'border-red-500 bg-red-50 text-red-950 dark:bg-red-950/30 dark:text-red-50'
+          )}
+        >
+          <p className="text-4xl font-semibold tracking-tight">正确率 {accuracy}%</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button type="button" onClick={handleRetry}>
+              重新练习
+            </Button>
+            {onGenerateSimilarQuiz ? (
+              <Button type="button" variant="outline" onClick={() => onGenerateSimilarQuiz(resource)}>
+                生成相似题练习
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -582,23 +784,25 @@ function QuizAsset({
         compact ? 'max-h-80 overflow-y-auto pr-1' : 'max-h-[calc(90vh-220px)] overflow-y-auto pr-1'
       )}
     >
-      <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+      <div
+        className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm"
+      >
         <span>{currentIndex + 1}/{questions.length}</span>
-        <span className="font-medium">Score {score}/{questions.length}</span>
       </div>
       <div className="rounded-lg border p-3">
         <p className="text-sm font-medium">
           {currentIndex + 1}. {currentQuestion.prompt}
         </p>
         <div className="mt-3 grid gap-2">
-          {currentQuestion.options.map((option, optionIndex) => {
-            const isSelected = selected === optionIndex
-            const isCorrect = currentQuestion.answer_index === optionIndex
+          {currentOptions.map((option, optionIndex) => {
+            const isSelected = selected === option.originalIndex
+            const isCorrect = currentQuestion.answer_index === option.originalIndex
             return (
               <button
-                key={`${currentQuestion.id}-${optionIndex}`}
+                key={`${currentQuestion.id}-${attemptSeed}-${option.originalIndex}`}
                 type="button"
-                onClick={() => handleAnswer(currentQuestion, currentIndex, optionIndex)}
+                disabled={answered}
+                onClick={() => handleAnswer(currentQuestion, currentIndex, option.originalIndex)}
                 className={cn(
                   'rounded-md border px-3 py-2 text-left text-sm transition-colors',
                   answered &&
@@ -608,44 +812,58 @@ function QuizAsset({
                     isSelected &&
                     !isCorrect &&
                     'border-destructive bg-destructive/10 text-destructive',
-                  !answered && 'hover:bg-muted'
+                  !answered && 'hover:bg-muted',
+                  answered && 'cursor-default'
                 )}
               >
-                {option}
+                <span className="mr-2 text-xs text-muted-foreground">
+                  {String.fromCharCode(65 + optionIndex)}
+                </span>
+                {option.text}
               </button>
             )
           })}
         </div>
         {answered && (
-          <p className="mt-3 rounded-md bg-muted px-3 py-2 text-sm">
-            {currentQuestion.explanation}
-          </p>
+          <div className="mt-3 space-y-2 rounded-md bg-muted px-3 py-2 text-sm">
+            <p>{currentQuestion.explanation}</p>
+            <div className="rounded-md border bg-background px-2.5 py-2 text-xs leading-5 text-muted-foreground">
+              <span className="font-medium text-foreground">来源定位：</span>
+              {evidence.sourceId ? (
+                <a
+                  href={`/sources/${encodeURIComponent(evidence.sourceId)}`}
+                  className="text-primary underline-offset-4 hover:underline"
+                >
+                  {evidence.sourceTitle}
+                </a>
+              ) : (
+                <span>{evidence.sourceTitle}</span>
+              )}
+              {evidence.location ? <span> · {evidence.location}</span> : null}
+              {evidence.evidence ? <p className="mt-1">{evidence.evidence}</p> : null}
+            </div>
+          </div>
         )}
       </div>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">
-          Answered {answeredCount}/{questions.length}
-        </span>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={currentIndex === 0}
-            onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
-          >
-            Prev
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={currentIndex === questions.length - 1}
-            onClick={() => setCurrentIndex((index) => Math.min(questions.length - 1, index + 1))}
-          >
-            Next
-          </Button>
-        </div>
+      <div className="flex justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={currentIndex === 0}
+          onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
+        >
+          上一题
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={currentIndex === questions.length - 1}
+          onClick={() => setCurrentIndex((index) => Math.min(questions.length - 1, index + 1))}
+        >
+          下一题
+        </Button>
       </div>
     </div>
   )
@@ -661,7 +879,7 @@ function FlashcardAsset({ resource, compact = false }: { resource: LearningResou
     return <MarkdownLikeAsset content={resource.content} compact={compact} compactHeight="max-h-80" />
   }
 
-  const isFlipped = flipped[currentIndex]
+  const isFlipped = Boolean(flipped[currentIndex])
 
   return (
     <div
@@ -671,16 +889,25 @@ function FlashcardAsset({ resource, compact = false }: { resource: LearningResou
       )}
     >
       <div className="rounded-lg border p-4">
-        <p className="text-xs font-medium text-muted-foreground">
-          Card {currentIndex + 1}/{cards.length}
-        </p>
-        <p className="mt-3 min-h-24 text-sm leading-6">
-          {isFlipped ? currentCard.back : currentCard.front}
-        </p>
-        {!isFlipped && currentCard.hint && (
-          <p className="mt-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-            Hint: {currentCard.hint}
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            卡片 {currentIndex + 1}/{cards.length}
           </p>
+          <span className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
+            {isFlipped ? '背面' : '正面'}
+          </span>
+        </div>
+        <div className="mt-3 min-h-24">
+          <MarkdownSnippet content={isFlipped ? currentCard.back : currentCard.front} />
+        </div>
+        {!isFlipped && currentCard.hint && (
+          <div className="mt-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            <p className="font-medium">提示</p>
+            <MarkdownSnippet
+              content={currentCard.hint}
+              className="text-xs leading-5 text-muted-foreground [&_p]:my-1"
+            />
+          </div>
         )}
         <Button
           type="button"
@@ -694,7 +921,7 @@ function FlashcardAsset({ resource, compact = false }: { resource: LearningResou
             }))
           }
         >
-          {isFlipped ? 'Back' : 'Answer'}
+          {isFlipped ? '返回正面' : '查看答案'}
         </Button>
       </div>
       <div className="flex justify-end gap-2">
@@ -705,7 +932,7 @@ function FlashcardAsset({ resource, compact = false }: { resource: LearningResou
           disabled={currentIndex === 0}
           onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
         >
-          Prev
+          上一张
         </Button>
         <Button
           type="button"
@@ -714,27 +941,562 @@ function FlashcardAsset({ resource, compact = false }: { resource: LearningResou
           disabled={currentIndex === cards.length - 1}
           onClick={() => setCurrentIndex((index) => Math.min(cards.length - 1, index + 1))}
         >
-          Next
+          下一张
         </Button>
       </div>
     </div>
   )
 }
 
-function normalizeMindMapText(rawText: string) {
-  const withoutClass = rawText.replace(/:::[A-Za-z0-9_-]+/g, '').trim()
-  const withoutIcon = withoutClass.replace(/::icon\([^)]+\)/g, '').trim()
-  const wrapped = [
-    withoutIcon.match(/^[A-Za-z0-9_-]+\(\((.*)\)\)$/),
-    withoutIcon.match(/^[A-Za-z0-9_-]+\((.*)\)$/),
-    withoutIcon.match(/^[A-Za-z0-9_-]+\[(.*)\]$/),
-    withoutIcon.match(/^[A-Za-z0-9_-]+\{\{(.*)\}\}$/),
-  ].find(Boolean)
-
-  return (wrapped?.[1] ?? withoutIcon).trim()
+type ReadingCandidate = {
+  id: string
+  title: string
+  url?: string
+  type: 'paper' | 'classic' | 'video' | 'article'
+  reason: string
+  relevanceScore: number
+  recommendationScore: number
+  classicScore: number
+  totalScore: number
 }
 
-function parseMindMapNodes(content: string) {
+type ReadingFilter = 'all' | ReadingCandidate['type'] | 'starred'
+
+const READING_STAR_STORAGE_KEY = 'learning-reading-stars'
+const READING_STAR_ITEMS_STORAGE_KEY = 'learning-reading-star-items'
+
+function cleanReadingTitle(value: string) {
+  return value
+    .replace(/^[\s\-*>\d.、]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function inferReadingType(title: string, url?: string): ReadingCandidate['type'] {
+  const combined = `${title} ${url ?? ''}`.toLowerCase()
+  if (/youtube|bilibili|coursera|edx|mooc|video|lecture|课程|视频|公开课/.test(combined)) {
+    return 'video'
+  }
+  if (/must[-\s]?read|classic|textbook|seminal|foundation|必读|经典|教材|奠基/.test(combined)) {
+    return 'classic'
+  }
+  if (/arxiv|doi|acm|ieee|springer|paper|survey|review|论文|综述/.test(combined)) {
+    return 'paper'
+  }
+  return 'article'
+}
+
+function scoreReadingCandidate(title: string, reason: string, url?: string) {
+  const combined = `${title} ${reason} ${url ?? ''}`.toLowerCase()
+  const relevanceScore = Math.min(40, 18 + (combined.match(/相关|relevant|source|topic|概念|方法|教程/g)?.length ?? 0) * 5)
+  const recommendationScore = Math.min(
+    30,
+    12 + (combined.match(/推荐|recommended|popular|引用|cited|课程|lecture|tutorial|star/g)?.length ?? 0) * 4
+  )
+  const classicScore = Math.min(
+    30,
+    10 + (combined.match(/classic|seminal|survey|review|textbook|foundation|必读|经典|综述|教材|奠基/g)?.length ?? 0) * 5
+  )
+  return {
+    relevanceScore,
+    recommendationScore,
+    classicScore,
+    totalScore: Math.min(100, relevanceScore + recommendationScore + classicScore),
+  }
+}
+
+function normalizeReadingCandidate(raw: Record<string, unknown>, fallbackIndex: number): ReadingCandidate | null {
+  const title = cleanReadingTitle(String(raw.title ?? raw.name ?? raw.paper ?? raw.resource ?? ''))
+  const url = typeof raw.url === 'string' && /^https?:\/\//i.test(raw.url) ? raw.url : undefined
+  const reason = String(raw.reason ?? raw.description ?? raw.summary ?? raw.note ?? '').trim()
+  if (!title && !url) {
+    return null
+  }
+  const type = inferReadingType(title || url || '', url)
+  const scores = scoreReadingCandidate(title || url || '', reason, url)
+  return {
+    id: String(raw.id ?? url ?? `${fallbackIndex}-${title}`),
+    title: title || url || '未命名资源',
+    url,
+    type,
+    reason: reason || '与当前来源主题相关，可作为拓展阅读候选。',
+    ...scores,
+  }
+}
+
+function getPayloadReadingCandidates(resource: LearningResource) {
+  const payload = resource.payload as Record<string, unknown> | undefined
+  const rawItems = payload?.items ?? payload?.resources ?? payload?.readings ?? payload?.recommendations
+  if (!Array.isArray(rawItems)) {
+    return []
+  }
+  return rawItems
+    .map((item, index) => (
+      item && typeof item === 'object'
+        ? normalizeReadingCandidate(item as Record<string, unknown>, index)
+        : null
+    ))
+    .filter((item): item is ReadingCandidate => Boolean(item))
+}
+
+function getMarkdownReadingCandidates(content: string) {
+  const candidates: ReadingCandidate[] = []
+  const lines = content.split('\n')
+  const seen = new Set<string>()
+  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
+
+  lines.forEach((line, lineIndex) => {
+    linkRegex.lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = linkRegex.exec(line))) {
+      const title = cleanReadingTitle(match[1])
+      const url = match[2]
+      if (seen.has(url)) {
+        continue
+      }
+      seen.add(url)
+      const type = inferReadingType(title, url)
+      const reason = cleanReadingTitle(line.replace(match[0], '')).slice(0, 180)
+      const scores = scoreReadingCandidate(title, reason, url)
+      candidates.push({
+        id: url,
+        title,
+        url,
+        type,
+        reason: reason || '由拓展阅读内容解析得到。',
+        ...scores,
+      })
+    }
+
+    const bareUrl = line.match(/https?:\/\/[^\s)]+/)
+    if (bareUrl && !seen.has(bareUrl[0])) {
+      const url = bareUrl[0]
+      seen.add(url)
+      const title = cleanReadingTitle(line.replace(url, '')) || url
+      const type = inferReadingType(title, url)
+      const reason = cleanReadingTitle(line).slice(0, 180)
+      const scores = scoreReadingCandidate(title, reason, url)
+      candidates.push({
+        id: url,
+        title,
+        url,
+        type,
+        reason: reason || '由拓展阅读内容解析得到。',
+        ...scores,
+      })
+    } else if (
+      !bareUrl &&
+      /^[-*]|\d+\./.test(line.trim()) &&
+      /论文|paper|video|课程|必读|经典|教材|survey|review|tutorial/i.test(line)
+    ) {
+      const title = cleanReadingTitle(line)
+      const type = inferReadingType(title)
+      const scores = scoreReadingCandidate(title, title)
+      candidates.push({
+        id: `${lineIndex}-${title}`,
+        title,
+        type,
+        reason: '由拓展阅读内容解析得到。',
+        ...scores,
+      })
+    }
+  })
+
+  return candidates.sort((left, right) => right.totalScore - left.totalScore)
+}
+
+function getReadingCandidates(resource: LearningResource) {
+  const payloadCandidates = getPayloadReadingCandidates(resource)
+  const candidates = payloadCandidates.length > 0
+    ? payloadCandidates
+    : getMarkdownReadingCandidates(resource.content)
+  return candidates.sort((left, right) => right.totalScore - left.totalScore)
+}
+
+function ReadingAsset({ resource, compact = false }: { resource: LearningResource; compact?: boolean }) {
+  const [filter, setFilter] = useState<ReadingFilter>('all')
+  const [starred, setStarred] = useState<Set<string>>(() => new Set())
+  const [starredCatalog, setStarredCatalog] = useState<Record<string, ReadingCandidate>>({})
+  const candidates = useMemo(() => getReadingCandidates(resource), [resource])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(READING_STAR_STORAGE_KEY) || '[]')
+      if (Array.isArray(parsed)) {
+        setStarred(new Set(parsed.map(String)))
+      }
+      const parsedCatalog = JSON.parse(window.localStorage.getItem(READING_STAR_ITEMS_STORAGE_KEY) || '{}')
+      if (parsedCatalog && typeof parsedCatalog === 'object' && !Array.isArray(parsedCatalog)) {
+        setStarredCatalog(parsedCatalog as Record<string, ReadingCandidate>)
+      }
+    } catch {
+      setStarred(new Set())
+      setStarredCatalog({})
+    }
+  }, [])
+
+  const persistStars = (next: Set<string>, candidate?: ReadingCandidate) => {
+    const nextCatalog = { ...starredCatalog }
+    if (candidate && next.has(candidate.id)) {
+      nextCatalog[candidate.id] = candidate
+    }
+    Object.keys(nextCatalog).forEach((id) => {
+      if (!next.has(id)) {
+        delete nextCatalog[id]
+      }
+    })
+    setStarred(next)
+    setStarredCatalog(nextCatalog)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(READING_STAR_STORAGE_KEY, JSON.stringify(Array.from(next)))
+      window.localStorage.setItem(READING_STAR_ITEMS_STORAGE_KEY, JSON.stringify(nextCatalog))
+    }
+  }
+
+  const filteredCandidates = candidates.filter((candidate) => {
+    if (filter === 'all') return true
+    if (filter === 'starred') return starred.has(candidate.id)
+    return candidate.type === filter
+  })
+  const displayCandidates = filter === 'starred'
+    ? [
+        ...filteredCandidates,
+        ...Object.values(starredCatalog).filter((candidate) => (
+          starred.has(candidate.id) && !filteredCandidates.some((item) => item.id === candidate.id)
+        )),
+      ].sort((left, right) => right.totalScore - left.totalScore)
+    : filteredCandidates
+
+  if (candidates.length === 0) {
+    return <MarkdownLikeAsset content={resource.content} compact={compact} compactHeight="max-h-[540px]" />
+  }
+
+  const filterOptions: Array<{ value: ReadingFilter; label: string }> = [
+    { value: 'all', label: '全部' },
+    { value: 'paper', label: '论文' },
+    { value: 'classic', label: '必读经典' },
+    { value: 'video', label: '教学视频' },
+    { value: 'article', label: '文章' },
+    { value: 'starred', label: '已收藏' },
+  ]
+
+  return (
+    <div className={cn('space-y-3', compact ? 'max-h-80 overflow-y-auto pr-1' : 'max-h-[540px] overflow-y-auto pr-1')}>
+      <div className="flex flex-wrap gap-2">
+        {filterOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setFilter(option.value)}
+            className={cn(
+              'rounded-full border px-3 py-1 text-xs transition-colors',
+              filter === option.value ? 'border-primary bg-primary/10 text-primary' : 'bg-background hover:bg-muted'
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <div className="space-y-2">
+        {displayCandidates.length > 0 ? displayCandidates.map((candidate) => {
+          const isStarred = starred.has(candidate.id)
+          return (
+            <article key={candidate.id} className="rounded-lg border bg-background p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <span className="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                      {candidate.type === 'paper'
+                        ? '论文'
+                        : candidate.type === 'classic'
+                          ? '必读经典'
+                          : candidate.type === 'video'
+                            ? '教学视频'
+                            : '文章'}
+                    </span>
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                      总分 {candidate.totalScore}
+                    </span>
+                  </div>
+                  {candidate.url ? (
+                    <a
+                      href={candidate.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex min-w-0 items-center gap-1 break-words text-sm font-semibold text-primary underline-offset-4 hover:underline"
+                    >
+                      {candidate.title}
+                      <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                    </a>
+                  ) : (
+                    <h4 className="break-words text-sm font-semibold">{candidate.title}</h4>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant={isStarred ? 'default' : 'outline'}
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  aria-label={isStarred ? '取消收藏' : '收藏拓展阅读'}
+                  onClick={() => {
+                    const next = new Set(starred)
+                    if (next.has(candidate.id)) {
+                      next.delete(candidate.id)
+                    } else {
+                      next.add(candidate.id)
+                    }
+                    persistStars(next, candidate)
+                  }}
+                >
+                  <Star className={cn('h-4 w-4', isStarred && 'fill-current')} />
+                </Button>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">{candidate.reason}</p>
+              <div className="mt-2 grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-3">
+                <span>相关性 {candidate.relevanceScore}</span>
+                <span>推荐度 {candidate.recommendationScore}</span>
+                <span>经典度 {candidate.classicScore}</span>
+              </div>
+            </article>
+          )
+        }) : (
+          <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+            当前筛选下没有收藏或候选条目。
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+type MindMapViewMode = 'tree' | 'table' | 'outline'
+
+const MAX_MIND_MAP_DEPTH = 6
+const MIND_MAP_PALETTES = [
+  {
+    module: 'border-blue-200 bg-blue-50 text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100',
+    leaf: 'text-blue-950 dark:text-blue-100',
+    line: 'border-blue-200 bg-blue-200 dark:border-blue-900 dark:bg-blue-900',
+    dot: 'bg-blue-400 dark:bg-blue-500',
+    stroke: '#93c5fd',
+  },
+  {
+    module: 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100',
+    leaf: 'text-emerald-950 dark:text-emerald-100',
+    line: 'border-emerald-200 bg-emerald-200 dark:border-emerald-900 dark:bg-emerald-900',
+    dot: 'bg-emerald-400 dark:bg-emerald-500',
+    stroke: '#6ee7b7',
+  },
+  {
+    module: 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100',
+    leaf: 'text-amber-950 dark:text-amber-100',
+    line: 'border-amber-200 bg-amber-200 dark:border-amber-900 dark:bg-amber-900',
+    dot: 'bg-amber-400 dark:bg-amber-500',
+    stroke: '#fcd34d',
+  },
+  {
+    module: 'border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-100',
+    leaf: 'text-rose-950 dark:text-rose-100',
+    line: 'border-rose-200 bg-rose-200 dark:border-rose-900 dark:bg-rose-900',
+    dot: 'bg-rose-400 dark:bg-rose-500',
+    stroke: '#fda4af',
+  },
+]
+
+const MIND_MAP_VIEW_OPTIONS: Array<{
+  mode: MindMapViewMode
+  label: string
+  icon: LucideIcon
+}> = [
+  { mode: 'tree', label: '树状图', icon: GitBranch },
+  { mode: 'table', label: '表格视图', icon: Table2 },
+  { mode: 'outline', label: '大纲视图', icon: List },
+]
+
+function normalizeMindMapText(rawText: string) {
+  const withoutClass = rawText
+    .replace(/:::[A-Za-z0-9_-]+/g, '')
+    .replace(/%%.*$/g, '')
+    .trim()
+  const withoutIcon = withoutClass.replace(/::icon\([^)]+\)/g, '').trim()
+  const wrapped = [
+    withoutIcon.match(/^[A-Za-z0-9_:-]+\(\((.*)\)\)$/),
+    withoutIcon.match(/^[A-Za-z0-9_:-]+\((.*)\)$/),
+    withoutIcon.match(/^[A-Za-z0-9_:-]+\[\[(.*)\]\]$/),
+    withoutIcon.match(/^[A-Za-z0-9_:-]+\[(.*)\]$/),
+    withoutIcon.match(/^[A-Za-z0-9_:-]+\{\{(.*)\}\}$/),
+    withoutIcon.match(/^[A-Za-z0-9_:-]+\{(.*)\}$/),
+  ].find(Boolean)
+
+  return (wrapped?.[1] ?? withoutIcon)
+    .replace(/^["']|["']$/g, '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function displayMindMapText(text: string) {
+  return text
+}
+
+function trimMermaidSourceTail(source: string) {
+  return source
+    .split(/\n(?=(?:#{1,6}\s*)?(?:树状分层文本|对比表格|分级分点列表)\b|Tags?[:：]|标签[:：])/i)[0]
+    .replace(/```[\s\S]*$/i, '')
+    .trim()
+}
+
+function extractMermaidSource(content: string) {
+  const fenced = content.match(/```(?:mermaid|mindmap)\s*\n([\s\S]*?)\n```/i)
+  if (fenced?.[1]) {
+    return trimMermaidSourceTail(fenced[1])
+  }
+  const direct = content.trim()
+  const inlineFence = direct.match(/```(?:mermaid|mindmap)\s+((?:flowchart|graph|mindmap)(?:\s|$)[\s\S]*)/i)
+  if (inlineFence?.[1]) {
+    return trimMermaidSourceTail(inlineFence[1])
+  }
+  if (/^(flowchart|graph|mindmap)(?:\s|$)/i.test(direct)) {
+    return trimMermaidSourceTail(direct)
+  }
+  const embedded = direct.match(/(?:^|\n)((?:flowchart|graph|mindmap)(?:\s|$)[\s\S]*)/i)
+  if (!embedded?.[1]) {
+    return ''
+  }
+  return trimMermaidSourceTail(embedded[1])
+}
+
+function parseMermaidNodeToken(token: string) {
+  const cleaned = token
+    .replace(/^\|[^|]*\|\s*/, '')
+    .replace(/:::[A-Za-z0-9_-]+/g, '')
+    .trim()
+  const id = cleaned.match(/^([A-Za-z0-9_:-]+)/)?.[1]
+  if (!id) {
+    return null
+  }
+
+  const labelMatch = cleaned.match(
+    /^[A-Za-z0-9_:-]+\s*(?:\[\[|\[|\(\(|\(|\{\{|\{)\s*["']?(.+?)["']?\s*(?:\]\]|\]|\)\)|\)|\}\}|\})/
+  )
+  return {
+    id,
+    hasLabel: Boolean(labelMatch?.[1]),
+    text: normalizeMindMapText(labelMatch?.[1] ?? id.replace(/[_-]+/g, ' ')),
+  }
+}
+
+function parseFlowchartNodes(mermaidSource: string) {
+  if (!/^(flowchart|graph)\s+LR\b/im.test(mermaidSource)) {
+    return []
+  }
+
+  const nodeMap = new Map<string, MindMapNode>()
+  const incoming = new Set<string>()
+  const edgePairs: Array<[string, string]> = []
+  let cursor = 0
+  const nodeTokenPattern =
+    '[A-Za-z0-9_:-]+\\s*(?:\\[\\[[^\\]]+\\]\\]|\\[[^\\]]+\\]|\\(\\([^)]*\\)\\)|\\([^)]*\\)|\\{\\{[^}]+\\}\\}|\\{[^}]+\\})?'
+
+  const ensureNode = (token: string) => {
+    const parsed = parseMermaidNodeToken(token)
+    if (!parsed?.text) return null
+    const existing = nodeMap.get(parsed.id)
+    if (existing) {
+      if (parsed.hasLabel) {
+        existing.text = parsed.text
+      }
+      return existing
+    }
+    const node: MindMapNode = {
+      id: `${parsed.id}-${cursor}`,
+      text: parsed.text,
+      level: 0,
+      children: [],
+    }
+    cursor += 1
+    nodeMap.set(parsed.id, node)
+    return node
+  }
+
+  const edgeRegex = new RegExp(
+    `(?=(${nodeTokenPattern})\\s*(?:-->|---|-.->|==>)\\s*(${nodeTokenPattern}))`,
+    'g'
+  )
+  let edgeMatch: RegExpExecArray | null
+  while ((edgeMatch = edgeRegex.exec(mermaidSource))) {
+    const previousChar = mermaidSource[edgeMatch.index - 1]
+    if (previousChar && /[A-Za-z0-9_:-]/.test(previousChar)) {
+      edgeRegex.lastIndex = edgeMatch.index + 1
+      continue
+    }
+    const parent = parseMermaidNodeToken(edgeMatch[1])
+    const child = parseMermaidNodeToken(edgeMatch[2])
+    if (parent && child) {
+      ensureNode(edgeMatch[1])
+      ensureNode(edgeMatch[2])
+      edgePairs.push([parent.id, child.id])
+      incoming.add(child.id)
+    }
+    edgeRegex.lastIndex = edgeMatch.index + 1
+  }
+
+  for (const rawLine of mermaidSource.split('\n')) {
+    const line = rawLine.trim()
+    if (
+      !line ||
+      /^(flowchart|graph)\b/i.test(line) ||
+      /^(%%|classDef\b|class\b|style\b|linkStyle\b)/i.test(line)
+    ) {
+      continue
+    }
+
+    if (edgePairs.length > 0 && /(-->|---|-.->|==>)/.test(line)) {
+      continue
+    }
+
+    if (!/(-->|---|-.->|==>)/.test(line)) {
+      ensureNode(line)
+      continue
+    }
+
+    const parts = line
+      .split(/\s*(?:-->|---|-.->|==>)\s*/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+
+    for (let index = 0; index < parts.length; index += 1) {
+      ensureNode(parts[index])
+      if (index > 0) {
+        const parent = parseMermaidNodeToken(parts[index - 1])
+        const child = parseMermaidNodeToken(parts[index])
+        if (parent && child) {
+          edgePairs.push([parent.id, child.id])
+          incoming.add(child.id)
+        }
+      }
+    }
+  }
+
+  for (const [parentId, childId] of edgePairs) {
+    const parent = nodeMap.get(parentId)
+    const child = nodeMap.get(childId)
+    if (!parent || !child || parent.children.some((item) => item.id === child.id)) {
+      continue
+    }
+    child.level = parent.level + 1
+    parent.children.push(child)
+  }
+
+  return Array.from(nodeMap.entries())
+    .filter(([id]) => !incoming.has(id))
+    .map(([, node]) => node)
+}
+
+function parseIndentedMindMapNodes(content: string) {
   const normalizedContent = content
     .trim()
     .replace(/^```(?:mermaid|mindmap)?\s*\n([\s\S]*?)\n```$/i, '$1')
@@ -762,6 +1524,9 @@ function parseMindMapNodes(content: string) {
 
     if (/^mindmap(?:\s|$)/i.test(trimmed)) {
       inMermaidMindMap = true
+      continue
+    }
+    if (inMermaidMindMap && /^direction\s+(right|left|tb|bt|rl|lr)\b/i.test(trimmed)) {
       continue
     }
 
@@ -819,6 +1584,272 @@ function parseMindMapNodes(content: string) {
   return roots
 }
 
+function limitMindMapDepth(node: MindMapNode, depth = 0): MindMapNode {
+  return {
+    ...node,
+    level: depth,
+    children:
+      depth >= MAX_MIND_MAP_DEPTH
+        ? []
+        : node.children.map((child) => limitMindMapDepth(child, depth + 1)),
+  }
+}
+
+function parseMindMapNodes(content: string) {
+  const mermaidSource = extractMermaidSource(content)
+  const flowchartNodes = mermaidSource ? parseFlowchartNodes(mermaidSource) : []
+  const parsedNodes = flowchartNodes.length > 0
+    ? flowchartNodes
+    : parseIndentedMindMapNodes(mermaidSource || content)
+  return parsedNodes.map((node) => limitMindMapDepth(node))
+}
+
+function createMindMapNodeId(prefix = 'node') {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function getDefaultVisualNodeStyle(level: number): MindMapNodeStyle {
+  if (level === 0) {
+    return { fill: '#ffffff', line: '#cbd5e1', text: '#0f172a' }
+  }
+  if (level === 1) {
+    return { fill: '#eff6ff', line: '#93c5fd', text: '#172554' }
+  }
+  return { fill: '#ffffff', line: '#93c5fd', text: '#1e3a8a' }
+}
+
+function layoutVisualMindMapNodes(nodes: MindMapNode[]) {
+  let nextY = 80
+  const assign = (node: MindMapNode, depth: number): VisualMindMapNode => {
+    const children = node.children.map((child) => assign(child, depth + 1))
+    const childY = children.length > 0
+      ? (children[0].y + children[children.length - 1].y) / 2
+      : nextY
+    if (children.length === 0) {
+      nextY += 112
+    }
+    return {
+      ...node,
+      id: node.id || createMindMapNodeId(),
+      level: depth,
+      x: 70 + depth * 300,
+      y: childY,
+      style: getDefaultVisualNodeStyle(depth),
+      sourceRefs: [],
+      children,
+    }
+  }
+
+  return nodes.map((node) => assign(node, 0))
+}
+
+function normalizeVisualMindMapNode(node: Partial<VisualMindMapNode>, level = 0): VisualMindMapNode {
+  return {
+    id: node.id || createMindMapNodeId(),
+    text: node.text || '新节点',
+    level,
+    x: Number.isFinite(node.x) ? Number(node.x) : 70 + level * 300,
+    y: Number.isFinite(node.y) ? Number(node.y) : 80,
+    style: {
+      ...getDefaultVisualNodeStyle(level),
+      ...(node.style ?? {}),
+    },
+    sourceRefs: Array.isArray(node.sourceRefs) ? node.sourceRefs.filter(Boolean) : [],
+    children: Array.isArray(node.children)
+      ? (node.children as Partial<VisualMindMapNode>[]).map((child) =>
+          normalizeVisualMindMapNode(child, level + 1)
+        )
+      : [],
+  }
+}
+
+function extractVisualMindMapDocument(content: string): VisualMindMapDocument | null {
+  const start = content.indexOf(MIND_MAP_VISUAL_START)
+  if (start === -1) {
+    return null
+  }
+  const metadataStart = start + MIND_MAP_VISUAL_START.length
+  const end = content.indexOf(MIND_MAP_VISUAL_END, metadataStart)
+  if (end === -1) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(content.slice(metadataStart, end).trim()) as Partial<VisualMindMapDocument>
+    if (!Array.isArray(parsed.nodes)) {
+      return null
+    }
+    return {
+      version: 1,
+      nodes: parsed.nodes.map((node) => normalizeVisualMindMapNode(node)),
+    }
+  } catch {
+    return null
+  }
+}
+
+function createVisualMindMapDocument(content: string): VisualMindMapDocument {
+  const existing = extractVisualMindMapDocument(content)
+  if (existing) {
+    return existing
+  }
+  const parsed = parseMindMapNodes(content)
+  return {
+    version: 1,
+    nodes: layoutVisualMindMapNodes(parsed.length > 0 ? parsed : [{
+      id: 'root',
+      text: '中心主题',
+      level: 0,
+      children: [],
+    }]),
+  }
+}
+
+function flattenVisualMindMapNodes(nodes: VisualMindMapNode[], parentId?: string) {
+  const items: Array<VisualMindMapNode & { parentId?: string }> = []
+  const visit = (node: VisualMindMapNode, currentParentId?: string) => {
+    items.push({ ...node, parentId: currentParentId })
+    node.children.forEach((child) => visit(child, node.id))
+  }
+  nodes.forEach((node) => visit(node, parentId))
+  return items
+}
+
+function mapVisualMindMapNodes(
+  nodes: VisualMindMapNode[],
+  mapper: (node: VisualMindMapNode) => VisualMindMapNode
+): VisualMindMapNode[] {
+  return nodes.map((node) => mapper({
+    ...node,
+    children: mapVisualMindMapNodes(node.children, mapper),
+  }))
+}
+
+function removeVisualMindMapNode(nodes: VisualMindMapNode[], nodeId: string): VisualMindMapNode[] {
+  return nodes
+    .filter((node) => node.id !== nodeId)
+    .map((node) => ({
+      ...node,
+      children: removeVisualMindMapNode(node.children, nodeId),
+    }))
+}
+
+function findVisualMindMapNode(nodes: VisualMindMapNode[], nodeId: string): VisualMindMapNode | null {
+  for (const node of nodes) {
+    if (node.id === nodeId) {
+      return node
+    }
+    const child = findVisualMindMapNode(node.children, nodeId)
+    if (child) {
+      return child
+    }
+  }
+  return null
+}
+
+function findVisualMindMapParent(nodes: VisualMindMapNode[], nodeId: string): VisualMindMapNode | null {
+  for (const node of nodes) {
+    if (node.children.some((child) => child.id === nodeId)) {
+      return node
+    }
+    const parent = findVisualMindMapParent(node.children, nodeId)
+    if (parent) {
+      return parent
+    }
+  }
+  return null
+}
+
+function addVisualMindMapChild(
+  nodes: VisualMindMapNode[],
+  parentId: string,
+  sourceRefs: string[] = []
+): VisualMindMapNode[] {
+  return mapVisualMindMapNodes(nodes, (node) => {
+    if (node.id !== parentId) {
+      return node
+    }
+    const level = node.level + 1
+    const childCount = node.children.length
+    return {
+      ...node,
+      children: [
+        ...node.children,
+        {
+          id: createMindMapNodeId('branch'),
+          text: '新分支',
+          level,
+          x: node.x + 300,
+          y: node.y + Math.max(1, childCount) * 86,
+          style: getDefaultVisualNodeStyle(level),
+          sourceRefs,
+          children: [],
+        },
+      ],
+    }
+  })
+}
+
+function escapeMermaidMindMapText(value: string) {
+  return value
+    .replace(/[`{}[\]]/g, ' ')
+    .replace(/[()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || 'Node'
+}
+
+function serializeVisualMindMapToMermaid(nodes: VisualMindMapNode[]) {
+  const lines = ['```mermaid', 'mindmap', '  direction right']
+  const visit = (node: VisualMindMapNode, depth: number) => {
+    const indent = '  '.repeat(depth + 1)
+    const text = escapeMermaidMindMapText(node.text)
+    lines.push(depth === 0 ? `${indent}root((${text}))` : `${indent}${text}`)
+    node.children.forEach((child) => visit(child, depth + 1))
+  }
+
+  if (nodes.length === 1) {
+    visit(nodes[0], 0)
+  } else {
+    lines.push('  root((Knowledge map))')
+    nodes.forEach((node) => visit(node, 1))
+  }
+
+  lines.push('```')
+  return lines.join('\n')
+}
+
+function visualMindMapOutline(nodes: VisualMindMapNode[], depth = 0): string {
+  return nodes
+    .map((node) => {
+      const prefix = `${'  '.repeat(depth)}- ${node.text}`
+      const children = visualMindMapOutline(node.children, depth + 1)
+      return children ? `${prefix}\n${children}` : prefix
+    })
+    .join('\n')
+}
+
+function serializeVisualMindMapDocument(document: VisualMindMapDocument) {
+  const metadata = JSON.stringify(document, null, 2)
+  const mermaid = serializeVisualMindMapToMermaid(document.nodes)
+  const outline = visualMindMapOutline(document.nodes)
+  return [
+    MIND_MAP_VISUAL_START,
+    metadata,
+    MIND_MAP_VISUAL_END,
+    '',
+    mermaid,
+    '',
+    '## 树状分层文本',
+    outline,
+    '',
+    '## 对比表格',
+    '使用上方表格视图查看同一套节点。',
+    '',
+    '## 分级分点列表',
+    outline,
+  ].join('\n')
+}
+
 function isProfileArtifactMindMapContent(content: string) {
   const compact = content.toLowerCase()
   return (
@@ -828,49 +1859,359 @@ function isProfileArtifactMindMapContent(content: string) {
   )
 }
 
-function MindMapNodeView({ node, depth = 0 }: { node: MindMapNode; depth?: number }) {
+type MindMapGraphNode = {
+  id: string
+  node: MindMapNode
+  depth: number
+  paletteIndex: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+type MindMapGraphEdge = {
+  parent: MindMapGraphNode
+  child: MindMapGraphNode
+  paletteIndex: number
+}
+
+function getMindMapNodeSize(depth: number) {
+  if (depth === 0) return { width: 190, height: 72 }
+  if (depth === 1) return { width: 180, height: 58 }
+  return { width: 210, height: 38 }
+}
+
+function collectExpandableMindMapNodeIds(nodes: MindMapNode[]) {
+  const ids = new Set<string>()
+  const visit = (node: MindMapNode) => {
+    if (node.children.length > 0) {
+      ids.add(node.id)
+    }
+    node.children.forEach(visit)
+  }
+  nodes.forEach(visit)
+  return ids
+}
+
+function collapseMindMapNodes(nodes: MindMapNode[], expandedNodeIds: Set<string>, depth = 0): MindMapNode[] {
+  return nodes.map((node) => {
+    const shouldShowChildren = depth === 0 || expandedNodeIds.has(node.id)
+    return {
+      ...node,
+      children: shouldShowChildren
+        ? collapseMindMapNodes(node.children, expandedNodeIds, depth + 1)
+        : [],
+    }
+  })
+}
+
+function layoutMindMapGraph(nodes: MindMapNode[]) {
+  const graphNodes: MindMapGraphNode[] = []
+  const edges: MindMapGraphEdge[] = []
+  let nextY = 70
+
+  const visit = (node: MindMapNode, depth: number, paletteIndex: number): MindMapGraphNode => {
+    const size = getMindMapNodeSize(depth)
+    const children = depth < MAX_MIND_MAP_DEPTH ? node.children : []
+    const childNodes = children.map((child, childIndex) =>
+      visit(child, depth + 1, depth === 0 ? childIndex : paletteIndex)
+    )
+    const y = childNodes.length > 0
+      ? (childNodes[0].y + childNodes[childNodes.length - 1].y) / 2
+      : nextY
+    if (childNodes.length === 0) {
+      nextY += depth === 0 ? 118 : depth === 1 ? 86 : 54
+    }
+
+    const item: MindMapGraphNode = {
+      id: `${node.id}-${depth}-${graphNodes.length}`,
+      node,
+      depth,
+      paletteIndex,
+      x: 54 + depth * 300,
+      y,
+      ...size,
+    }
+    graphNodes.push(item)
+    childNodes.forEach((child) => {
+      edges.push({ parent: item, child, paletteIndex: child.paletteIndex })
+    })
+    return item
+  }
+
+  nodes.forEach((node, index) => {
+    visit(node, 0, index)
+    nextY += 50
+  })
+
+  return {
+    nodes: graphNodes,
+    edges,
+    width: Math.max(980, ...graphNodes.map((node) => node.x + node.width + 80)),
+    height: Math.max(520, ...graphNodes.map((node) => node.y + node.height + 70)),
+  }
+}
+
+function MindMapGraphNodeView({
+  item,
+  isExpandable,
+  isExpanded,
+  onToggle,
+}: {
+  item: MindMapGraphNode
+  isExpandable: boolean
+  isExpanded: boolean
+  onToggle: (nodeId: string) => void
+}) {
+  const palette = MIND_MAP_PALETTES[item.paletteIndex % MIND_MAP_PALETTES.length]
+  const canToggle = isExpandable && item.depth > 0
   return (
-    <div className="flex min-w-0 flex-col items-center">
-      <div
-        className={cn(
-          'min-w-32 max-w-56 rounded-md border px-3 py-2 text-center shadow-sm',
-          depth === 0
-            ? 'border-primary/40 bg-primary text-primary-foreground'
-            : depth === 1
-              ? 'bg-muted'
-              : 'bg-background'
-        )}
-      >
-        <p className={cn('break-words text-sm leading-5', depth === 0 && 'font-semibold')}>
-          {node.text}
-        </p>
-      </div>
-      {node.children.length > 0 && (
-        <>
-          <div className="h-5 w-px bg-border" />
-          <div
-            className={cn(
-              'grid w-full gap-3',
-              node.children.length === 1
-                ? 'grid-cols-1 justify-items-center'
-                : 'grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]'
-            )}
-          >
-          {node.children.map((child) => (
-            <div key={child.id} className="relative flex justify-center">
-              <span className="absolute -top-3 left-1/2 h-3 w-px -translate-x-1/2 bg-border" />
-              <MindMapNodeView node={child} depth={depth + 1} />
-            </div>
-          ))}
-          </div>
-        </>
+    <div
+      title={item.node.text}
+      role={canToggle ? 'button' : undefined}
+      tabIndex={canToggle ? 0 : undefined}
+      className={cn(
+        'absolute flex items-center justify-center whitespace-normal break-words text-center leading-snug shadow-sm [overflow-wrap:anywhere]',
+        canToggle && 'cursor-pointer transition-shadow hover:ring-2 hover:ring-primary/30',
+        item.depth === 0 &&
+          'rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base font-semibold text-slate-950 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100',
+        item.depth === 1 &&
+          cn('rounded-md border px-4 py-3 text-sm font-medium', palette.module),
+        item.depth === 2 &&
+          cn('justify-start gap-2 rounded-sm bg-background/80 px-2 py-1 text-sm', palette.leaf)
       )}
+      style={{
+        left: item.x,
+        top: item.y - item.height / 2,
+        width: item.width,
+        minHeight: item.height,
+      }}
+      onClick={() => {
+        if (canToggle) onToggle(item.node.id)
+      }}
+      onKeyDown={(event) => {
+        if (!canToggle) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onToggle(item.node.id)
+        }
+      }}
+    >
+      {canToggle && (
+        <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border bg-background text-xs font-semibold shadow-sm">
+          {isExpanded ? '-' : '+'}
+        </span>
+      )}
+      {item.depth === 2 && <span className={cn('h-2 w-2 shrink-0 rounded-full', palette.dot)} />}
+      <span>{displayMindMapText(item.node.text)}</span>
     </div>
   )
 }
 
-function MindMapAsset({ content, compact = false }: { content: string; compact?: boolean }) {
+function MindMapTreeView({
+  nodes,
+  compact,
+  expanded,
+  zoom,
+  expandableNodeIds,
+  expandedNodeIds,
+  onToggleNode,
+}: {
+  nodes: MindMapNode[]
+  compact: boolean
+  expanded: boolean
+  zoom: number
+  expandableNodeIds: Set<string>
+  expandedNodeIds: Set<string>
+  onToggleNode: (nodeId: string) => void
+}) {
+  const graph = useMemo(() => layoutMindMapGraph(nodes), [nodes])
+
+  return (
+    <div
+      className={cn(
+        'overflow-auto bg-slate-50/40 dark:bg-slate-950/10',
+        compact ? 'max-h-80' : expanded ? 'h-[calc(100vh-210px)]' : 'max-h-[620px]'
+      )}
+    >
+      <div
+        className="relative"
+        style={{
+          width: graph.width,
+          height: graph.height,
+          zoom,
+        } as CSSProperties & { zoom: number }}
+      >
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          width={graph.width}
+          height={graph.height}
+          aria-hidden="true"
+        >
+          {graph.edges.map((edge) => {
+            const palette = MIND_MAP_PALETTES[edge.paletteIndex % MIND_MAP_PALETTES.length]
+            const startX = edge.parent.x + edge.parent.width
+            const startY = edge.parent.y
+            const endX = edge.child.x
+            const endY = edge.child.y
+            const midX = startX + (endX - startX) * 0.45
+            return (
+              <path
+                key={`${edge.parent.id}-${edge.child.id}`}
+                d={`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`}
+                fill="none"
+                stroke={palette.stroke}
+                strokeWidth={1.5}
+                strokeLinecap="round"
+              />
+            )
+          })}
+        </svg>
+        {graph.nodes.map((item) => (
+          <MindMapGraphNodeView
+            key={item.id}
+            item={item}
+            isExpandable={expandableNodeIds.has(item.node.id)}
+            isExpanded={expandedNodeIds.has(item.node.id)}
+            onToggle={onToggleNode}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function getMindMapModules(nodes: MindMapNode[]) {
+  if (nodes.length === 1 && nodes[0].children.length > 0) {
+    return nodes[0].children
+  }
+  return nodes
+}
+
+function MindMapTableView({
+  nodes,
+  compact,
+  expanded,
+}: {
+  nodes: MindMapNode[]
+  compact: boolean
+  expanded: boolean
+}) {
+  const modules = getMindMapModules(nodes)
+  const maxRows = Math.max(1, ...modules.map((module) => module.children.length))
+
+  return (
+    <div className={cn('overflow-auto p-4', compact ? 'max-h-80' : expanded ? 'h-[calc(100vh-210px)]' : 'max-h-[620px]')}>
+      <table className="min-w-full border-separate border-spacing-0 overflow-hidden rounded-md border text-sm">
+        <thead>
+          <tr>
+            {modules.map((module, index) => (
+              <th
+                key={module.id}
+                className={cn(
+                  'border-b border-r px-4 py-3 text-left last:border-r-0',
+                  MIND_MAP_PALETTES[index % MIND_MAP_PALETTES.length].module
+                )}
+              >
+                {module.text}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: maxRows }).map((_, rowIndex) => (
+            <tr key={rowIndex}>
+              {modules.map((module) => (
+                <td key={`${module.id}-${rowIndex}`} className="border-r border-b px-4 py-3 align-top last:border-r-0">
+                  {module.children[rowIndex]?.text ?? ''}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function MindMapOutlineNode({ node, depth = 0 }: { node: MindMapNode; depth?: number }) {
+  return (
+    <div className={cn(depth > 0 && 'ml-5 border-l pl-4')}>
+      <p
+        className={cn(
+          'py-1 leading-6',
+          depth === 0 && 'text-base font-semibold',
+          depth === 1 && 'text-sm font-medium',
+          depth >= 2 && 'text-sm text-muted-foreground'
+        )}
+      >
+        {depth >= 2 ? '• ' : ''}
+        {node.text}
+      </p>
+      {node.children.map((child) => (
+        <MindMapOutlineNode key={child.id} node={child} depth={depth + 1} />
+      ))}
+    </div>
+  )
+}
+
+function MindMapOutlineView({
+  nodes,
+  compact,
+  expanded,
+}: {
+  nodes: MindMapNode[]
+  compact: boolean
+  expanded: boolean
+}) {
+  return (
+    <div className={cn('overflow-auto p-4', compact ? 'max-h-80' : expanded ? 'h-[calc(100vh-210px)]' : 'max-h-[620px]')}>
+      <div className="space-y-3 rounded-md border bg-muted/20 p-4">
+        {nodes.map((node) => (
+          <MindMapOutlineNode key={node.id} node={node} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function MindMapAsset({
+  content,
+  compact = false,
+  expanded = false,
+}: {
+  content: string
+  compact?: boolean
+  expanded?: boolean
+}) {
   const nodes = useMemo(() => parseMindMapNodes(content), [content])
+  const [viewMode, setViewMode] = useState<MindMapViewMode>('tree')
+  const [zoom, setZoom] = useState(1)
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set())
+  const expandableNodeIds = useMemo(() => collectExpandableMindMapNodeIds(nodes), [nodes])
+  const visibleNodes = useMemo(
+    () => collapseMindMapNodes(nodes, expandedNodeIds),
+    [expandedNodeIds, nodes]
+  )
+  const updateZoom = (delta: number) => {
+    setZoom((current) => Math.min(1.5, Math.max(0.6, Number((current + delta).toFixed(2)))))
+  }
+  const toggleNode = (nodeId: string) => {
+    setExpandedNodeIds((current) => {
+      const next = new Set(current)
+      if (next.has(nodeId)) {
+        next.delete(nodeId)
+      } else {
+        next.add(nodeId)
+      }
+      return next
+    })
+  }
+
+  useEffect(() => {
+    setExpandedNodeIds(new Set())
+  }, [content])
 
   if (nodes.length === 0 || isProfileArtifactMindMapContent(content)) {
     return (
@@ -889,42 +2230,490 @@ function MindMapAsset({ content, compact = false }: { content: string; compact?:
   return (
     <article
       className={cn(
-        'overflow-auto rounded-md border bg-background p-4',
-        compact ? 'max-h-80' : 'max-h-[540px]'
+        'overflow-hidden rounded-md border bg-background',
+        compact ? 'max-h-80' : expanded ? 'h-full min-h-0' : 'max-h-[680px]'
       )}
     >
-      <div className={cn('min-w-[560px] space-y-6', compact && 'min-w-[460px]')}>
-        {nodes.map((node) => (
-          <MindMapNodeView key={node.id} node={node} />
-        ))}
+      <div className="flex items-center justify-between gap-3 border-b bg-muted/30 px-3 py-2">
+        <div className="flex items-center gap-1">
+          {MIND_MAP_VIEW_OPTIONS.map((option) => {
+            const Icon = option.icon
+            const active = viewMode === option.mode
+            return (
+              <Button
+                key={option.mode}
+                type="button"
+                size="icon"
+                variant={active ? 'secondary' : 'ghost'}
+                className={cn('h-8 w-8', active && 'bg-foreground text-background hover:bg-foreground/90')}
+                onClick={() => setViewMode(option.mode)}
+                aria-label={option.label}
+                title={option.label}
+              >
+                <Icon className="h-4 w-4" />
+              </Button>
+            )
+          })}
+        </div>
+        {!compact && viewMode === 'tree' && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
+              onClick={() => updateZoom(-0.1)}
+              aria-label="缩小"
+              title="缩小"
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <span className="w-10 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
+              onClick={() => updateZoom(0.1)}
+              aria-label="放大"
+              title="放大"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
+      {viewMode === 'tree' && (
+        <MindMapTreeView
+          nodes={visibleNodes}
+          compact={compact}
+          expanded={expanded}
+          zoom={zoom}
+          expandableNodeIds={expandableNodeIds}
+          expandedNodeIds={expandedNodeIds}
+          onToggleNode={toggleNode}
+        />
+      )}
+      {viewMode === 'table' && <MindMapTableView nodes={nodes} compact={compact} expanded={expanded} />}
+      {viewMode === 'outline' && <MindMapOutlineView nodes={nodes} compact={compact} expanded={expanded} />}
     </article>
+  )
+}
+
+export function MindMapVisualEditor({
+  content,
+  expanded = false,
+  materials = [],
+  onChange,
+}: {
+  content: string
+  expanded?: boolean
+  materials?: MindMapMaterial[]
+  onChange: (content: string) => void
+}) {
+  const canvasRef = useRef<HTMLDivElement | null>(null)
+  const dragRef = useRef<{
+    nodeId: string
+    startX: number
+    startY: number
+    originX: number
+    originY: number
+    moved: boolean
+  } | null>(null)
+  const [document, setDocument] = useState<VisualMindMapDocument>(() =>
+    createVisualMindMapDocument(content)
+  )
+  const flatNodes = useMemo(() => flattenVisualMindMapNodes(document.nodes), [document])
+  const [selectedId, setSelectedId] = useState(() => flatNodes[0]?.id ?? '')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    nodeId: string
+    x: number
+    y: number
+  } | null>(null)
+  const [zoom, setZoom] = useState(1)
+
+  const selectedNode = selectedId ? findVisualMindMapNode(document.nodes, selectedId) : null
+  const selectedMaterialTitles = (selectedNode?.sourceRefs ?? [])
+    .map((id) => materials.find((material) => material.id === id)?.title)
+    .filter(Boolean)
+
+  const commitDocument = (updater: (current: VisualMindMapDocument) => VisualMindMapDocument) => {
+    setDocument((current) => {
+      const next = updater(current)
+      onChange(serializeVisualMindMapDocument(next))
+      return next
+    })
+  }
+
+  const updateNode = (nodeId: string, patch: Partial<VisualMindMapNode>) => {
+    commitDocument((current) => ({
+      ...current,
+      nodes: mapVisualMindMapNodes(current.nodes, (node) =>
+        node.id === nodeId ? { ...node, ...patch } : node
+      ),
+    }))
+  }
+
+  const updateSelectedStyle = (patch: MindMapNodeStyle) => {
+    if (!selectedNode) return
+    updateNode(selectedNode.id, {
+      style: {
+        ...selectedNode.style,
+        ...patch,
+      },
+    })
+  }
+
+  const addChild = (nodeId: string) => {
+    const inheritedRefs = findVisualMindMapNode(document.nodes, nodeId)?.sourceRefs ?? []
+    commitDocument((current) => ({
+      ...current,
+      nodes: addVisualMindMapChild(current.nodes, nodeId, inheritedRefs),
+    }))
+    setContextMenu(null)
+  }
+
+  const addSibling = (nodeId: string) => {
+    const parent = findVisualMindMapParent(document.nodes, nodeId)
+    if (!parent) {
+      addChild(nodeId)
+      return
+    }
+    addChild(parent.id)
+  }
+
+  const deleteNode = (nodeId: string) => {
+    if (flatNodes.length <= 1) {
+      setContextMenu(null)
+      return
+    }
+    commitDocument((current) => ({
+      ...current,
+      nodes: removeVisualMindMapNode(current.nodes, nodeId),
+    }))
+    setSelectedId((current) => current === nodeId ? flatNodes.find((node) => node.id !== nodeId)?.id ?? '' : current)
+    setContextMenu(null)
+  }
+
+  const toggleMaterialRef = (materialId: string, checked: boolean) => {
+    if (!selectedNode) return
+    const refs = new Set(selectedNode.sourceRefs ?? [])
+    if (checked) {
+      refs.add(materialId)
+    } else {
+      refs.delete(materialId)
+    }
+    updateNode(selectedNode.id, { sourceRefs: Array.from(refs) })
+  }
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>, node: VisualMindMapNode) => {
+    if ((event.target as HTMLElement).closest('input')) {
+      return
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = {
+      nodeId: node.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: node.x,
+      originY: node.y,
+      moved: false,
+    }
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    if (!drag) return
+    const deltaX = (event.clientX - drag.startX) / zoom
+    const deltaY = (event.clientY - drag.startY) / zoom
+    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+      drag.moved = true
+    }
+    updateNode(drag.nodeId, {
+      x: Math.max(20, drag.originX + deltaX),
+      y: Math.max(20, drag.originY + deltaY),
+    })
+  }
+
+  const handlePointerUp = () => {
+    dragRef.current = null
+  }
+
+  const canvasWidth = Math.max(1100, ...flatNodes.map((node) => node.x + 260))
+  const canvasHeight = Math.max(620, ...flatNodes.map((node) => node.y + 140))
+
+  return (
+    <div className={cn('grid min-h-0 gap-3', expanded ? 'h-[calc(100vh-210px)] grid-cols-[minmax(0,1fr)_280px]' : 'lg:grid-cols-[minmax(0,1fr)_260px]')}>
+      <div className="min-h-0 overflow-hidden rounded-md border bg-slate-50/60 dark:bg-slate-950/20">
+        <div className="flex items-center justify-between gap-3 border-b bg-background/80 px-3 py-2">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <GitBranch className="h-4 w-4" />
+            可视化导图编辑
+          </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setZoom((value) => Math.max(0.6, Number((value - 0.1).toFixed(2))))}>
+              <Minus className="h-4 w-4" />
+            </Button>
+            <span className="w-10 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setZoom((value) => Math.min(1.5, Number((value + 0.1).toFixed(2))))}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <div
+          ref={canvasRef}
+          className={cn('relative overflow-auto', expanded ? 'h-[calc(100vh-260px)]' : 'h-[560px]')}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onClick={() => setContextMenu(null)}
+        >
+          <div
+            className="relative"
+            style={{
+              width: canvasWidth * zoom,
+              height: canvasHeight * zoom,
+            }}
+          >
+            <div
+              className="relative origin-top-left"
+              style={{
+                width: canvasWidth,
+                height: canvasHeight,
+                transform: `scale(${zoom})`,
+              }}
+            >
+              <svg className="pointer-events-none absolute inset-0" width={canvasWidth} height={canvasHeight}>
+                {flatNodes.flatMap((node) =>
+                  node.children.map((child) => (
+                    <path
+                      key={`${node.id}-${child.id}`}
+                      d={`M ${node.x + 210} ${node.y + 42} C ${node.x + 260} ${node.y + 42}, ${child.x - 50} ${child.y + 42}, ${child.x} ${child.y + 42}`}
+                      fill="none"
+                      stroke={child.style?.line ?? node.style?.line ?? '#94a3b8'}
+                      strokeWidth={1.5}
+                    />
+                  ))
+                )}
+              </svg>
+              {flatNodes.map((node) => {
+                const selected = node.id === selectedId
+                const sourceCount = node.sourceRefs?.length ?? 0
+                return (
+                  <div
+                    key={node.id}
+                    className={cn(
+                      'absolute w-[210px] rounded-md border-2 px-3 py-2 shadow-sm transition-shadow',
+                      selected ? 'ring-2 ring-primary ring-offset-2' : 'hover:shadow-md'
+                    )}
+                    style={{
+                      left: node.x,
+                      top: node.y,
+                      backgroundColor: node.style?.fill ?? '#ffffff',
+                      borderColor: node.style?.line ?? '#cbd5e1',
+                      color: node.style?.text ?? '#0f172a',
+                      fontWeight: node.style?.bold ? 700 : undefined,
+                      fontStyle: node.style?.italic ? 'italic' : undefined,
+                    }}
+                    onPointerDown={(event) => handlePointerDown(event, node)}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (selectedId === node.id && !dragRef.current?.moved) {
+                        setEditingId(node.id)
+                      }
+                      setSelectedId(node.id)
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setSelectedId(node.id)
+                      setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY })
+                    }}
+                  >
+                    {editingId === node.id ? (
+                      <input
+                        autoFocus
+                        value={node.text}
+                        onChange={(event) => updateNode(node.id, { text: event.target.value })}
+                        onBlur={() => setEditingId(null)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') setEditingId(null)
+                        }}
+                        className="w-full rounded border bg-background px-2 py-1 text-sm text-foreground"
+                      />
+                    ) : (
+                      <p className="min-h-6 break-words text-sm font-medium leading-5 [overflow-wrap:anywhere]">
+                        {node.text}
+                      </p>
+                    )}
+                    {sourceCount > 0 && (
+                      <p className="mt-2 text-[11px] opacity-70">已关联 {sourceCount} 个素材</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+        {contextMenu && (
+          <div
+            className="fixed z-[80] w-40 overflow-hidden rounded-md border bg-popover p-1 text-sm shadow-lg"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <button type="button" className="w-full rounded px-3 py-2 text-left hover:bg-muted" onClick={() => addChild(contextMenu.nodeId)}>
+              添加子分支
+            </button>
+            <button type="button" className="w-full rounded px-3 py-2 text-left hover:bg-muted" onClick={() => addSibling(contextMenu.nodeId)}>
+              添加同级分支
+            </button>
+            <button type="button" className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-destructive hover:bg-destructive/10" onClick={() => deleteNode(contextMenu.nodeId)}>
+              <Trash2 className="h-4 w-4" />
+              删除节点
+            </button>
+          </div>
+        )}
+      </div>
+
+      <aside className="min-h-0 overflow-y-auto rounded-md border bg-background p-3">
+        <h3 className="text-sm font-semibold">节点属性</h3>
+        {selectedNode ? (
+          <div className="mt-3 space-y-4">
+            <label className="block space-y-1.5 text-xs font-medium">
+              <span>文字</span>
+              <input
+                value={selectedNode.text}
+                onChange={(event) => updateNode(selectedNode.id, { text: event.target.value })}
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              />
+            </label>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <label className="space-y-1">
+                <span>填充</span>
+                <input type="color" value={selectedNode.style?.fill ?? '#ffffff'} onChange={(event) => updateSelectedStyle({ fill: event.target.value })} className="h-9 w-full" />
+              </label>
+              <label className="space-y-1">
+                <span>线条</span>
+                <input type="color" value={selectedNode.style?.line ?? '#cbd5e1'} onChange={(event) => updateSelectedStyle({ line: event.target.value })} className="h-9 w-full" />
+              </label>
+              <label className="space-y-1">
+                <span>文字</span>
+                <input type="color" value={selectedNode.style?.text ?? '#0f172a'} onChange={(event) => updateSelectedStyle({ text: event.target.value })} className="h-9 w-full" />
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant={selectedNode.style?.bold ? 'secondary' : 'outline'}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => updateSelectedStyle({ bold: !selectedNode.style?.bold })}
+                aria-label="加粗"
+                title="加粗"
+              >
+                <Bold className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant={selectedNode.style?.italic ? 'secondary' : 'outline'}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => updateSelectedStyle({ italic: !selectedNode.style?.italic })}
+                aria-label="斜体"
+                title="斜体"
+              >
+                <Italic className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium">溯源素材</p>
+              {materials.length > 0 ? (
+                <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
+                  {materials.map((material) => {
+                    const checked = selectedNode.sourceRefs?.includes(material.id) ?? false
+                    return (
+                      <label key={material.id} className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) => toggleMaterialRef(material.id, event.target.checked)}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{material.title}</span>
+                          <span className="block truncate text-muted-foreground">{material.materialType}</span>
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
+                  当前没有可关联素材。
+                </p>
+              )}
+              {selectedMaterialTitles.length > 0 && (
+                <div className="space-y-1">
+                  {selectedMaterialTitles.map((title) => (
+                    <p key={title} className="truncate rounded bg-muted px-2 py-1 text-xs">
+                      {title}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">选择一个节点后编辑属性。</p>
+        )}
+      </aside>
+    </div>
   )
 }
 
 export function LearningAssetPreview({
   resource,
   compact = false,
+  expanded = false,
   onLearningEvent,
+  onGenerateSimilarQuiz,
 }: {
   resource: LearningResource
   compact?: boolean
+  expanded?: boolean
   onLearningEvent?: (event: LearningAssetInteractionEvent) => void
+  onGenerateSimilarQuiz?: (resource: LearningResource) => void
 }) {
   if (resource.kind === 'quiz') {
-    return <QuizAsset resource={resource} compact={compact} onLearningEvent={onLearningEvent} />
+    return (
+      <QuizAsset
+        resource={resource}
+        compact={compact}
+        onLearningEvent={onLearningEvent}
+        onGenerateSimilarQuiz={onGenerateSimilarQuiz}
+      />
+    )
   }
   if (resource.kind === 'flashcards') {
     return <FlashcardAsset resource={resource} compact={compact} />
   }
   if (resource.kind === 'mind_map') {
-    return <MindMapAsset content={resource.content} compact={compact} />
+    return <MindMapAsset content={resource.content} compact={compact} expanded={expanded} />
+  }
+  if (resource.kind === 'reading') {
+    return <ReadingAsset resource={resource} compact={compact} />
   }
   return (
     <MarkdownLikeAsset
       content={resource.content}
       compact={compact}
-      compactHeight={resource.kind === 'code_lab' ? 'max-h-52' : 'max-h-[540px]'}
+      compactHeight={
+        expanded
+          ? 'h-[calc(100vh-210px)] max-h-none'
+          : resource.kind === 'code_lab'
+            ? 'max-h-52'
+            : 'max-h-[540px]'
+      }
     />
   )
 }

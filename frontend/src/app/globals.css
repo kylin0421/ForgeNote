@@ -123,6 +123,35 @@
     @apply bg-background text-foreground transition-colors;
   }
 
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 45%, transparent) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-color: color-mix(in oklch, var(--muted-foreground) 30%, transparent);
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklch, var(--muted-foreground) 45%, transparent);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   /* Ensure proper theme inheritance for popovers and dropdowns */
   .dark {
     color-scheme: dark;
@@ -188,5 +217,33 @@
 
   .clickable-card * {
     cursor: pointer !important;
+  }
+
+  .studio-asset-card,
+  .studio-asset-card * {
+    color: #111827 !important;
+  }
+
+  .studio-asset-card svg {
+    color: #111827 !important;
+    stroke: #111827 !important;
+  }
+
+  .studio-asset-card button:hover {
+    color: #111827 !important;
+  }
+
+  .dark .studio-asset-card,
+  .dark .studio-asset-card * {
+    color: #f8fafc !important;
+  }
+
+  .dark .studio-asset-card svg {
+    color: #f8fafc !important;
+    stroke: #f8fafc !important;
+  }
+
+  .dark .studio-asset-card button:hover {
+    color: #f8fafc !important;
   }
 }

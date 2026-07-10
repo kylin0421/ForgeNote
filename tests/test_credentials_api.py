@@ -232,6 +232,8 @@ class TestAudioProviderWiring:
         assert classify_model_type("mistral-embed", "mistral") == "embedding"
         # Deepgram Aura voices
         assert classify_model_type("aura-2-thalia-en", "deepgram") == "text_to_speech"
+        # Xiaomi MiMo TTS
+        assert classify_model_type("mimo-v2.5-tts", "mimo") == "text_to_speech"
 
     def test_provider_modalities_include_audio(self):
         from api.credentials_service import PROVIDER_MODALITIES
@@ -242,6 +244,7 @@ class TestAudioProviderWiring:
         assert "text_to_speech" in PROVIDER_MODALITIES["dashscope"]
         assert "speech_to_text" in PROVIDER_MODALITIES["dashscope"]
         assert PROVIDER_MODALITIES["deepgram"] == ["text_to_speech"]
+        assert PROVIDER_MODALITIES["mimo"] == ["text_to_speech"]
 
     def test_deepgram_has_env_and_test_model(self):
         from api.credentials_service import PROVIDER_ENV_CONFIG
@@ -249,6 +252,11 @@ class TestAudioProviderWiring:
 
         assert PROVIDER_ENV_CONFIG["deepgram"]["required"] == ["DEEPGRAM_API_KEY"]
         assert TEST_MODELS["deepgram"][1] == "text_to_speech"
+        assert PROVIDER_ENV_CONFIG["mimo"]["required_any"] == [
+            "MIMO_API_KEY",
+            "XIAOMI_MIMO_API_KEY",
+        ]
+        assert TEST_MODELS["mimo"] == ("mimo-v2.5-tts", "text_to_speech")
 
 
 class TestModelRuntimeSpecs:
@@ -264,6 +272,10 @@ class TestModelRuntimeSpecs:
         assert (
             classify_model_type("qwen3-asr-flash-2026-02-10", "openai_compatible")
             == "speech_to_text"
+        )
+        assert (
+            classify_model_type("mimo-v2.5-tts", "openai_compatible")
+            == "text_to_speech"
         )
 
     def test_qwen_batch_tts_routes_to_dashscope_protocol(self):
@@ -307,6 +319,78 @@ class TestModelRuntimeSpecs:
         assert spec.api_protocol == "dashscope-voice-conversion"
         assert spec.batch_tts_supported is False
         assert spec.warnings
+
+    def test_mimo_tts_routes_to_mimo_protocol(self):
+        from open_notebook.ai.model_specs import build_model_runtime_spec
+
+        spec = build_model_runtime_spec(
+            "openai",
+            "text_to_speech",
+            "mimo-v2.5-tts",
+        )
+
+        assert spec.runtime_provider == "mimo"
+        assert spec.api_protocol == "mimo-chat-audio-tts"
+        assert spec.batch_tts_supported is True
+        assert spec.warnings == []
+
+    def test_mimo_adapter_uses_chat_audio_protocol(self):
+        import base64
+
+        from open_notebook.ai.mimo_tts import MiMoTextToSpeechModel
+
+        audio = b"RIFF-test-audio"
+
+        class FakeClient:
+            def __init__(self):
+                self.last_url = None
+                self.last_headers = None
+                self.last_payload = None
+
+            def post(self, url, headers=None, json=None):
+                self.last_url = url
+                self.last_headers = headers
+                self.last_payload = json
+                return httpx.Response(
+                    200,
+                    json={
+                        "choices": [
+                            {
+                                "message": {
+                                    "audio": {
+                                        "data": base64.b64encode(audio).decode("ascii"),
+                                        "format": "wav",
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                )
+
+        model = MiMoTextToSpeechModel(
+            model_name="mimo-v2.5-tts",
+            api_key="test-key",
+            base_url="https://api.xiaomimimo.com/v1",
+        )
+        fake_client = FakeClient()
+        model.client = fake_client
+
+        response = model.generate_speech("你好，欢迎学习。", voice="alloy")
+
+        assert fake_client.last_url == "https://api.xiaomimimo.com/v1/chat/completions"
+        assert fake_client.last_headers["api-key"] == "test-key"
+        assert fake_client.last_payload["model"] == "mimo-v2.5-tts"
+        assert fake_client.last_payload["audio"] == {
+            "format": "wav",
+            "voice": "mimo_default",
+        }
+        assert fake_client.last_payload["messages"][-1] == {
+            "role": "assistant",
+            "content": "你好，欢迎学习。",
+        }
+        assert response.provider == "mimo"
+        assert response.audio_data == audio
+        assert response.content_type == "audio/wav"
 
     def test_dashscope_realtime_adapter_helpers(self):
         import io

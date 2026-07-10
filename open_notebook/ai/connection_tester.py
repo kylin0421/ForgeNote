@@ -33,6 +33,7 @@ TEST_MODELS = {
     "azure": ("gpt-35-turbo", "language"),  # Azure OpenAI deployment name
     "openai_compatible": (None, "language"),  # Dynamic - will use first available model
     "dashscope": ("qwen-plus", "language"),
+    "mimo": ("mimo-v2.5-tts", "text_to_speech"),
     "minimax": ("MiniMax-M2.5", "language"),
 }
 
@@ -178,6 +179,7 @@ DEFAULT_TEST_VOICES = {
     "deepgram": "aura-2-thalia-en",
     "xai": "eve",
     "dashscope": "Cherry",
+    "mimo": "mimo_default",
 }
 
 

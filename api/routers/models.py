@@ -125,6 +125,7 @@ PROVIDER_PRIORITY = [
     "azure",
     "openai_compatible",
     "dashscope",
+    "mimo",
     "minimax",
 ]
 
@@ -136,6 +137,7 @@ MODEL_PREFERENCES = {
     "mistral": ["mistral-large", "mixtral"],
     "groq": ["llama-3.3", "llama-3.1", "mixtral"],
     "dashscope": ["qwen-max", "qwen-plus", "qwen-turbo"],
+    "mimo": ["mimo-v2.5-tts"],
     "minimax": ["MiniMax-M2.5", "MiniMax-M2.5-highspeed"],
 }
 
@@ -453,6 +455,7 @@ async def get_provider_availability():
             "deepgram": "DEEPGRAM_API_KEY",
             "ollama": "OLLAMA_API_BASE",
             "dashscope": "DASHSCOPE_API_KEY",
+            "mimo": "MIMO_API_KEY",
             "minimax": "MINIMAX_API_KEY",
         }
 
@@ -467,6 +470,10 @@ async def get_provider_availability():
         # Google also supports GEMINI_API_KEY
         if not provider_status.get("google"):
             provider_status["google"] = os.environ.get("GEMINI_API_KEY") is not None
+
+        # Xiaomi MiMo also supports the explicit XIAOMI_MIMO_API_KEY alias.
+        if not provider_status.get("mimo"):
+            provider_status["mimo"] = os.environ.get("XIAOMI_MIMO_API_KEY") is not None
 
         # Vertex: DB credential or env vars
         provider_status["vertex"] = (

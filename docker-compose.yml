@@ -37,6 +37,7 @@ services:
       - SURREAL_PASSWORD=${SURREAL_PASSWORD:-root}
       - SURREAL_NAMESPACE=open_notebook
       - SURREAL_DATABASE=open_notebook
+      - OPEN_NOTEBOOK_EMBEDDING_BATCH_SIZE=${OPEN_NOTEBOOK_EMBEDDING_BATCH_SIZE:-10}
     volumes:
       - ./notebook_data:/app/data
     depends_on:

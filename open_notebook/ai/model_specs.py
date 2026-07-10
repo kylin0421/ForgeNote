@@ -12,9 +12,12 @@ from typing import Any, Dict, List, Optional
 
 DASHSCOPE_TTS_PROVIDER = "dashscope"
 DASHSCOPE_TTS_CLASS = "open_notebook.ai.dashscope_tts:DashScopeTextToSpeechModel"
+MIMO_TTS_PROVIDER = "mimo"
+MIMO_TTS_CLASS = "open_notebook.ai.mimo_tts:MiMoTextToSpeechModel"
 
 QWEN_TTS_PREFIXES = ("qwen3-tts", "qwen-tts", "cosyvoice")
 QWEN_ASR_PREFIXES = ("qwen3-asr", "qwen-asr")
+MIMO_TTS_PREFIXES = ("mimo-v2.5-tts", "mimo-tts")
 DASHSCOPE_BATCH_TTS_PREFIXES = (
     "qwen3-tts-flash",
     "qwen3-tts-instruct-flash",
@@ -69,6 +72,14 @@ def looks_like_dashscope_tts(model_name: str, config: Optional[Dict[str, Any]] =
     return "dashscope.aliyuncs.com" in base_url or "maas.aliyuncs.com" in base_url
 
 
+def looks_like_mimo_tts(model_name: str, config: Optional[Dict[str, Any]] = None) -> bool:
+    """Return True when a TTS model should use the Xiaomi MiMo adapter."""
+    name = _name(model_name)
+    if name.startswith(MIMO_TTS_PREFIXES) or (name.startswith("mimo") and "tts" in name):
+        return True
+    return "xiaomimimo.com" in _base_url(config)
+
+
 def infer_provider_specific_model_type(model_name: str, provider: str) -> Optional[str]:
     """Classify cross-provider models whose names reveal modality.
 
@@ -78,7 +89,9 @@ def infer_provider_specific_model_type(model_name: str, provider: str) -> Option
     """
     name = _name(model_name)
     provider = (provider or "").strip().lower()
-    if provider in {"openai", "openai_compatible", "dashscope"}:
+    if provider in {"openai", "openai_compatible", "dashscope", "mimo"}:
+        if name.startswith(MIMO_TTS_PREFIXES) or (name.startswith("mimo") and "tts" in name):
+            return "text_to_speech"
         if name.startswith(QWEN_ASR_PREFIXES):
             return "speech_to_text"
         if name.startswith(QWEN_TTS_PREFIXES):
@@ -127,7 +140,10 @@ def build_model_runtime_spec(
     batch_tts_supported = True
     warnings: List[str] = []
 
-    if model_type == "text_to_speech" and looks_like_dashscope_tts(model_name, config):
+    if model_type == "text_to_speech" and looks_like_mimo_tts(model_name, config):
+        runtime_provider = MIMO_TTS_PROVIDER
+        api_protocol = "mimo-chat-audio-tts"
+    elif model_type == "text_to_speech" and looks_like_dashscope_tts(model_name, config):
         runtime_provider = DASHSCOPE_TTS_PROVIDER
         api_protocol, batch_tts_supported, warnings = _dashscope_tts_protocol(model_name)
     elif stored_provider == "azure":

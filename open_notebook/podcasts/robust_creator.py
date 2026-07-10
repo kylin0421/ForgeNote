@@ -301,6 +301,7 @@ async def create_podcast_with_repair(
         "outline": result["outline"],
         "transcript": result["transcript"],
         "final_output_file_path": result["final_output_file_path"],
+        "audio_clips": result["audio_clips"],
         "audio_clips_count": len(result["audio_clips"]),
         "output_dir": output_path,
     }

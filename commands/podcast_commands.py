@@ -1,9 +1,10 @@
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, Sequence
 
 from loguru import logger
+from moviepy import AudioFileClip
 from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command
 
@@ -50,6 +51,97 @@ def full_model_dump(model):
         return [full_model_dump(item) for item in model]
     else:
         return model
+
+
+def get_audio_duration_seconds(audio_path: Any) -> float:
+    path = Path(audio_path)
+    if not path.exists():
+        return 0.0
+
+    clip = None
+    try:
+        clip = AudioFileClip(str(path))
+        duration = float(clip.duration or 0)
+        return duration if duration > 0 else 0.0
+    except Exception as exc:
+        logger.warning(f"Failed to read podcast clip duration for {path}: {exc}")
+        return 0.0
+    finally:
+        if clip is not None:
+            clip.close()
+
+
+def build_timestamped_transcript(transcript: Any, audio_clips: Sequence[Any] | None) -> list[dict[str, Any]]:
+    transcript_items = full_model_dump(transcript) or []
+    if not isinstance(transcript_items, list):
+        return []
+
+    clips = list(audio_clips or [])
+    if not clips:
+        return transcript_items
+
+    current_time = 0.0
+    timestamped: list[dict[str, Any]] = []
+    for index, item in enumerate(transcript_items):
+        entry = dict(item) if isinstance(item, dict) else {"dialogue": str(item)}
+        duration = get_audio_duration_seconds(clips[index]) if index < len(clips) else 0.0
+        if duration > 0:
+            start_time = current_time
+            end_time = current_time + duration
+            entry.update(
+                {
+                    "start": start_time,
+                    "end": end_time,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "duration": duration,
+                }
+            )
+            current_time = end_time
+        timestamped.append(entry)
+
+    return timestamped
+
+
+def build_podcast_error_message(
+    error: Exception | str,
+    resolved_model_summary: str = "",
+) -> str:
+    error_msg = str(error)
+    error_lower = error_msg.lower()
+
+    if "invalid json output" in error_lower or "expecting value" in error_lower:
+        error_msg += (
+            "\n\nNOTE: This error commonly occurs with GPT-5 models that use extended thinking. "
+            "The model may be putting all output inside <think> tags, leaving nothing to parse. "
+            "Try using gpt-4o, gpt-4o-mini, or gpt-4-turbo instead in your episode profile."
+        )
+
+    if (
+        "allocationquota.freetieronly" in error_lower
+        or "free quota has been exhausted" in error_lower
+        or ("dashscope" in error_lower and "http 403" in error_lower)
+    ):
+        error_msg += (
+            "\n\nDashScope 配额提示：当前文字转语音模型的免费额度已用完，或账号启用了仅使用免费额度。"
+            "请在 DashScope 控制台开通付费/关闭 FreeTierOnly，或在播客角色配置中切换到仍有额度的语音模型。"
+        )
+
+    if (
+        ("failed to generate speech" in error_lower or "tts=" in resolved_model_summary.lower())
+        and ("http 404" in error_lower or "404 not found" in error_lower)
+    ):
+        error_msg += (
+            "\n\n语音模型提示：当前文字转语音模型无法在所选供应商端点找到。"
+            "请检查播客角色配置里的语音模型是否属于对应 provider，或切换到可用的 TTS 模型。"
+            "例如日志中的 tts=openai/mimo-v2.5-tts 通常表示模型名和 OpenAI 端点不匹配，"
+            "需要改成 OpenAI 支持的 TTS 模型，或把该模型配置到 Xiaomi MiMo provider。"
+        )
+
+    if resolved_model_summary and resolved_model_summary not in error_msg:
+        error_msg += f"\n\n{resolved_model_summary}"
+
+    return error_msg
 
 
 class PodcastGenerationInput(CommandInput):
@@ -309,8 +401,16 @@ async def generate_podcast_command(
         episode.audio_file = (
             str(result.get("final_output_file_path")) if result else None
         )
+        timestamped_transcript = (
+            build_timestamped_transcript(
+                result.get("transcript"),
+                result.get("audio_clips"),
+            )
+            if result and result.get("transcript")
+            else None
+        )
         episode.transcript = {
-            "transcript": full_model_dump(result["transcript"]) if result else None
+            "transcript": timestamped_transcript
         }
         episode.outline = full_model_dump(result["outline"]) if result else None
         await episode.save()
@@ -326,8 +426,8 @@ async def generate_podcast_command(
             audio_file_path=str(result.get("final_output_file_path"))
             if result
             else None,
-            transcript={"transcript": full_model_dump(result["transcript"])}
-            if result.get("transcript")
+            transcript={"transcript": timestamped_transcript}
+            if timestamped_transcript
             else None,
             outline=full_model_dump(result["outline"])
             if result.get("outline")
@@ -342,14 +442,6 @@ async def generate_podcast_command(
         logger.error(f"Podcast generation failed: {e}")
         logger.exception(e)
 
-        error_msg = str(e)
-        if "Invalid json output" in error_msg or "Expecting value" in error_msg:
-            error_msg += (
-                "\n\nNOTE: This error commonly occurs with GPT-5 models that use extended thinking. "
-                "The model may be putting all output inside <think> tags, leaving nothing to parse. "
-                "Try using gpt-4o, gpt-4o-mini, or gpt-4-turbo instead in your episode profile."
-            )
-        if resolved_model_summary and resolved_model_summary not in error_msg:
-            error_msg += f"\n\n{resolved_model_summary}"
-
-        raise RuntimeError(error_msg) from e
+        raise RuntimeError(
+            build_podcast_error_message(e, resolved_model_summary)
+        ) from e

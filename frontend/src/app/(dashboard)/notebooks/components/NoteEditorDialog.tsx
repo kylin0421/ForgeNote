@@ -5,20 +5,24 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { Edit3, Eye, Maximize2, Minimize2, Save } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useCreateNote, useUpdateNote, useNote } from '@/lib/hooks/use-notes'
 import { QUERY_KEYS } from '@/lib/api/query-client'
 import { MarkdownEditor } from '@/components/ui/markdown-editor'
 import { InlineEdit } from '@/components/common/InlineEdit'
-import { cn } from "@/lib/utils";
+import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import {
   LearningAssetPreview,
+  MindMapVisualEditor,
   MarkdownLikeAsset,
   getLearningAssetKindLabel,
   getLearningAssetTypeLabel,
   parseLearningAssetNote,
+  serializeLearningAssetNote,
+  type MindMapMaterial,
   type LearningAssetInteractionEvent,
 } from '@/components/learning/LearningAssetPreview'
 
@@ -52,6 +56,8 @@ interface NoteEditorDialogProps {
   onOpenChange: (open: boolean) => void
   notebookId: string
   note?: { id: string; title: string | null; content: string | null; note_type?: string | null }
+  initialFullscreen?: boolean
+  mindMapMaterials?: MindMapMaterial[]
   onLearningEvent?: (event: LearningAssetInteractionEvent) => void
 }
 
@@ -60,6 +66,8 @@ export function NoteEditorDialog({
   onOpenChange,
   notebookId,
   note,
+  initialFullscreen = false,
+  mindMapMaterials = [],
   onLearningEvent,
 }: NoteEditorDialogProps) {
   const { t } = useTranslation()
@@ -91,6 +99,7 @@ export function NoteEditorDialog({
   const watchTitle = useWatch({ control, name: 'title' })
   const watchContent = useWatch({ control, name: 'content' })
   const [isEditorFullscreen, setIsEditorFullscreen] = useState(false)
+  const [isAssetEditing, setIsAssetEditing] = useState(false)
   const learningAsset = isEditing ? parseLearningAssetNote(watchContent) : null
   const learningAssetKindLabel = learningAsset
     ? getLearningAssetKindLabel(learningAsset.kind, t)
@@ -99,18 +108,31 @@ export function NoteEditorDialog({
     ? getLearningAssetTypeLabel(learningAsset, t)
     : null
   const showLearningAssetPreview = Boolean(learningAsset)
+  const canEditLearningAsset =
+    showLearningAssetPreview &&
+    learningAsset?.kind !== 'quiz' &&
+    learningAsset?.kind !== 'flashcards'
   const currentNoteType = fetchedNote?.note_type ?? note?.note_type ?? null
   const showMarkdownPreview =
     !learningAsset &&
     currentNoteType === 'ai' &&
     isLikelyMarkdownContent(watchContent)
-  const showReadOnlyPreview = showLearningAssetPreview || showMarkdownPreview
+  const showLearningAssetReadOnlyPreview =
+    showLearningAssetPreview && (!isAssetEditing || !canEditLearningAsset)
+  const showReadOnlyPreview = showLearningAssetReadOnlyPreview || showMarkdownPreview
   const [activeHydrationKey, setActiveHydrationKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) {
+      setIsEditorFullscreen(initialFullscreen)
+    }
+  }, [open, initialFullscreen])
 
   useEffect(() => {
     if (!open) {
       reset({ title: '', content: '' })
       setActiveHydrationKey(null)
+      setIsAssetEditing(false)
       return
     }
 
@@ -130,6 +152,7 @@ export function NoteEditorDialog({
     }
 
     setActiveHydrationKey(hydrationKey)
+    setIsAssetEditing(false)
     const title = stripLearningAssetTitlePrefix(source?.title ?? '')
 
     reset({ title, content: sourceContent })
@@ -174,12 +197,14 @@ export function NoteEditorDialog({
     }
 
     reset()
+    setIsAssetEditing(false)
     onOpenChange(false)
   }
 
   const handleClose = () => {
     reset()
     setIsEditorFullscreen(false)
+    setIsAssetEditing(false)
     onOpenChange(false)
   }
 
@@ -189,11 +214,29 @@ export function NoteEditorDialog({
     }
   }
 
+  const handleLearningAssetContentChange = (value?: string) => {
+    if (!learningAsset) {
+      return
+    }
+    const nextAsset = {
+      ...learningAsset,
+      content: value ?? '',
+    }
+    setValue(
+      'content',
+      serializeLearningAssetNote(
+        nextAsset,
+        learningAssetKindLabel ?? getLearningAssetKindLabel(nextAsset.kind, t)
+      ),
+      { shouldDirty: true }
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className={cn(
           "sm:max-w-3xl w-full max-h-[90vh] overflow-hidden p-0 flex flex-col",
-          isEditorFullscreen && "!max-w-screen !max-h-screen border-none w-screen h-screen"
+          isEditorFullscreen && "!h-screen !max-h-none !w-screen !max-w-none !rounded-none !border-0"
         )}>
         <DialogTitle className="sr-only">
           {learningAsset ? '学习资产' : isEditing ? t('sources.editNote') : t('sources.createNote')}
@@ -212,49 +255,102 @@ export function NoteEditorDialog({
           ) : (
             <>
               <div className="border-b px-6 py-4">
-                {showLearningAssetPreview && learningAsset ? (
-                  <div className="min-w-0">
-                    <h2 className="break-words text-xl font-semibold">
-                      {learningAssetKindLabel ? `[${learningAssetKindLabel}] ` : ''}
-                      {watchTitle || learningAsset.title || '未命名学习资产'}
-                    </h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {learningAssetTypeLabel}
-                    </p>
+                <div className="flex min-w-0 items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    {showLearningAssetPreview && learningAsset ? (
+                      <div className="min-w-0">
+                        <h2 className="break-words text-xl font-semibold">
+                          {learningAssetKindLabel ? `[${learningAssetKindLabel}] ` : ''}
+                          {watchTitle || learningAsset.title || '未命名学习资产'}
+                        </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {learningAssetTypeLabel}
+                        </p>
+                      </div>
+                    ) : showMarkdownPreview ? (
+                      <div className="min-w-0">
+                        <h2 className="break-words text-xl font-semibold">
+                          {watchTitle || t('sources.untitledNote')}
+                        </h2>
+                      </div>
+                    ) : (
+                      <InlineEdit
+                        id="note-title"
+                        name="title"
+                        value={watchTitle ?? ''}
+                        onSave={(value) => setValue('title', value || '')}
+                        placeholder={learningAsset ? '添加资产标题' : t('sources.addTitle')}
+                        emptyText={learningAsset ? '未命名学习资产' : t('sources.untitledNote')}
+                        className="text-xl font-semibold"
+                        inputClassName="text-xl font-semibold"
+                      />
+                    )}
                   </div>
-                ) : showMarkdownPreview ? (
-                  <div className="min-w-0">
-                    <h2 className="break-words text-xl font-semibold">
-                      {watchTitle || t('sources.untitledNote')}
-                    </h2>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {canEditLearningAsset && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsAssetEditing((current) => !current)}
+                      >
+                        {isAssetEditing ? (
+                          <Eye className="mr-2 h-4 w-4" />
+                        ) : (
+                          <Edit3 className="mr-2 h-4 w-4" />
+                        )}
+                        {isAssetEditing ? '预览' : '编辑'}
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsEditorFullscreen((current) => !current)}
+                    >
+                      {isEditorFullscreen ? (
+                        <Minimize2 className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Maximize2 className="mr-2 h-4 w-4" />
+                      )}
+                      {isEditorFullscreen ? '退出全屏' : '全屏'}
+                    </Button>
                   </div>
-                ) : (
-                  <InlineEdit
-                    id="note-title"
-                    name="title"
-                    value={watchTitle ?? ''}
-                    onSave={(value) => setValue('title', value || '')}
-                    placeholder={learningAsset ? '添加资产标题' : t('sources.addTitle')}
-                    emptyText={learningAsset ? '未命名学习资产' : t('sources.untitledNote')}
-                    className="text-xl font-semibold"
-                    inputClassName="text-xl font-semibold"
-                  />
-                )}
+                </div>
               </div>
 
               <div className={cn(
                   "min-h-0 flex-1 overflow-y-auto",
                   !isEditorFullscreen && "px-6 py-4")
               }>
-                {showLearningAssetPreview && learningAsset ? (
+                {showLearningAssetReadOnlyPreview && learningAsset ? (
                   <LearningAssetPreview
                     resource={learningAsset}
+                    expanded={isEditorFullscreen}
                     onLearningEvent={onLearningEvent}
                   />
+                ) : showLearningAssetPreview && learningAsset?.kind === 'mind_map' ? (
+                  <MindMapVisualEditor
+                    content={learningAsset.content}
+                    expanded={isEditorFullscreen}
+                    materials={mindMapMaterials}
+                    onChange={handleLearningAssetContentChange}
+                  />
+                ) : showLearningAssetPreview && learningAsset ? (
+                  <div className={cn("min-h-0", !isEditorFullscreen && "rounded-md border")}>
+                    <MarkdownEditor
+                      textareaId="learning-asset-content"
+                      value={learningAsset.content}
+                      onChange={handleLearningAssetContentChange}
+                      height={isEditorFullscreen ? 720 : 520}
+                      placeholder="编辑学习资产内容，保存后会更新预览。"
+                      className="w-full h-full min-h-[520px] overflow-hidden [&_.w-md-editor]:!static [&_.w-md-editor]:!w-full [&_.w-md-editor-content]:overflow-y-auto"
+                    />
+                  </div>
                 ) : showMarkdownPreview ? (
                   <MarkdownLikeAsset
                     content={watchContent || ''}
-                    compactHeight="max-h-[calc(90vh-220px)]"
+                    compactHeight={isEditorFullscreen ? 'h-[calc(100vh-210px)] max-h-none' : 'max-h-[calc(90vh-220px)]'}
                   />
                 ) : (
                   <>
@@ -267,7 +363,7 @@ export function NoteEditorDialog({
                           textareaId="note-content"
                           value={field.value}
                           onChange={field.onChange}
-                          height={420}
+                          height={isEditorFullscreen ? 720 : 420}
                           placeholder={t('sources.writeNotePlaceholder')}
                           className={cn(
                               "w-full h-full min-h-[420px] overflow-hidden [&_.w-md-editor]:!static [&_.w-md-editor]:!w-full [&_.w-md-editor]:!h-full [&_.w-md-editor-content]:overflow-y-auto",
@@ -294,6 +390,7 @@ export function NoteEditorDialog({
                 type="submit"
                 disabled={isSaving || (isEditing && noteLoading)}
               >
+                <Save className="mr-2 h-4 w-4" />
                 {isSaving
                   ? isEditing ? `${t('common.saving')}...` : `${t('common.creating')}...`
                   : learningAsset

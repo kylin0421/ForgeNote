@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import {
+  ArrowLeft,
   Bot,
   ChevronDown,
   ChevronRight,
@@ -11,27 +12,41 @@ import {
   Code2,
   FileText,
   Headphones,
+  ListMusic,
   ListChecks,
+  Loader2,
+  Maximize2,
   MoreVertical,
+  Pause,
+  Play,
   Network,
   Plus,
+  Repeat,
+  Rewind,
   Search,
+  FastForward,
   Sparkles,
   StickyNote,
+  TimerReset,
   Trash2,
   User,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { ContextToggle } from '@/components/common/ContextToggle'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -42,6 +57,7 @@ import {
   getLearningAssetKindLabel,
   getVisibleLearningAssetContent,
   parseLearningAssetNote,
+  type MindMapMaterial,
 } from '@/components/learning/LearningAssetPreview'
 import { chatApi } from '@/lib/api/chat'
 import { commandsApi } from '@/lib/api/commands'
@@ -51,16 +67,18 @@ import { QUERY_KEYS } from '@/lib/api/query-client'
 import { useDeleteNote } from '@/lib/hooks/use-notes'
 import {
   useEpisodeProfiles,
+  useDeletePodcastEpisode,
   useGeneratePodcast,
   usePodcastEpisodes,
   useSpeakerProfiles,
 } from '@/lib/hooks/use-podcasts'
+import { useDeleteSource } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
 import { cn } from '@/lib/utils'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import type { NoteResponse, SourceListResponse } from '@/lib/types/api'
-import type { LearningOutputKind } from '@/lib/types/learning'
+import type { LearningOutputKind, LearningResource } from '@/lib/types/learning'
 import {
   ACTIVE_EPISODE_STATUSES,
   FAILED_EPISODE_STATUSES,
@@ -77,6 +95,7 @@ import {
   getDefaultLearningAssetDetail,
   type LearningAssetDetailConfig,
   type LearningAssetGenerationConfig,
+  type LearningAssetMaterialOption,
   type LearningProfileOptions,
 } from './LearningAssetGenerateDialog'
 import { NoteEditorDialog } from './NoteEditorDialog'
@@ -177,13 +196,17 @@ const STUDIO_ASSET_ICONS: Record<StudioAssetKind, typeof FileText> = {
 }
 
 const STUDIO_ASSET_STYLES: Record<StudioAssetKind, string> = {
-  study_guide: 'bg-blue-50 text-blue-800 border-blue-100 dark:bg-blue-950/30 dark:text-blue-200',
-  quiz: 'bg-cyan-50 text-cyan-800 border-cyan-100 dark:bg-cyan-950/30 dark:text-cyan-200',
-  flashcards: 'bg-rose-50 text-rose-800 border-rose-100 dark:bg-rose-950/30 dark:text-rose-200',
-  mind_map: 'bg-fuchsia-50 text-fuchsia-800 border-fuchsia-100 dark:bg-fuchsia-950/30 dark:text-fuchsia-200',
-  reading: 'bg-amber-50 text-amber-800 border-amber-100 dark:bg-amber-950/30 dark:text-amber-200',
-  code_lab: 'bg-violet-50 text-violet-800 border-violet-100 dark:bg-violet-950/30 dark:text-violet-200',
-  podcast: 'bg-indigo-50 text-indigo-800 border-indigo-100 dark:bg-indigo-950/30 dark:text-indigo-200',
+  study_guide: 'border-sky-300 bg-sky-50 hover:border-sky-500 hover:bg-sky-100 dark:border-sky-500/70 dark:bg-sky-950/35 dark:hover:border-sky-400 dark:hover:bg-sky-950/50',
+  quiz: 'border-emerald-300 bg-emerald-50 hover:border-emerald-500 hover:bg-emerald-100 dark:border-emerald-500/70 dark:bg-emerald-950/35 dark:hover:border-emerald-400 dark:hover:bg-emerald-950/50',
+  flashcards: 'border-amber-300 bg-amber-50 hover:border-amber-500 hover:bg-amber-100 dark:border-amber-500/70 dark:bg-amber-950/35 dark:hover:border-amber-400 dark:hover:bg-amber-950/50',
+  mind_map: 'border-violet-300 bg-violet-50 hover:border-violet-500 hover:bg-violet-100 dark:border-violet-500/70 dark:bg-violet-950/35 dark:hover:border-violet-400 dark:hover:bg-violet-950/50',
+  reading: 'border-rose-300 bg-rose-50 hover:border-rose-500 hover:bg-rose-100 dark:border-rose-500/70 dark:bg-rose-950/35 dark:hover:border-rose-400 dark:hover:bg-rose-950/50',
+  code_lab: 'border-cyan-300 bg-cyan-50 hover:border-cyan-500 hover:bg-cyan-100 dark:border-cyan-500/70 dark:bg-cyan-950/35 dark:hover:border-cyan-400 dark:hover:bg-cyan-950/50',
+  podcast: 'border-indigo-300 bg-indigo-50 hover:border-indigo-500 hover:bg-indigo-100 dark:border-indigo-500/70 dark:bg-indigo-950/35 dark:hover:border-indigo-400 dark:hover:bg-indigo-950/50',
+}
+
+function getGenerationLanguageFromLocale(language?: string) {
+  return language?.startsWith('zh') ? '中文' : 'English'
 }
 
 const DEFAULT_ASSET_DETAILS = LEARNING_ASSET_OPTIONS.reduce(
@@ -222,18 +245,333 @@ function getPodcastStatusClassName(status?: string | null) {
   return 'border-muted bg-muted/40 text-muted-foreground'
 }
 
-function NotebookPodcastAssetCard({ episode }: { episode: PodcastEpisode }) {
+type PodcastTranscriptEntry = {
+  speaker?: string
+  dialogue?: string
+  start?: number
+  end?: number
+  start_time?: number
+  end_time?: number
+}
+
+function extractPodcastTranscriptEntries(transcript: unknown): PodcastTranscriptEntry[] {
+  if (!transcript) {
+    return []
+  }
+  if (Array.isArray(transcript)) {
+    return transcript.filter((entry): entry is PodcastTranscriptEntry => (
+      Boolean(entry) && typeof entry === 'object'
+    ))
+  }
+  if (typeof transcript === 'object' && 'transcript' in transcript) {
+    return extractPodcastTranscriptEntries(
+      (transcript as { transcript?: unknown }).transcript
+    )
+  }
+  return []
+}
+
+function formatPodcastTime(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0:00'
+  }
+  const totalSeconds = Math.floor(value)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+function formatPodcastEpisodeDate(value?: string | null, language = 'zh-CN') {
+  if (!value) {
+    return '生成时间未知'
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString(language.startsWith('zh') ? 'zh-CN' : language, {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function buildPodcastEpisodeName(notebookName?: string, sequence = 1) {
+  return `${notebookName || '学习记录'} 播客 ${sequence}`
+}
+
+type PodcastSubtitleLine = {
+  id: string
+  entryIndex: number
+  text: string
+  start: number
+  end: number
+  speaker?: string
+}
+
+function getExplicitTranscriptTime(value: unknown) {
+  const time = Number(value)
+  return Number.isFinite(time) && time >= 0 ? time : null
+}
+
+function getSubtitleLineWeight(text: string) {
+  const cjkCount = (text.match(/[\u3400-\u9fff]/g) || []).length
+  const wordCount = (text.match(/[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)?/g) || []).length
+  const punctuationCount = (text.match(/[,.!?;:，。！？；：、]/g) || []).length
+
+  return Math.max(1, cjkCount * 0.62 + wordCount + punctuationCount * 0.45 + 0.8)
+}
+
+function splitPodcastDialogueLines(dialogue?: string) {
+  const text = (dialogue || '').replace(/\r\n/g, '\n').trim()
+  if (!text) {
+    return []
+  }
+
+  const hardLines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const sourceLines = hardLines.length > 1
+    ? hardLines
+    : (text.match(/[^.!?。！？]+[.!?。！？]?/g) ?? [text]).map((line) => line.trim()).filter(Boolean)
+
+  return sourceLines.flatMap((line) => {
+    const bilingualMatch = line.match(/^([A-Za-z0-9\s,'"!?;:().\-]+)([\u3400-\u9fff].*)$/)
+    if (!bilingualMatch) {
+      return [line]
+    }
+    return [bilingualMatch[1].trim(), bilingualMatch[2].trim()].filter(Boolean)
+  })
+}
+
+function buildPodcastSubtitleLines(
+  entries: PodcastTranscriptEntry[],
+  duration: number
+): PodcastSubtitleLine[] {
+  const segments = entries.map((entry, entryIndex) => {
+    const lines = splitPodcastDialogueLines(entry.dialogue)
+    const start = getExplicitTranscriptTime(entry.start ?? entry.start_time)
+    const end = getExplicitTranscriptTime(entry.end ?? entry.end_time)
+    return {
+      entry,
+      entryIndex,
+      lines,
+      start,
+      end,
+      weight: lines.reduce((total, line) => total + getSubtitleLineWeight(line), 0),
+    }
+  }).filter((segment) => segment.lines.length > 0)
+
+  const hasCompleteTiming = segments.every((segment) => (
+    segment.start !== null &&
+    segment.end !== null &&
+    segment.end > segment.start
+  ))
+
+  if (hasCompleteTiming) {
+    return segments.flatMap((segment) => {
+      const segmentDuration = Math.max(0.25, (segment.end ?? 0) - (segment.start ?? 0))
+      const totalWeight = Math.max(1, segment.weight)
+      let cursor = segment.start ?? 0
+      return segment.lines.map((text, lineIndex) => {
+        const lineWeight = getSubtitleLineWeight(text)
+        const lineStart = cursor
+        const isLastLine = lineIndex === segment.lines.length - 1
+        const lineEnd = isLastLine
+          ? (segment.end ?? lineStart + 0.25)
+          : Math.min((segment.end ?? lineStart + 0.25), lineStart + (segmentDuration * lineWeight) / totalWeight)
+        cursor = lineEnd
+        return {
+          id: `${segment.entryIndex}-${lineIndex}-${text.slice(0, 16)}`,
+          entryIndex: segment.entryIndex,
+          text,
+          start: lineStart,
+          end: Math.max(lineStart + 0.1, lineEnd),
+          speaker: segment.entry.speaker,
+        }
+      })
+    })
+  }
+
+  const flattenedLines = segments.flatMap((segment) =>
+    segment.lines.map((text, lineIndex) => ({
+      entry: segment.entry,
+      entryIndex: segment.entryIndex,
+      lineIndex,
+      text,
+      weight: getSubtitleLineWeight(text),
+    }))
+  )
+  const timelineDuration = duration > 0 ? duration : flattenedLines.length
+  const totalWeight = Math.max(1, flattenedLines.reduce((total, line) => total + line.weight, 0))
+  let cursor = 0
+
+  return flattenedLines.map((line, index) => {
+    const lineStart = cursor
+    const isLastLine = index === flattenedLines.length - 1
+    const lineEnd = isLastLine
+      ? timelineDuration
+      : Math.min(timelineDuration, lineStart + (timelineDuration * line.weight) / totalWeight)
+    cursor = lineEnd
+    return {
+      id: `${line.entryIndex}-${line.lineIndex}-${line.text.slice(0, 16)}`,
+      entryIndex: line.entryIndex,
+      text: line.text,
+      start: lineStart,
+      end: Math.max(lineStart + 0.1, lineEnd),
+      speaker: line.entry.speaker,
+    }
+  })
+}
+
+function getActiveSubtitleLineIndex(
+  lines: PodcastSubtitleLine[],
+  currentTime: number,
+  duration: number
+) {
+  if (lines.length === 0) {
+    return -1
+  }
+  const activeIndex = lines.findIndex((line) => currentTime >= line.start && currentTime < line.end)
+  if (activeIndex !== -1) {
+    return activeIndex
+  }
+  return Math.min(lines.length - 1, Math.max(0, Math.floor((currentTime / Math.max(duration, 1)) * lines.length)))
+}
+
+const PODCAST_PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2]
+
+type PodcastSubtitleMode = 'single_line' | 'bilingual' | 'none'
+
+type PodcastPlaybackSnapshot = {
+  currentTime?: number
+  duration?: number
+  playbackRate?: number
+  loopPlayback?: boolean
+  sleepTimerMinutes?: number
+}
+
+type NotebookPodcastAssetCardProps = {
+  episode: PodcastEpisode
+  displayMode?: 'card' | 'studio'
+  onOpenStudio?: (episode: PodcastEpisode) => void
+  onBack?: () => void
+  onDelete?: (episode: PodcastEpisode) => void
+  playbackSnapshot?: PodcastPlaybackSnapshot
+  onPlaybackChange?: (patch: PodcastPlaybackSnapshot) => void
+  onQueueAdd?: (episode: PodcastEpisode) => void
+  onQueueRemove?: (episodeId: string) => void
+  onQueueClear?: () => void
+  queueEpisodes?: PodcastEpisode[]
+  queuePosition?: number
+}
+
+function NotebookPodcastAssetCard({
+  episode,
+  displayMode = 'card',
+  onOpenStudio,
+  onBack,
+  onDelete,
+  playbackSnapshot,
+  onPlaybackChange,
+  onQueueAdd,
+  onQueueRemove,
+  onQueueClear,
+  queueEpisodes = [],
+  queuePosition,
+}: NotebookPodcastAssetCardProps) {
   const { language } = useTranslation()
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const playbackSnapshotRef = useRef<PodcastPlaybackSnapshot | undefined>(playbackSnapshot)
+  const pendingInitialTimeRef = useRef(playbackSnapshot?.currentTime ?? 0)
   const [audioSrc, setAudioSrc] = useState<string | undefined>()
   const [audioError, setAudioError] = useState<string | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [duration, setDuration] = useState(playbackSnapshot?.duration ?? 0)
+  const [currentTime, setCurrentTime] = useState(playbackSnapshot?.currentTime ?? 0)
+  const [playbackRate, setPlaybackRate] = useState(playbackSnapshot?.playbackRate ?? 1)
+  const [loopPlayback, setLoopPlayback] = useState(playbackSnapshot?.loopPlayback ?? false)
+  const [sleepTimerMinutes, setSleepTimerMinutes] = useState(playbackSnapshot?.sleepTimerMinutes ?? 0)
+  const [showSubtitles, setShowSubtitles] = useState(true)
+  const subtitleLineRefs = useRef<Array<HTMLButtonElement | null>>([])
   const status = episode.job_status ?? 'unknown'
   const isActive = ACTIVE_EPISODE_STATUSES.includes(status)
   const isFailed = FAILED_EPISODE_STATUSES.includes(status)
+  const transcriptEntries = useMemo(
+    () => extractPodcastTranscriptEntries(episode.transcript),
+    [episode.transcript]
+  )
+  const subtitleLines = useMemo(
+    () => buildPodcastSubtitleLines(transcriptEntries, duration),
+    [duration, transcriptEntries]
+  )
+  const activeSubtitleLineIndex = useMemo(
+    () => getActiveSubtitleLineIndex(subtitleLines, currentTime, duration),
+    [currentTime, duration, subtitleLines]
+  )
+
+  useEffect(() => {
+    playbackSnapshotRef.current = playbackSnapshot
+  }, [playbackSnapshot])
+
+  const publishPlaybackSnapshot = useCallback((patch: PodcastPlaybackSnapshot) => {
+    onPlaybackChange?.({
+      currentTime,
+      duration,
+      playbackRate,
+      loopPlayback,
+      sleepTimerMinutes,
+      ...patch,
+    })
+  }, [currentTime, duration, loopPlayback, onPlaybackChange, playbackRate, sleepTimerMinutes])
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate
+    }
+  }, [audioSrc, playbackRate])
+
+  useEffect(() => {
+    if (displayMode !== 'studio' || !showSubtitles || activeSubtitleLineIndex < 0) {
+      return
+    }
+    subtitleLineRefs.current[activeSubtitleLineIndex]?.scrollIntoView({
+      block: 'center',
+      behavior: 'smooth',
+    })
+  }, [activeSubtitleLineIndex, displayMode, showSubtitles])
+
+  useEffect(() => {
+    if (sleepTimerMinutes <= 0) {
+      return
+    }
+    const timer = window.setTimeout(() => {
+      audioRef.current?.pause()
+      setIsPlaying(false)
+      setSleepTimerMinutes(0)
+    }, sleepTimerMinutes * 60 * 1000)
+    return () => window.clearTimeout(timer)
+  }, [sleepTimerMinutes])
 
   useEffect(() => {
     let revokeUrl: string | undefined
+    const snapshot = playbackSnapshotRef.current
+    const initialCurrentTime = snapshot?.currentTime ?? 0
+    const initialDuration = snapshot?.duration ?? 0
+    const initialPlaybackRate = snapshot?.playbackRate ?? 1
+    const initialLoopPlayback = snapshot?.loopPlayback ?? false
+    const initialSleepTimerMinutes = snapshot?.sleepTimerMinutes ?? 0
+    pendingInitialTimeRef.current = initialCurrentTime
     setAudioError(null)
     setAudioSrc(undefined)
+    setIsPlaying(false)
+    setDuration(initialDuration)
+    setCurrentTime(initialCurrentTime)
+    setPlaybackRate(initialPlaybackRate)
+    setLoopPlayback(initialLoopPlayback)
+    setSleepTimerMinutes(initialSleepTimerMinutes)
 
     const loadAudio = async () => {
       if (!episode.audio_url && !episode.audio_file) {
@@ -286,43 +624,508 @@ function NotebookPodcastAssetCard({ episode }: { episode: PodcastEpisode }) {
         URL.revokeObjectURL(revokeUrl)
       }
     }
-  }, [episode.audio_file, episode.audio_url])
+  }, [episode.audio_file, episode.audio_url, episode.id])
 
-  const createdLabel = episode.created
-    ? formatDistanceToNow(new Date(episode.created), {
-        addSuffix: true,
-        locale: getDateLocale(language),
-      })
-    : null
+  const handleTogglePlay = async () => {
+    const audio = audioRef.current
+    if (!audio) return
+    if (audio.paused) {
+      try {
+        await audio.play()
+        setIsPlaying(true)
+      } catch (error) {
+        console.error('Unable to play notebook podcast audio', error)
+        setAudioError('音频暂不可播放')
+      }
+    } else {
+      audio.pause()
+      setIsPlaying(false)
+    }
+  }
+
+  const seekBy = (seconds: number) => {
+    const audio = audioRef.current
+    if (!audio) return
+    const nextTime = Math.min(Math.max(0, audio.currentTime + seconds), duration || audio.duration || 0)
+    audio.currentTime = nextTime
+    setCurrentTime(nextTime)
+    publishPlaybackSnapshot({ currentTime: nextTime, duration: audio.duration || duration })
+  }
+
+  const handleSeek = (value: string) => {
+    const audio = audioRef.current
+    const nextTime = Number(value)
+    setCurrentTime(nextTime)
+    if (audio) {
+      audio.currentTime = nextTime
+    }
+    publishPlaybackSnapshot({ currentTime: nextTime, duration: audio?.duration || duration })
+  }
+
+  const handlePlaybackRateChange = (value: string) => {
+    const nextRate = Number(value)
+    setPlaybackRate(nextRate)
+    if (audioRef.current) {
+      audioRef.current.playbackRate = nextRate
+    }
+    publishPlaybackSnapshot({ playbackRate: nextRate })
+  }
+
+  const jumpToSubtitleLine = (index: number) => {
+    const line = subtitleLines[index]
+    const audio = audioRef.current
+    if (!line || !audio) {
+      return
+    }
+    audio.currentTime = line.start
+    setCurrentTime(line.start)
+    publishPlaybackSnapshot({ currentTime: line.start, duration: audio.duration || duration })
+  }
+
+  const handleLoopPlaybackChange = (nextLoopPlayback: boolean) => {
+    setLoopPlayback(nextLoopPlayback)
+    publishPlaybackSnapshot({ loopPlayback: nextLoopPlayback })
+  }
+
+  const handleSleepTimerChange = (nextSleepTimerMinutes: number) => {
+    setSleepTimerMinutes(nextSleepTimerMinutes)
+    publishPlaybackSnapshot({ sleepTimerMinutes: nextSleepTimerMinutes })
+  }
+
+  const audioElement = audioSrc ? (
+    <audio
+      ref={audioRef}
+      preload="metadata"
+      src={audioSrc}
+      loop={loopPlayback}
+      onLoadedMetadata={(event) => {
+        event.currentTarget.playbackRate = playbackRate
+        const nextDuration = event.currentTarget.duration || 0
+        const initialTime = Math.min(
+          Math.max(0, pendingInitialTimeRef.current),
+          nextDuration || pendingInitialTimeRef.current
+        )
+        if (initialTime > 0) {
+          event.currentTarget.currentTime = initialTime
+        }
+        setDuration(nextDuration)
+        setCurrentTime(initialTime)
+        publishPlaybackSnapshot({ currentTime: initialTime, duration: nextDuration })
+      }}
+      onTimeUpdate={(event) => {
+        const nextTime = event.currentTarget.currentTime || 0
+        setCurrentTime(nextTime)
+        publishPlaybackSnapshot({
+          currentTime: nextTime,
+          duration: event.currentTarget.duration || duration,
+        })
+      }}
+      onPlay={() => setIsPlaying(true)}
+      onPause={() => setIsPlaying(false)}
+      onEnded={() => setIsPlaying(false)}
+      className="sr-only"
+    />
+  ) : null
+
+  if (displayMode === 'studio') {
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-background text-foreground">
+        {audioElement}
+        <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
+            onClick={onBack}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            返回
+          </Button>
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-xs tracking-wide text-muted-foreground">播客</p>
+            <h3 className="truncate text-base font-semibold">{episode.name}</h3>
+          </div>
+          {onDelete ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="shrink-0 text-muted-foreground hover:bg-muted hover:text-destructive"
+              onClick={() => onDelete(episode)}
+              aria-label="删除播客"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          ) : <span className="h-9 w-9 shrink-0" />}
+        </header>
+
+        {audioSrc ? (
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <section className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-6 py-4">
+              <div className="mb-5 flex h-20 w-20 shrink-0 items-center justify-center rounded-full border bg-muted">
+                <Headphones className="h-9 w-9" />
+              </div>
+              {showSubtitles && subtitleLines.length > 0 ? (
+                <div className="min-h-0 w-full max-w-4xl flex-1 overflow-y-auto py-10">
+                  <div className="space-y-4">
+                    {subtitleLines.map((line, index) => {
+                      const active = index === activeSubtitleLineIndex
+                      return (
+                        <button
+                          key={line.id}
+                          ref={(element) => {
+                            subtitleLineRefs.current[index] = element
+                          }}
+                          type="button"
+                          onClick={() => jumpToSubtitleLine(index)}
+                          className={cn(
+                            'block w-full rounded-md px-4 py-2 text-center text-2xl font-semibold leading-relaxed transition-all',
+                            active
+                              ? 'scale-[1.02] text-foreground opacity-100'
+                              : 'text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground'
+                          )}
+                        >
+                          {line.text}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <p className="max-w-3xl rounded-lg px-4 py-3 text-center text-2xl font-semibold leading-relaxed text-muted-foreground">
+                  {showSubtitles ? '当前播客没有可显示字幕' : '字幕已隐藏'}
+                </p>
+              )}
+            </section>
+
+            <footer className="shrink-0 space-y-3 border-t bg-background px-5 py-3">
+              <input
+                type="range"
+                min={0}
+                max={Math.max(duration, currentTime, 1)}
+                step={0.1}
+                value={Math.min(currentTime, Math.max(duration, currentTime, 1))}
+                onChange={(event) => handleSeek(event.target.value)}
+                className="w-full accent-primary"
+                aria-label="播客播放进度"
+              />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{formatPodcastTime(currentTime)}</span>
+                <span>{formatPodcastTime(duration)}</span>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 rounded-full"
+                  onClick={() => seekBy(-15)}
+                  aria-label="后退 15 秒"
+                >
+                  <Rewind className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  className="h-14 w-14 rounded-full"
+                  onClick={handleTogglePlay}
+                  aria-label={isPlaying ? '暂停播客' : '播放播客'}
+                >
+                  {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6 pl-1" />}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 rounded-full"
+                  onClick={() => seekBy(15)}
+                  aria-label="前进 15 秒"
+                >
+                  <FastForward className="h-4 w-4" />
+                </Button>
+                <Select value={String(playbackRate)} onValueChange={handlePlaybackRateChange}>
+                  <SelectTrigger className="h-10 w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PODCAST_PLAYBACK_RATES.map((rate) => (
+                      <SelectItem key={rate} value={String(rate)}>
+                        {rate}x
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 rounded-full"
+                      aria-label="播放列表和定时"
+                      title="播放列表和定时"
+                    >
+                      <ListMusic className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    {onQueueAdd && (
+                      <DropdownMenuItem onClick={() => onQueueAdd(episode)}>
+                        <ListMusic className="mr-2 h-4 w-4" />
+                        {queuePosition ? `队列第 ${queuePosition} 个` : '添加到播放队列'}
+                      </DropdownMenuItem>
+                    )}
+                    {queueEpisodes.length > 0 && (
+                      <>
+                        <DropdownMenuItem disabled className="text-xs">
+                          播放队列
+                        </DropdownMenuItem>
+                        {queueEpisodes.map((queuedEpisode, index) => (
+                          <DropdownMenuItem
+                            key={queuedEpisode.id}
+                            onClick={() => onQueueRemove?.(queuedEpisode.id)}
+                            className="flex items-center justify-between gap-2"
+                          >
+                            <span className="min-w-0 truncate">
+                              {index + 1}. {queuedEpisode.name}
+                            </span>
+                            <X className="h-3.5 w-3.5 shrink-0" />
+                          </DropdownMenuItem>
+                        ))}
+                        <DropdownMenuItem onClick={onQueueClear}>
+                          清空队列
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    <DropdownMenuItem onClick={() => handleLoopPlaybackChange(!loopPlayback)}>
+                      <Repeat className="mr-2 h-4 w-4" />
+                      {loopPlayback ? '取消循环' : '循环播放'}
+                    </DropdownMenuItem>
+                    {[15, 30, 60].map((minutes) => (
+                      <DropdownMenuItem key={minutes} onClick={() => handleSleepTimerChange(minutes)}>
+                        <TimerReset className="mr-2 h-4 w-4" />
+                        {minutes} 分钟后停止
+                      </DropdownMenuItem>
+                    ))}
+                    {sleepTimerMinutes > 0 && (
+                      <DropdownMenuItem onClick={() => handleSleepTimerChange(0)}>
+                        <TimerReset className="mr-2 h-4 w-4" />
+                        取消定时
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <label className="flex h-10 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm text-muted-foreground">
+                  <Checkbox
+                    checked={showSubtitles}
+                    onCheckedChange={(checked) => setShowSubtitles(checked === true)}
+                  />
+                  <span>字幕</span>
+                </label>
+              </div>
+            </footer>
+          </main>
+        ) : audioError ? (
+          <p className="p-6 text-sm text-destructive">{audioError}</p>
+        ) : (
+          <p className="p-6 text-sm text-muted-foreground">
+            {isActive ? '播客正在生成，完成后这里会出现播放器。' : episode.error_message || '播客暂不可播放'}
+          </p>
+        )}
+      </div>
+    )
+  }
 
   return (
-    <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 dark:border-indigo-900 dark:bg-indigo-950/20">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Headphones className="h-4 w-4 shrink-0 text-indigo-700 dark:text-indigo-300" />
-            <Badge variant="outline" className="text-xs">
-              播客
-            </Badge>
-            <Badge variant="outline" className={cn('text-xs', getPodcastStatusClassName(status))}>
-              {getPodcastStatusLabel(status)}
-            </Badge>
+    <div className="overflow-hidden rounded-lg border bg-background shadow-sm">
+      <div className="border-b bg-muted/30 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border bg-background text-primary shadow-sm">
+              <Headphones className="h-6 w-6" />
+            </div>
+            <div className="min-w-0 space-y-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <Badge variant="outline" className="bg-background text-xs">
+                  播客
+                </Badge>
+                <Badge variant="outline" className={cn('text-xs', getPodcastStatusClassName(status))}>
+                  {getPodcastStatusLabel(status)}
+                </Badge>
+              </div>
+              <h4 className="break-words text-sm font-semibold leading-5">{episode.name}</h4>
+              <p className="text-xs text-muted-foreground">
+                生成时间：{formatPodcastEpisodeDate(episode.created, language)}
+              </p>
+            </div>
           </div>
-          <h4 className="break-all text-sm font-medium">{episode.name}</h4>
+          <div className="flex shrink-0 items-center gap-1">
+            {audioSrc && onOpenStudio ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => onOpenStudio(episode)}
+                aria-label="在 Studio 中展开播放器"
+                title="在 Studio 中展开播放器"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
+            ) : null}
+            {onDelete ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                onClick={() => onDelete(episode)}
+                aria-label="删除播客"
+                title="删除播客"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            ) : null}
+          </div>
         </div>
-        {createdLabel ? (
-          <span className="shrink-0 text-xs text-muted-foreground">{createdLabel}</span>
-        ) : null}
       </div>
 
       {audioSrc ? (
-        <audio controls preload="none" src={audioSrc} className="w-full" />
+        <div className="space-y-2 p-3">
+          {audioElement}
+          <input
+            type="range"
+            min={0}
+            max={Math.max(duration, currentTime, 1)}
+            step={0.1}
+            value={Math.min(currentTime, Math.max(duration, currentTime, 1))}
+            onChange={(event) => handleSeek(event.target.value)}
+            className="w-full accent-indigo-600"
+            aria-label="播客播放进度"
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-full"
+              onClick={() => seekBy(-15)}
+              aria-label="后退 15 秒"
+            >
+              <Rewind className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-full"
+              onClick={handleTogglePlay}
+              aria-label={isPlaying ? '暂停播客' : '播放播客'}
+            >
+              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 pl-0.5" />}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-full"
+              onClick={() => seekBy(15)}
+              aria-label="前进 15 秒"
+            >
+              <FastForward className="h-4 w-4" />
+            </Button>
+            <Select value={String(playbackRate)} onValueChange={handlePlaybackRateChange}>
+              <SelectTrigger className="h-8 w-20 shrink-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PODCAST_PLAYBACK_RATES.map((rate) => (
+                  <SelectItem key={rate} value={String(rate)}>
+                    {rate}x
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  aria-label="播放列表和定时"
+                  title="播放列表和定时"
+                >
+                  <ListMusic className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {onQueueAdd && (
+                  <DropdownMenuItem onClick={() => onQueueAdd(episode)}>
+                    <ListMusic className="mr-2 h-4 w-4" />
+                    {queuePosition ? `队列第 ${queuePosition} 个` : '添加到播放队列'}
+                  </DropdownMenuItem>
+                )}
+                {queueEpisodes.length > 0 && (
+                  <>
+                    <DropdownMenuItem disabled className="text-xs">
+                      播放队列
+                    </DropdownMenuItem>
+                    {queueEpisodes.map((queuedEpisode, index) => (
+                      <DropdownMenuItem
+                        key={queuedEpisode.id}
+                        onClick={() => onQueueRemove?.(queuedEpisode.id)}
+                        className="flex items-center justify-between gap-2"
+                      >
+                        <span className="min-w-0 truncate">
+                          {index + 1}. {queuedEpisode.name}
+                        </span>
+                        <X className="h-3.5 w-3.5 shrink-0" />
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuItem onClick={onQueueClear}>
+                      清空队列
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuItem onClick={() => handleLoopPlaybackChange(!loopPlayback)}>
+                  <Repeat className="mr-2 h-4 w-4" />
+                  {loopPlayback ? '取消循环' : '循环播放'}
+                </DropdownMenuItem>
+                {[15, 30, 60].map((minutes) => (
+                  <DropdownMenuItem key={minutes} onClick={() => handleSleepTimerChange(minutes)}>
+                    <TimerReset className="mr-2 h-4 w-4" />
+                    {minutes} 分钟后停止
+                  </DropdownMenuItem>
+                ))}
+                {sleepTimerMinutes > 0 && (
+                  <DropdownMenuItem onClick={() => handleSleepTimerChange(0)}>
+                    <TimerReset className="mr-2 h-4 w-4" />
+                    取消定时
+                  </DropdownMenuItem>
+                )}
+                {onDelete && (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => onDelete(episode)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    删除播客
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div className="ml-auto flex min-w-16 justify-end text-[11px] tabular-nums text-muted-foreground">
+              {formatPodcastTime(currentTime)}
+            </div>
+          </div>
+        </div>
       ) : audioError ? (
-        <p className="text-sm text-destructive">{audioError}</p>
+        <p className="p-3 text-sm text-destructive">{audioError}</p>
       ) : isActive ? (
-        <p className="text-sm text-muted-foreground">播客正在生成，完成后这里会出现播放器。</p>
+        <p className="p-3 text-sm text-muted-foreground">播客正在生成，完成后这里会出现播放器。</p>
       ) : isFailed ? (
-        <p className="text-sm text-destructive">
+        <p className="p-3 text-sm text-destructive">
           {episode.error_message || '播客生成失败'}
         </p>
       ) : null}
@@ -360,6 +1163,7 @@ export function NotesColumn({
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [detailAssetKind, setDetailAssetKind] = useState<LearningOutputKind | null>(null)
   const [editingNote, setEditingNote] = useState<NoteResponse | null>(null)
+  const [openNoteFullscreen, setOpenNoteFullscreen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null)
   const [assetDetails, setAssetDetails] =
@@ -369,7 +1173,19 @@ export function NotesColumn({
   const [handledAssetJobIds, setHandledAssetJobIds] = useState<string[]>([])
   const [podcastJobs, setPodcastJobs] = useState<PodcastJobTracker[]>([])
   const [handledPodcastJobIds, setHandledPodcastJobIds] = useState<string[]>([])
+  const [podcastLanguage, setPodcastLanguage] = useState('中文')
+  const [podcastSubtitleMode, setPodcastSubtitleMode] = useState<PodcastSubtitleMode>('single_line')
+  const [podcastEpisodeName, setPodcastEpisodeName] = useState('')
+  const [podcastGenerateDialogOpen, setPodcastGenerateDialogOpen] = useState(false)
+  const [podcastMaterialLibraryExpanded, setPodcastMaterialLibraryExpanded] = useState(false)
+  const [podcastMaterialSearch, setPodcastMaterialSearch] = useState('')
+  const [selectedPodcastMaterialIds, setSelectedPodcastMaterialIds] = useState<string[]>([])
+  const [studioPodcastEpisode, setStudioPodcastEpisode] = useState<PodcastEpisode | null>(null)
+  const [podcastPlaybackById, setPodcastPlaybackById] = useState<Record<string, PodcastPlaybackSnapshot>>({})
+  const [podcastQueue, setPodcastQueue] = useState<string[]>([])
   const deleteNote = useDeleteNote()
+  const deleteSource = useDeleteSource()
+  const deletePodcastEpisode = useDeletePodcastEpisode()
   const episodeProfilesQuery = useEpisodeProfiles()
   const episodeProfiles = useMemo(
     () => episodeProfilesQuery.data ?? [],
@@ -381,6 +1197,26 @@ export function NotesColumn({
     [speakerProfilesQuery.data]
   )
   const generatePodcast = useGeneratePodcast()
+  useEffect(() => {
+    const nextLanguage = getGenerationLanguageFromLocale(language)
+    setPodcastLanguage((current) => (
+      current === '中文' || current === 'English' ? nextLanguage : current
+    ))
+    setAssetDetails((current) => {
+      let changed = false
+      const next = { ...current }
+      for (const kind of Object.keys(next) as LearningOutputKind[]) {
+        const currentLanguage = next[kind].language
+        if (currentLanguage === '中文' || currentLanguage === 'English') {
+          if (currentLanguage !== nextLanguage) {
+            next[kind] = { ...next[kind], language: nextLanguage }
+            changed = true
+          }
+        }
+      }
+      return changed ? next : current
+    })
+  }, [language])
   const podcastEpisodesQuery = usePodcastEpisodes()
   const notebookPodcastEpisodes = useMemo(() => {
     const legacyEpisodeName = `${notebookName || '学习记录'} 播客`
@@ -395,6 +1231,116 @@ export function NotesColumn({
       )
     })
   }, [notebookId, notebookName, podcastEpisodesQuery.episodes])
+  const podcastEpisodeById = useMemo(
+    () => new Map(notebookPodcastEpisodes.map((episode) => [episode.id, episode])),
+    [notebookPodcastEpisodes]
+  )
+  const queuedPodcastEpisodes = useMemo(
+    () => podcastQueue
+      .map((episodeId) => podcastEpisodeById.get(episodeId))
+      .filter((episode): episode is PodcastEpisode => Boolean(episode)),
+    [podcastEpisodeById, podcastQueue]
+  )
+  const nextPodcastEpisodeName = useMemo(
+    () => buildPodcastEpisodeName(notebookName, notebookPodcastEpisodes.length + 1),
+    [notebookName, notebookPodcastEpisodes.length]
+  )
+  const contentSources = useMemo(
+    () => sources.filter((source) => !isLearningProfileSource(source)),
+    [sources]
+  )
+  const profileSources = useMemo(
+    () => sources.filter(isLearningProfileSource),
+    [sources]
+  )
+  const materialOptions = useMemo<LearningAssetMaterialOption[]>(() => {
+    const sourceMaterials = contentSources.map((source) => {
+      const title = source.title || source.asset?.url || source.id
+      return {
+        id: `source-material:${source.id}`,
+        title,
+        materialType: '来源',
+        description: source.topics?.length ? `主题：${source.topics.join('、')}` : source.id,
+        sourceId: source.id,
+        deleteType: 'source' as const,
+        deleteId: source.id,
+      }
+    })
+
+    const noteMaterials = (notes ?? [])
+      .map((note) => {
+        const asset = parseLearningAssetNote(note.content)
+        const content = asset?.content || getVisibleLearningAssetContent(note.content)
+        if (!content?.trim()) {
+          return null
+        }
+        return {
+          id: `note-material:${note.id}`,
+          title: stripLearningAssetTitlePrefix(note.title) || asset?.title || '未命名笔记',
+          materialType: note.note_type === 'ai' ? '学习资产' : '笔记',
+          description: content.slice(0, 180),
+          content: content.slice(0, 8000),
+          deleteType: 'note' as const,
+          deleteId: note.id,
+        }
+      })
+      .filter(Boolean) as LearningAssetMaterialOption[]
+
+    const podcastMaterials = notebookPodcastEpisodes
+      .map((episode) => {
+        const transcriptEntries = extractPodcastTranscriptEntries(episode.transcript)
+        const content = transcriptEntries
+          .map((entry, index) => {
+            const speaker = entry.speaker || `Speaker ${index + 1}`
+            return `${speaker}: ${entry.dialogue || ''}`
+          })
+          .filter((line) => line.trim())
+          .join('\n')
+        if (!content.trim()) {
+          return null
+        }
+        return {
+          id: `podcast-material:${episode.id}`,
+          title: `${episode.name} 字幕`,
+          materialType: '播客字幕',
+          description: content.slice(0, 180),
+          content: content.slice(0, 10000),
+          deleteType: 'podcast' as const,
+          deleteId: episode.id,
+        }
+      })
+      .filter(Boolean) as LearningAssetMaterialOption[]
+
+    return [...sourceMaterials, ...noteMaterials, ...podcastMaterials]
+  }, [contentSources, notebookPodcastEpisodes, notes])
+  const mindMapMaterials = useMemo<MindMapMaterial[]>(
+    () => materialOptions.map((material) => ({
+      id: material.id,
+      title: material.title,
+      materialType: material.materialType,
+      description: material.description,
+      content: material.content,
+    })),
+    [materialOptions]
+  )
+  const filteredPodcastMaterialOptions = useMemo(() => {
+    const keyword = podcastMaterialSearch.trim().toLowerCase()
+    if (!keyword) {
+      return materialOptions
+    }
+    return materialOptions.filter((material) => (
+      [
+        material.title,
+        material.materialType,
+        material.description,
+        material.id,
+      ]
+        .filter(Boolean)
+        .join('\n')
+        .toLowerCase()
+        .includes(keyword)
+    ))
+  }, [materialOptions, podcastMaterialSearch])
   const isAssetListLoading = isLoading || podcastEpisodesQuery.isLoading
   const [isBuildingPodcast, setIsBuildingPodcast] = useState(false)
 
@@ -405,14 +1351,6 @@ export function NotesColumn({
     [toggleNotes, notesLabel]
   )
 
-  const contentSources = useMemo(
-    () => sources.filter((source) => !isLearningProfileSource(source)),
-    [sources]
-  )
-  const profileSources = useMemo(
-    () => sources.filter(isLearningProfileSource),
-    [sources]
-  )
   const currentAssetDetail = detailAssetKind
     ? assetDetails[detailAssetKind] ?? getDefaultLearningAssetDetail(detailAssetKind)
     : getDefaultLearningAssetDetail('study_guide')
@@ -453,6 +1391,7 @@ export function NotesColumn({
       })
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sourcesInfinite(notebookId) })
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sources(notebookId) })
+      await queryClient.invalidateQueries({ queryKey: ['learning', 'profile-source', notebookId] })
     } catch (error) {
       console.debug('Failed to record learning profile event:', error)
     }
@@ -549,18 +1488,32 @@ export function NotesColumn({
       toast.error('请至少选择一种要生成的学习资产')
       return
     }
-    if (!contentSources.length) {
-      toast.error('请先添加内容来源，再基于来源生成学习资产')
+    const selectedMaterialIds = config.selectedMaterialIds
+    const selectedMaterialSet = new Set(selectedMaterialIds ?? [])
+    const selectedMaterials = selectedMaterialIds
+      ? materialOptions.filter((material) => selectedMaterialSet.has(material.id))
+      : []
+    const selectedSourceIds = selectedMaterialIds
+      ? selectedMaterials
+          .map((material) => material.sourceId)
+          .filter((sourceId): sourceId is string => Boolean(sourceId))
+      : contentSources.map((source) => source.id)
+    const supplementalMaterials = config.supplementalMaterials ?? []
+
+    if (selectedSourceIds.length === 0 && supplementalMaterials.length === 0) {
+      toast.error('请先选择至少一个素材，再生成学习资产')
       return
     }
 
     setIsSubmittingAssets(true)
     try {
-      const sourceHistory = contentSources.map((source, index) => {
-        const sourceTitle = source.title || source.asset?.url || source.id
-        return `来源 ${index + 1}: ${sourceTitle}`
-      })
-      const acceptedResourceIds = contentSources.map((source) => source.id)
+      const sourceHistory = selectedMaterialIds
+        ? selectedMaterials.map((material, index) => `素材 ${index + 1}: ${material.title} (${material.materialType})`)
+        : contentSources.map((source, index) => {
+            const sourceTitle = source.title || source.asset?.url || source.id
+            return `来源 ${index + 1}: ${sourceTitle}`
+          })
+      const acceptedResourceIds = [...selectedSourceIds]
       if (config.useProfileSource) {
         acceptedResourceIds.push(...profileSources.map((source) => source.id))
       }
@@ -573,6 +1526,7 @@ export function NotesColumn({
         learning_history: sourceHistory,
         requested_outputs: config.outputs,
         accepted_resource_ids: acceptedResourceIds,
+        supplemental_materials: supplementalMaterials,
         learning_record_id: notebookId,
         auto_update_profile: config.autoUpdateProfile,
         use_profile_source: config.useProfileSource,
@@ -604,8 +1558,23 @@ export function NotesColumn({
     }
   }
 
-  const buildPodcastContent = useCallback(async () => {
-    const sourcesConfig = [...contentSources, ...(profileOptions.useProfileSource ? profileSources : [])]
+  const buildPodcastContent = useCallback(async (selectedMaterialIds?: string[]) => {
+    const hasExplicitSelection = Array.isArray(selectedMaterialIds)
+    const selectedMaterialSet = new Set(selectedMaterialIds ?? [])
+    const selectedMaterials = hasExplicitSelection
+      ? materialOptions.filter((material) => selectedMaterialSet.has(material.id))
+      : []
+    const selectedSourceIds = hasExplicitSelection
+      ? selectedMaterials
+          .map((material) => material.sourceId)
+          .filter((sourceId): sourceId is string => Boolean(sourceId))
+      : contentSources.map((source) => source.id)
+    const selectedSourceSet = new Set(selectedSourceIds)
+    const selectedSources = contentSources.filter((source) => selectedSourceSet.has(source.id))
+    const supplementalMaterials = hasExplicitSelection
+      ? selectedMaterials.filter((material) => !material.sourceId && material.content?.trim())
+      : []
+    const sourcesConfig = [...selectedSources, ...(profileOptions.useProfileSource ? profileSources : [])]
       .reduce<Record<string, string>>((accumulator, source) => {
         const sourceId = source.id.replace(/^source:/, '')
         accumulator[sourceId] = source.insights_count && source.insights_count > 0
@@ -614,24 +1583,50 @@ export function NotesColumn({
         return accumulator
       }, {})
 
-    const response = await chatApi.buildContext({
-      notebook_id: notebookId,
-      context_config: {
-        sources: sourcesConfig,
-        notes: {},
-      },
-    })
+    const parts: string[] = []
+    if (Object.keys(sourcesConfig).length > 0) {
+      const response = await chatApi.buildContext({
+        notebook_id: notebookId,
+        context_config: {
+          sources: sourcesConfig,
+          notes: {},
+        },
+      })
 
-    if (response.char_count <= 0) {
-      return ''
+      if (response.char_count > 0) {
+        parts.push(JSON.stringify(response.context, null, 2))
+      }
     }
 
-    return JSON.stringify(response.context, null, 2)
-  }, [contentSources, notebookId, profileOptions.useProfileSource, profileSources])
+    if (supplementalMaterials.length > 0) {
+      parts.push(
+        supplementalMaterials
+          .map((material, index) => [
+            `补充素材 ${index + 1}: ${material.title}`,
+            `类型: ${material.materialType}`,
+            material.content ?? '',
+          ].join('\n'))
+          .join('\n\n')
+      )
+    }
 
-  const handleGeneratePodcast = useCallback(async () => {
-    if (!contentSources.length) {
-      toast.error('请先添加内容来源，再基于来源生成播客')
+    return parts.join('\n\n')
+  }, [contentSources, materialOptions, notebookId, profileOptions.useProfileSource, profileSources])
+
+  const handleGeneratePodcast = useCallback(async (options?: {
+    episodeName?: string
+    language?: string
+    subtitleMode?: PodcastSubtitleMode
+    selectedMaterialIds?: string[]
+  }) => {
+    const selectedMaterialIds = options?.selectedMaterialIds
+    const selectedMaterialSet = new Set(selectedMaterialIds ?? [])
+    const selectedMaterials = selectedMaterialIds
+      ? materialOptions.filter((material) => selectedMaterialSet.has(material.id))
+      : []
+
+    if (selectedMaterialIds ? selectedMaterials.length === 0 : materialOptions.length === 0) {
+      toast.error('请先添加或选择至少一个资料，再生成播客')
       return
     }
 
@@ -663,7 +1658,10 @@ export function NotesColumn({
 
     setIsBuildingPodcast(true)
     try {
-      const content = await buildPodcastContent()
+      const episodeName = (options?.episodeName || nextPodcastEpisodeName).trim()
+      const languageChoice = options?.language ?? podcastLanguage
+      const subtitleMode = options?.subtitleMode ?? podcastSubtitleMode
+      const content = await buildPodcastContent(selectedMaterialIds)
       if (!content.trim()) {
         toast.error('当前来源还没有可用于生成播客的文本内容')
         return
@@ -672,11 +1670,19 @@ export function NotesColumn({
       const response = await generatePodcast.mutateAsync({
         episode_profile: selectedEpisodeProfile.name,
         speaker_profile: selectedEpisodeProfile.speaker_config,
-        episode_name: `${notebookName || '学习记录'} 播客`,
+        episode_name: episodeName,
         content,
         notebook_id: notebookId,
         briefing_suffix:
-          '请基于当前学习记录来源生成面向学习复盘的音频播客，聚焦核心概念、易错点、概念边界和下一步学习行动；不要把内容写成提纲。',
+          [
+            '请基于当前学习记录来源生成面向学习复盘的音频播客，聚焦核心概念、易错点、概念边界和下一步学习行动；不要把内容写成提纲。',
+            `语音语言：${languageChoice}。`,
+            subtitleMode === 'single_line'
+              ? '请生成清晰可读的逐句 transcript，每句尽量短，适合平台单行滚动字幕。'
+              : subtitleMode === 'bilingual'
+                ? '请生成中英双语逐句 transcript，便于平台字幕切换和学习复盘。'
+                : '不需要面向播放显示的字幕，但仍需保留基础 transcript 供归档和检索。',
+          ].join('\n'),
       })
       setPodcastJobs((previous) => {
         if (previous.some((job) => job.jobId === response.job_id)) {
@@ -693,12 +1699,14 @@ export function NotesColumn({
     }
   }, [
     buildPodcastContent,
-    contentSources.length,
     episodeProfiles,
     episodeProfilesQuery.isLoading,
     generatePodcast,
+    materialOptions,
+    nextPodcastEpisodeName,
     notebookId,
-    notebookName,
+    podcastLanguage,
+    podcastSubtitleMode,
     queryClient,
     speakerProfiles,
     speakerProfilesQuery.isLoading,
@@ -706,7 +1714,7 @@ export function NotesColumn({
 
   const handleQuickGenerateAsset = (kind: StudioAssetKind) => {
     if (kind === 'podcast') {
-      void handleGeneratePodcast()
+      setPodcastGenerateDialogOpen(true)
       return
     }
 
@@ -716,6 +1724,34 @@ export function NotesColumn({
       outputs: [kind],
       autoUpdateProfile: profileOptions.autoUpdateProfile,
       useProfileSource: profileOptions.useProfileSource,
+    })
+  }
+
+  const handleGenerateSimilarQuiz = (resource: LearningResource) => {
+    const quizContent = [
+      resource.content,
+      resource.payload ? JSON.stringify(resource.payload, null, 2) : '',
+    ].filter(Boolean).join('\n\n')
+    void handleGenerateAssets({
+      goal: [
+        '请基于当前测验和已选学习资料生成一组相似题练习。',
+        '要求：知识点保持一致，但题干、选项、干扰项和解析必须重新编写；难度接近原题；解析必须引用来源依据。',
+        `原测验标题：${resource.title}`,
+        `语言：${getGenerationLanguageFromLocale(language)}`,
+        '资产类型：测验',
+        '具体格式：相似题练习。',
+      ].join('\n'),
+      outputs: ['quiz'],
+      autoUpdateProfile: profileOptions.autoUpdateProfile,
+      useProfileSource: profileOptions.useProfileSource,
+      supplementalMaterials: [
+        {
+          id: `similar-quiz-source:${resource.title}`,
+          title: `${resource.title} 原测验`,
+          material_type: 'quiz',
+          content: quizContent || resource.content,
+        },
+      ],
     })
   }
 
@@ -734,6 +1770,78 @@ export function NotesColumn({
     } catch (error) {
       console.error('Failed to delete note:', error)
     }
+  }
+
+  useEffect(() => {
+    if (!podcastGenerateDialogOpen) {
+      return
+    }
+    setPodcastEpisodeName(nextPodcastEpisodeName)
+    setSelectedPodcastMaterialIds(materialOptions.map((material) => material.id))
+    setPodcastMaterialSearch('')
+    setPodcastMaterialLibraryExpanded(false)
+  }, [materialOptions, nextPodcastEpisodeName, podcastGenerateDialogOpen])
+
+  const updatePodcastPlayback = useCallback((episodeId: string, patch: PodcastPlaybackSnapshot) => {
+    setPodcastPlaybackById((current) => ({
+      ...current,
+      [episodeId]: {
+        ...(current[episodeId] ?? {}),
+        ...patch,
+      },
+    }))
+  }, [])
+
+  const handleAddPodcastToQueue = useCallback((episode: PodcastEpisode) => {
+    setPodcastQueue((current) => (
+      current.includes(episode.id) ? current : [...current, episode.id]
+    ))
+  }, [])
+
+  const handleRemovePodcastFromQueue = useCallback((episodeId: string) => {
+    setPodcastQueue((current) => current.filter((queuedId) => queuedId !== episodeId))
+  }, [])
+
+  const handleClearPodcastQueue = useCallback(() => {
+    setPodcastQueue([])
+  }, [])
+
+  const handleDeleteMaterial = async (material: LearningAssetMaterialOption) => {
+    if (!material.deleteId || !material.deleteType) return
+
+    if (material.deleteType === 'source') {
+      await deleteSource.mutateAsync(material.deleteId)
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sources(notebookId) })
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sourcesInfinite(notebookId) })
+      return
+    }
+
+    if (material.deleteType === 'note') {
+      await deleteNote.mutateAsync(material.deleteId)
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notes(notebookId) })
+      return
+    }
+
+    if (material.deleteType === 'podcast') {
+      await deletePodcastEpisode.mutateAsync(material.deleteId)
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.podcastEpisodes })
+    }
+  }
+
+  const handleDeletePodcastEpisode = async (episode: PodcastEpisode) => {
+    const confirmed = window.confirm(`确定删除播客「${episode.name}」吗？`)
+    if (!confirmed) return
+    await deletePodcastEpisode.mutateAsync(episode.id)
+    if (studioPodcastEpisode?.id === episode.id) {
+      setStudioPodcastEpisode(null)
+    }
+    setPodcastPlaybackById((current) => {
+      const next = { ...current }
+      delete next[episode.id]
+      return next
+    })
+    setPodcastQueue((current) => current.filter((episodeId) => episodeId !== episode.id))
+    await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.podcastEpisodes })
   }
 
   return (
@@ -772,7 +1880,30 @@ export function NotesColumn({
             </div>
           </CardHeader>
 
-          <CardContent className="flex-1 overflow-y-auto min-h-0 space-y-4">
+          <CardContent
+            className={cn(
+              'flex-1 min-h-0 space-y-4',
+              studioPodcastEpisode ? 'overflow-hidden' : 'overflow-y-auto'
+            )}
+          >
+            {studioPodcastEpisode ? (
+              <NotebookPodcastAssetCard
+                episode={studioPodcastEpisode}
+                displayMode="studio"
+                onBack={() => setStudioPodcastEpisode(null)}
+                onDelete={(episode) => {
+                  void handleDeletePodcastEpisode(episode)
+                }}
+                playbackSnapshot={podcastPlaybackById[studioPodcastEpisode.id]}
+                onPlaybackChange={(patch) => updatePodcastPlayback(studioPodcastEpisode.id, patch)}
+                onQueueAdd={handleAddPodcastToQueue}
+                onQueueRemove={handleRemovePodcastFromQueue}
+                onQueueClear={handleClearPodcastQueue}
+                queueEpisodes={queuedPodcastEpisodes}
+                queuePosition={podcastQueue.indexOf(studioPodcastEpisode.id) + 1 || undefined}
+              />
+            ) : (
+              <>
             <div
               className="grid gap-3"
               style={{
@@ -785,7 +1916,7 @@ export function NotesColumn({
                   <div
                     key={option.kind}
                     className={cn(
-                      'flex min-h-16 items-center gap-2 rounded-lg border p-3',
+                      'studio-asset-card flex min-h-16 items-center gap-2 rounded-lg border p-3',
                       STUDIO_ASSET_STYLES[option.kind]
                     )}
                   >
@@ -795,7 +1926,7 @@ export function NotesColumn({
                       onClick={() => handleQuickGenerateAsset(option.kind)}
                       disabled={isGeneratingStudioAsset}
                     >
-                      <Icon className="h-5 w-5 shrink-0" />
+                      <Icon className="h-5 w-5 shrink-0 opacity-85" />
                       <span className="min-w-0 whitespace-normal break-words text-base font-semibold leading-5">
                         {option.kind === 'podcast'
                           ? option.label
@@ -809,7 +1940,7 @@ export function NotesColumn({
                       className="h-11 w-11 shrink-0 rounded-full bg-background/45 hover:bg-background/80"
                       onClick={() => {
                         if (option.kind === 'podcast') {
-                          void handleGeneratePodcast()
+                          setPodcastGenerateDialogOpen(true)
                         } else {
                           setDetailAssetKind(option.kind)
                         }
@@ -851,13 +1982,27 @@ export function NotesColumn({
               ) : (!notes || notes.length === 0) && notebookPodcastEpisodes.length === 0 ? (
                 <EmptyState
                   icon={Sparkles}
-                  title="Studio output will be saved here."
-                  description="添加来源后，点击上方按钮生成讲解文档、Quiz、知识闪卡等资产。"
+                  title="生成内容会保存在这里"
+                  description="添加来源后，点击上方按钮生成讲解文档、测验、知识闪卡等资产。"
                 />
               ) : (
                 <>
                   {notebookPodcastEpisodes.map((episode) => (
-                    <NotebookPodcastAssetCard key={episode.id} episode={episode} />
+                    <NotebookPodcastAssetCard
+                      key={episode.id}
+                      episode={episode}
+                      onOpenStudio={setStudioPodcastEpisode}
+                      onDelete={(podcastEpisode) => {
+                        void handleDeletePodcastEpisode(podcastEpisode)
+                      }}
+                      playbackSnapshot={podcastPlaybackById[episode.id]}
+                      onPlaybackChange={(patch) => updatePodcastPlayback(episode.id, patch)}
+                      onQueueAdd={handleAddPodcastToQueue}
+                      onQueueRemove={handleRemovePodcastFromQueue}
+                      onQueueClear={handleClearPodcastQueue}
+                      queueEpisodes={queuedPodcastEpisodes}
+                      queuePosition={podcastQueue.indexOf(episode.id) + 1 || undefined}
+                    />
                   ))}
                   {notes?.map((note) => {
                   const asset = parseLearningAssetNote(note.content)
@@ -869,7 +2014,10 @@ export function NotesColumn({
                     <div
                       key={note.id}
                       className="p-3 border rounded-lg card-hover group relative cursor-pointer"
-                      onClick={() => setEditingNote(note)}
+                      onClick={() => {
+                        setOpenNoteFullscreen(false)
+                        setEditingNote(note)
+                      }}
                     >
                       <div className="flex items-start justify-between gap-3 mb-2">
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -889,6 +2037,21 @@ export function NotesColumn({
                         </div>
 
                         <div className="flex shrink-0 items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100"
+                            title="全屏打开"
+                            aria-label="全屏打开"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setOpenNoteFullscreen(true)
+                              setEditingNote(note)
+                            }}
+                          >
+                            <Maximize2 className="h-4 w-4" />
+                          </Button>
                           <span className="text-xs text-muted-foreground">
                             {formatDistanceToNow(new Date(note.updated), {
                               addSuffix: true,
@@ -921,6 +2084,16 @@ export function NotesColumn({
                               <DropdownMenuItem
                                 onClick={(event) => {
                                   event.stopPropagation()
+                                  setOpenNoteFullscreen(true)
+                                  setEditingNote(note)
+                                }}
+                              >
+                                <Maximize2 className="h-4 w-4 mr-2" />
+                                全屏打开
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(event) => {
+                                  event.stopPropagation()
                                   handleDeleteClick(note.id)
                                 }}
                                 className="text-red-600 focus:text-red-600"
@@ -950,6 +2123,7 @@ export function NotesColumn({
                             onLearningEvent={(event) => {
                               void recordLearningEvent(event.eventType, event.summary)
                             }}
+                            onGenerateSimilarQuiz={handleGenerateSimilarQuiz}
                           />
                         </div>
                       ) : visibleContent ? (
@@ -963,6 +2137,8 @@ export function NotesColumn({
                 </>
               )}
             </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </CollapsibleColumn>
@@ -988,7 +2164,220 @@ export function NotesColumn({
         onGenerate={handleGenerateAssets}
         isGenerating={isGeneratingStudioAsset}
         sourceCount={contentSources.length}
+        materialOptions={materialOptions}
+        onDeleteMaterial={handleDeleteMaterial}
       />
+
+      <Dialog open={podcastGenerateDialogOpen} onOpenChange={setPodcastGenerateDialogOpen}>
+        <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-lg" showCloseButton={false}>
+          <DialogHeader className="shrink-0">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <DialogTitle className="text-lg">生成播客</DialogTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  选择这次播客的语音语言和字幕类型。
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => setPodcastGenerateDialogOpen(false)}
+                aria-label="关闭"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            <div className="space-y-2">
+              <Label htmlFor="podcast-generation-name">播客名称</Label>
+              <input
+                id="podcast-generation-name"
+                value={podcastEpisodeName}
+                onChange={(event) => setPodcastEpisodeName(event.target.value)}
+                placeholder={nextPodcastEpisodeName}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none transition-colors focus:border-primary"
+                disabled={isGeneratingStudioAsset}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="podcast-generation-language">语音语言</Label>
+              <Select value={podcastLanguage} onValueChange={setPodcastLanguage}>
+                <SelectTrigger id="podcast-generation-language">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="中文">中文</SelectItem>
+                  <SelectItem value="English">English</SelectItem>
+                  <SelectItem value="中英双语">中英双语</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="podcast-generation-subtitles">字幕类型</Label>
+              <Select
+                value={podcastSubtitleMode}
+                onValueChange={(value) => setPodcastSubtitleMode(value as PodcastSubtitleMode)}
+              >
+                <SelectTrigger id="podcast-generation-subtitles">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="single_line">逐句单行字幕</SelectItem>
+                  <SelectItem value="bilingual">中英双语字幕</SelectItem>
+                  <SelectItem value="none">不显示字幕</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {materialOptions.length > 0 && (
+              <section className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold">资料范围</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      不手动选择时默认使用全部可用资料。
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPodcastMaterialLibraryExpanded((current) => !current)}
+                  >
+                    {podcastMaterialLibraryExpanded ? '收起' : '选择资料'}
+                    <ChevronDown className={cn('ml-2 h-4 w-4 transition-transform', podcastMaterialLibraryExpanded && 'rotate-180')} />
+                  </Button>
+                </div>
+                {podcastMaterialLibraryExpanded ? (
+                  <>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        value={podcastMaterialSearch}
+                        onChange={(event) => setPodcastMaterialSearch(event.target.value)}
+                        placeholder="搜索资料标题、类型或摘要"
+                        className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none transition-colors focus:border-primary"
+                        disabled={isGeneratingStudioAsset}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isGeneratingStudioAsset || filteredPodcastMaterialOptions.length === 0}
+                        onClick={() => {
+                          setSelectedPodcastMaterialIds((current) =>
+                            Array.from(new Set([
+                              ...current,
+                              ...filteredPodcastMaterialOptions.map((material) => material.id),
+                            ]))
+                          )
+                        }}
+                      >
+                        全选当前
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isGeneratingStudioAsset || selectedPodcastMaterialIds.length === 0}
+                        onClick={() => setSelectedPodcastMaterialIds([])}
+                      >
+                        清空
+                      </Button>
+                    </div>
+                    <div className="max-h-56 space-y-2 overflow-y-auto rounded-md border bg-background p-2">
+                      {filteredPodcastMaterialOptions.length > 0 ? filteredPodcastMaterialOptions.map((material) => {
+                        const checked = selectedPodcastMaterialIds.includes(material.id)
+                        return (
+                          <label
+                            key={material.id}
+                            className={cn(
+                              'flex cursor-pointer items-start gap-3 rounded-md border p-2 text-sm',
+                              checked ? 'border-primary bg-primary/5' : 'bg-muted/20 hover:bg-muted/40'
+                            )}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              disabled={isGeneratingStudioAsset}
+                              onCheckedChange={(nextChecked) => {
+                                setSelectedPodcastMaterialIds((current) => {
+                                  if (nextChecked === true) {
+                                    return current.includes(material.id) ? current : [...current, material.id]
+                                  }
+                                  return current.filter((id) => id !== material.id)
+                                })
+                              }}
+                              className="mt-0.5"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex min-w-0 flex-wrap items-center gap-2">
+                                <span className="truncate font-medium">{material.title}</span>
+                                <span className="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                                  {material.materialType}
+                                </span>
+                              </span>
+                              {material.description && (
+                                <span className="mt-1 block line-clamp-2 text-xs leading-5 text-muted-foreground">
+                                  {material.description}
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        )
+                      }) : (
+                        <p className="p-3 text-sm text-muted-foreground">没有匹配的资料。</p>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      已选择 {selectedPodcastMaterialIds.length} / {materialOptions.length} 个资料；当前筛选 {filteredPodcastMaterialOptions.length} 个。
+                    </p>
+                  </>
+                ) : (
+                  <p className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">
+                    当前默认使用 {selectedPodcastMaterialIds.length || materialOptions.length} 个可用资料。
+                  </p>
+                )}
+              </section>
+            )}
+          </div>
+          <DialogFooter className="shrink-0 gap-2 border-t bg-popover pt-4 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPodcastGenerateDialogOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              disabled={isGeneratingStudioAsset || materialOptions.length === 0 || !podcastEpisodeName.trim()}
+              onClick={() => {
+                const materialIds = selectedPodcastMaterialIds.length > 0
+                  ? selectedPodcastMaterialIds
+                  : materialOptions.map((material) => material.id)
+                setPodcastGenerateDialogOpen(false)
+                void handleGeneratePodcast({
+                  episodeName: podcastEpisodeName,
+                  language: podcastLanguage,
+                  subtitleMode: podcastSubtitleMode,
+                  selectedMaterialIds: materialIds,
+                })
+              }}
+            >
+              {isGeneratingStudioAsset ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Headphones className="mr-2 h-4 w-4" />
+              )}
+              生成
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <NoteEditorDialog
         open={showAddDialog || Boolean(editingNote)}
@@ -996,12 +2385,15 @@ export function NotesColumn({
           if (!open) {
             setShowAddDialog(false)
             setEditingNote(null)
+            setOpenNoteFullscreen(false)
           } else {
             setShowAddDialog(true)
           }
         }}
         notebookId={notebookId}
         note={editingNote ?? undefined}
+        initialFullscreen={openNoteFullscreen}
+        mindMapMaterials={mindMapMaterials}
         onLearningEvent={(event) => {
           void recordLearningEvent(event.eventType, event.summary)
         }}

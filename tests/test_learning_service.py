@@ -1,6 +1,7 @@
 import pytest
 
 from api.learning_service import (
+    _append_profile_event,
     _normalize_generated_resources,
     _normalize_generated_markdown,
     _source_grounded_fallback_resources,
@@ -57,6 +58,31 @@ def test_normalize_generated_markdown_keeps_table_cell_minus_inline():
     normalized = _normalize_generated_markdown(content)
 
     assert "| generation - contrast | Keep this on one table row. |" in normalized
+
+
+def test_learning_profile_event_refines_stable_fields_from_chat():
+    updated = _append_profile_event(
+        None,
+        "chat_message",
+        "User asked in notebook chat: 我还是不懂一阶谓词逻辑和产生式表示法的区别",
+    )
+
+    assert "背景：近期学习集中在" in updated
+    assert "当前目标：弄清" in updated
+    assert "易错点：需要澄清" in updated
+    assert "[chat_message]" in updated
+    assert "- 20" not in updated
+
+
+def test_learning_profile_event_refines_resource_preference():
+    updated = _append_profile_event(
+        None,
+        "source_accept",
+        "title=MIT 6.S191; kind=video; intent=deep learning introduction",
+    )
+
+    assert "资源偏好：偏好基于已采纳来源、上传资料、笔记与生成字幕构建学习资产" in updated
+    assert "[source_accept]" in updated
 
 
 def test_normalize_generated_resources_derives_type_from_kind():
@@ -204,7 +230,12 @@ Masked language modeling predicts hidden tokens from context.
     )
 
     content = resources[0].content
-    assert content.startswith("mindmap")
+    assert content.startswith("```mermaid")
+    assert "mindmap" in content
+    assert "direction right" in content
+    assert "flowchart LR" not in content
+    assert "## 对比表格" in content
+    assert "## 分级分点列表" in content
     assert "learning_profile" not in content
     assert "学习画像" not in content
     assert "Contrastive learning" in content

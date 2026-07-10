@@ -15,9 +15,17 @@ export interface LearningOrchestrationRequest {
   learning_history?: string[]
   requested_outputs?: LearningOutputKind[]
   accepted_resource_ids?: string[]
+  supplemental_materials?: LearningSupplementalMaterial[]
   learning_record_id?: string
   auto_update_profile?: boolean
   use_profile_source?: boolean
+}
+
+export interface LearningSupplementalMaterial {
+  id: string
+  title: string
+  material_type: string
+  content: string
 }
 
 export interface LearningProfileEventRequest {

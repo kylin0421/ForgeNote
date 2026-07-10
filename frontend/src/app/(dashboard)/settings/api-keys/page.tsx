@@ -79,13 +79,14 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   vertex: 'Google Vertex AI',
   openai_compatible: 'OpenAI Compatible',
   dashscope: 'DashScope (Qwen)',
+  mimo: 'Xiaomi MiMo TTS',
   minimax: 'MiniMax',
 }
 
 // All providers in display order
 const ALL_PROVIDERS = [
   'openai', 'anthropic', 'google', 'groq', 'mistral', 'deepseek',
-  'xai', 'openrouter', 'dashscope', 'minimax', 'voyage', 'elevenlabs', 'deepgram', 'ollama',
+  'xai', 'openrouter', 'dashscope', 'mimo', 'minimax', 'voyage', 'elevenlabs', 'deepgram', 'ollama',
   'azure', 'vertex', 'openai_compatible',
 ]
 
@@ -107,6 +108,7 @@ const PROVIDER_MODALITIES: Record<string, ModelType[]> = {
   vertex: ['language', 'embedding', 'text_to_speech'],
   openai_compatible: ['language', 'embedding', 'text_to_speech', 'speech_to_text'],
   dashscope: ['language', 'speech_to_text', 'text_to_speech'],
+  mimo: ['text_to_speech'],
   minimax: ['language'],
 }
 
@@ -127,6 +129,7 @@ const PROVIDER_DOCS: Record<string, string> = {
   vertex: 'https://cloud.google.com/vertex-ai/docs/start/cloud-environment',
   openai_compatible: 'https://platform.openai.com/docs/api-reference',
   dashscope: 'https://help.aliyun.com/zh/model-studio/getting-started/',
+  mimo: 'https://mimo.mi.com/docs/en-US/quick-start/usage-guide/audio/speech-synthesis-v2.5',
   minimax: 'https://platform.minimaxi.com/document/Guides',
 }
 
@@ -377,7 +380,7 @@ function CredentialFormDialog({
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder={isOllama ? 'http://localhost:11434' : 'https://api.example.com/v1'}
+                placeholder={isOllama ? 'http://localhost:11434' : provider === 'mimo' ? 'https://api.xiaomimimo.com/v1' : 'https://api.example.com/v1'}
                 disabled={isSubmitting}
               />
               <p className="text-xs text-muted-foreground">{t('apiKeys.baseUrlOverrideHint')}</p>

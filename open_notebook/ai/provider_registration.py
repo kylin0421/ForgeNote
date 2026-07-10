@@ -5,6 +5,8 @@ from esperanto import AIFactory
 from open_notebook.ai.model_specs import (
     DASHSCOPE_TTS_CLASS,
     DASHSCOPE_TTS_PROVIDER,
+    MIMO_TTS_CLASS,
+    MIMO_TTS_PROVIDER,
     build_model_runtime_spec,
 )
 
@@ -13,6 +15,7 @@ def register_runtime_ai_providers() -> None:
     """Register ZhiXue-local providers with Esperanto."""
     tts_providers = AIFactory._provider_modules.setdefault("text_to_speech", {})
     tts_providers[DASHSCOPE_TTS_PROVIDER] = DASHSCOPE_TTS_CLASS
+    tts_providers[MIMO_TTS_PROVIDER] = MIMO_TTS_CLASS
 
 
 def resolve_runtime_provider(

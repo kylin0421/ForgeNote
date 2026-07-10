@@ -335,3 +335,11 @@ OLLAMA_BASE_URL=http://localhost:11434
 - 准备一门课程资料作为本地输入。
 - 右下角任务浮窗能显示任务状态。
 - README 中截图和 docs 链接能正常打开。
+
+## 补充：MiMo/Xiaomi TTS
+
+MiMo/Xiaomi TTS 可以作为 `text_to_speech` 模型登记，用于普通播客音频生成。演示前需要确认三点：
+
+- 模型类型选择 `text_to_speech`。
+- Base URL 与鉴权信息指向可用的 MiMo/Xiaomi 文本转语音接口。
+- `default_text_to_speech_model` 选择该可用 TTS 模型，而不是语音克隆、语音转换或视频配音模型。

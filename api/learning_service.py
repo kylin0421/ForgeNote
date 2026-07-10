@@ -79,21 +79,190 @@ def _clip_profile_signal(value: str, limit: int = 700) -> str:
 def _profile_event_line(event_type: str, summary: str) -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
     event = re.sub(r"[^a-zA-Z0-9_-]+", "_", event_type).strip("_") or "learning_event"
-    return f"- {timestamp} [{event}] {_clip_profile_signal(summary)}"
+    return f"{timestamp} [{event}] {_clip_profile_signal(summary)}"
+
+
+PROFILE_FIELD_DEFAULTS = {
+    "背景": "尚未明确。",
+    "当前目标": "尚未明确。",
+    "易错点": "等待 Quiz、对话、资料采纳和生成资产后的学习信号更新。",
+    "资源偏好": "优先使用已采纳来源和用户上传资料。",
+}
+
+
+def _is_unspecified_profile_value(value: str | None) -> bool:
+    compact = (value or "").strip()
+    if not compact:
+        return True
+    normalized = compact.rstrip("。")
+    default_values = {default.rstrip("。") for default in PROFILE_FIELD_DEFAULTS.values()}
+    if normalized in default_values:
+        return True
+    return any(marker in compact for marker in ("尚未明确", "等待", "暂无"))
+
+
+def _extract_profile_fields(content: str | None) -> dict[str, str]:
+    fields = dict(PROFILE_FIELD_DEFAULTS)
+    for line in (content or "").splitlines():
+        clean = line.strip().lstrip("-*").strip()
+        match = re.match(r"^(背景|当前目标|易错点|资源偏好)[:：]\s*(.+)$", clean)
+        if match:
+            fields[match.group(1)] = match.group(2).strip()
+    return fields
+
+
+def _extract_profile_events(content: str | None) -> list[str]:
+    events: list[str] = []
+    for line in (content or "").splitlines():
+        clean = line.strip().lstrip("-*").strip()
+        if re.match(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}Z\s+\[", clean):
+            events.append(clean)
+    return events
+
+
+def _parse_profile_summary_params(summary: str) -> dict[str, str]:
+    params: dict[str, str] = {}
+    for part in summary.split(";"):
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key and value and value != "none":
+            params[key] = value
+    return params
+
+
+def _compact_learning_topic(value: str, limit: int = 46) -> str:
+    text = re.sub(r"\s+", " ", value).strip(" 。；;")
+    text = re.sub(r"^User asked in notebook chat:\s*", "", text, flags=re.I)
+    text = re.sub(r"^Source accepted:\s*", "", text, flags=re.I)
+    text = re.sub(r"^Quiz\s+.+?\.\s*", "", text, flags=re.I)
+    text = text.strip("「」\"'")
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _learning_goal_candidate(
+    event_type: str,
+    summary: str,
+    params: dict[str, str],
+) -> str | None:
+    source = params.get("goal") or params.get("message") or summary
+    if event_type == "generate_request":
+        asset_type = re.search(r"资产类型[:：]\s*([^。\n;；]+)", source)
+        asset_format = re.search(r"具体格式[:：]\s*([^。\n;；]+)", source)
+        if asset_type:
+            pieces = [asset_type.group(1).strip()]
+            if asset_format:
+                pieces.append(asset_format.group(1).strip())
+            return f"整理并复习{' · '.join(pieces)}"
+
+    topic = _compact_learning_topic(source)
+    if not topic:
+        return None
+    if event_type == "chat_message":
+        return f"弄清「{topic}」"
+    if event_type == "collect_request":
+        return f"围绕「{topic}」补充学习资料"
+    return topic
+
+
+def _merge_profile_phrase(existing: str, candidate: str | None, limit: int = 3) -> str:
+    candidate = _compact_learning_topic(candidate or "", 80)
+    if not candidate:
+        return existing
+    if _is_unspecified_profile_value(existing):
+        return candidate
+
+    parts = [
+        part.strip()
+        for part in re.split(r"[；;]\s*", existing)
+        if part.strip() and not _is_unspecified_profile_value(part)
+    ]
+    if any(candidate in part or part in candidate for part in parts):
+        return existing
+    parts.append(candidate)
+    return "；".join(parts[-limit:])
+
+
+def _refine_profile_fields(
+    fields: dict[str, str],
+    event_type: str,
+    summary: str,
+) -> dict[str, str]:
+    params = _parse_profile_summary_params(summary)
+    refined = dict(fields)
+    goal = _learning_goal_candidate(event_type, summary, params)
+
+    if goal:
+        refined["当前目标"] = _merge_profile_phrase(refined["当前目标"], goal, 3)
+
+    topic = goal or _compact_learning_topic(params.get("message") or params.get("goal") or summary)
+    if _is_unspecified_profile_value(refined["背景"]) and topic:
+        refined["背景"] = (
+            f"近期学习集中在「{_compact_learning_topic(topic, 34)}」，"
+            "个人基础会随问答、测验和资料选择继续细化。"
+        )
+
+    if event_type == "quiz_answer" and "incorrect" in summary.lower():
+        prompt_match = re.search(r"Prompt:\s*(.+)$", summary)
+        risk = prompt_match.group(1) if prompt_match else summary
+        refined["易错点"] = _merge_profile_phrase(
+            refined["易错点"],
+            f"错题暴露：{_compact_learning_topic(risk, 44)}",
+            4,
+        )
+    elif event_type == "chat_message" and re.search(
+        r"(不懂|不会|报错|失败|错误|混淆|区别|为什么|怎么|如何)",
+        summary,
+        flags=re.I,
+    ):
+        refined["易错点"] = _merge_profile_phrase(
+            refined["易错点"],
+            f"需要澄清：{_compact_learning_topic(summary, 44)}",
+            4,
+        )
+
+    if (
+        event_type in {"collect_request", "source_accept"}
+        or re.search(r"(资料|来源|上传|论文|视频|博客|播客|字幕|笔记)", summary)
+    ):
+        refined["资源偏好"] = _merge_profile_phrase(
+            refined["资源偏好"],
+            "偏好基于已采纳来源、上传资料、笔记与生成字幕构建学习资产。",
+            3,
+        )
+
+    return refined
+
+
+def _render_learning_profile_source(fields: dict[str, str], event_lines: list[str]) -> str:
+    lines = [
+        "# 学习画像",
+        "",
+        "这个来源由系统维护，也允许用户直接编辑。它会作为学习记录的一部分参与检索和学习资产生成。",
+        "",
+        "## 稳定画像",
+        f"- 背景：{fields.get('背景') or PROFILE_FIELD_DEFAULTS['背景']}",
+        f"- 当前目标：{fields.get('当前目标') or PROFILE_FIELD_DEFAULTS['当前目标']}",
+        f"- 易错点：{fields.get('易错点') or PROFILE_FIELD_DEFAULTS['易错点']}",
+        f"- 资源偏好：{fields.get('资源偏好') or PROFILE_FIELD_DEFAULTS['资源偏好']}",
+        "",
+        "## 最近学习信号",
+    ]
+    lines.extend(event_lines or ["暂无记录。"])
+    return "\n".join(lines)
 
 
 def _append_profile_event(existing: str | None, event_type: str, summary: str) -> str:
     content = (existing or DEFAULT_PROFILE_SOURCE_TEXT).strip()
-    marker = "## 最近学习信号"
-    if marker not in content:
-        content = f"{content}\n\n{marker}\n"
-
-    before, after = content.split(marker, 1)
-    raw_lines = [line.strip() for line in after.splitlines() if line.strip()]
-    event_lines = [line for line in raw_lines if not line.endswith("尚无记录。")]
+    fields = _refine_profile_fields(_extract_profile_fields(content), event_type, summary)
+    event_lines = _extract_profile_events(content)
     event_lines.append(_profile_event_line(event_type, summary))
     event_lines = event_lines[-40:]
-    updated = f"{before.rstrip()}\n\n{marker}\n" + "\n".join(event_lines)
+    updated = _render_learning_profile_source(fields, event_lines)
 
     if len(updated) <= MAX_PROFILE_CHARS:
         return updated
@@ -456,11 +625,15 @@ def _build_resources(
             type="知识点思维导图",
             title=f"{course} 知识结构图",
             agent="资源生成智能体",
-            format="Mermaid mindmap",
+            format="Mermaid mindmap direction right",
             summary="把先修知识、核心主题、实践任务和评价指标串起来。",
             content=(
+                "```mermaid\n"
+                "%% 切换逻辑：平台按钮在树状图、表格、大纲间切换；内容保持一致。\n"
+                "%% 视觉设计：根节点大圆角，一级模块浅色，二级知识点短句。\n"
                 "mindmap\n"
-                f"  root(({course}))\n"
+                "  direction right\n"
+                f"  root(({_mermaid_label(course)}))\n"
                 "    先修基础\n"
                 "      数学直觉\n"
                 "      编程基础\n"
@@ -470,7 +643,31 @@ def _build_resources(
                 "      训练\n"
                 "    实践任务\n"
                 "      调参\n"
-                "      误差分析"
+                "      误差分析\n"
+                "```\n\n"
+                "## 树状分层文本\n"
+                f"- {course}\n"
+                "  - 先修基础\n"
+                "    - 数学直觉\n"
+                "    - 编程基础\n"
+                "  - 核心概念\n"
+                "    - 模型\n"
+                "    - 数据\n"
+                "    - 训练\n"
+                "  - 实践任务\n"
+                "    - 调参\n"
+                "    - 误差分析\n\n"
+                "## 对比表格\n"
+                "| 先修基础 | 核心概念 | 实践任务 |\n"
+                "| --- | --- | --- |\n"
+                "| 数学直觉 | 模型 | 调参 |\n"
+                "| 编程基础 | 数据 | 误差分析 |\n"
+                "|  | 训练 |  |\n\n"
+                "## 分级分点列表\n"
+                f"1. {course}\n"
+                "   - 先修基础：数学直觉、编程基础\n"
+                "   - 核心概念：模型、数据、训练\n"
+                "   - 实践任务：调参、误差分析"
             ),
             tags=["图谱", "Mermaid", "结构化"],
         ),
@@ -636,7 +833,25 @@ async def _collect_generation_source_context(
         if remaining_chars <= 0:
             break
 
-    return "\n\n".join(blocks).strip(), len(selected_sources)
+    supplemental_materials = request.supplemental_materials or []
+    for index, material in enumerate(supplemental_materials, start=1):
+        if remaining_chars <= 0:
+            break
+        content = _clean_source_text(material.content or "", limit=remaining_chars)
+        if not content:
+            continue
+
+        title = material.title or f"Material {index}"
+        material_type = material.material_type or "supplemental"
+        header = f"## Material {index}: {title}\nID: {material.id}\nType: {material_type}"
+        block = f"{header}\n\n{content}"
+        if len(block) > remaining_chars:
+            block = block[:remaining_chars].strip()
+        if block:
+            blocks.append(block)
+            remaining_chars -= len(block)
+
+    return "\n\n".join(blocks).strip(), len(selected_sources) + len(supplemental_materials)
 
 
 def _source_sentences(source_context: str, limit: int = 12) -> list[str]:
@@ -685,6 +900,10 @@ def _mind_map_node_text(value: str, limit: int = 42) -> str:
     if len(text) > limit:
         return text[: limit - 1].rstrip() + "…"
     return text or "来源要点"
+
+
+def _mermaid_label(value: str, limit: int = 28) -> str:
+    return _mind_map_node_text(value, limit).replace('"', '\\"')
 
 
 def _source_grounded_fallback_resources(
@@ -776,19 +995,62 @@ def _source_grounded_fallback_resources(
             )
         elif kind == "mind_map":
             source_nodes = sentences[:8] or [context["message"], context["goal"]]
-            mind_map_content = "\n".join(
+            mermaid_lines = [
+                "```mermaid",
+                "%% 切换逻辑：平台按钮在树状图、表格、大纲间切换；内容保持一致。",
+                "%% 视觉设计：根节点大圆角，一级模块浅色，二级知识点短句。",
+                "mindmap",
+                "  direction right",
+                f"  root(({_mermaid_label(course)}))",
+                "    来源要点",
+            ]
+            mermaid_lines.extend(
+                f"      {_mermaid_label(sentence)}"
+                for sentence in source_nodes[:6]
+            )
+            mermaid_lines.extend(
                 [
-                    "mindmap",
-                    f"  root(({_mind_map_node_text(course, 28)}))",
-                    "    来源要点",
-                    *[
-                        f"      {_mind_map_node_text(sentence)}"
-                        for sentence in source_nodes
-                    ],
                     "    学习动作",
-                    "      先梳理概念边界",
-                    "      再核对方法脉络",
-                    "      最后用练习自检",
+                    "      概念边界",
+                    "      方法脉络",
+                    "      练习自检",
+                ]
+            )
+            mermaid_lines.append("```")
+            tree_lines = [
+                "## 树状分层文本",
+                f"- {course}",
+                "  - 来源要点",
+                *[f"    - {sentence}" for sentence in source_nodes[:6]],
+                "  - 学习动作",
+                "    - 先梳理概念边界",
+                "    - 再核对方法脉络",
+                "    - 最后用练习自检",
+            ]
+            table_lines = [
+                "## 对比表格",
+                "| 来源要点 | 学习动作 |",
+                "| --- | --- |",
+            ]
+            actions = ["先梳理概念边界", "再核对方法脉络", "最后用练习自检"]
+            for index, sentence in enumerate(source_nodes[:6]):
+                table_lines.append(f"| {sentence} | {actions[index % len(actions)]} |")
+            outline_lines = [
+                "## 分级分点列表",
+                f"1. {course}",
+                "   - 来源要点",
+                *[f"     - {sentence}" for sentence in source_nodes[:6]],
+                "   - 学习动作",
+                "     - 先梳理概念边界",
+                "     - 再核对方法脉络",
+                "     - 最后用练习自检",
+            ]
+            mind_map_content = "\n\n".join(
+                [
+                    "\n".join(mermaid_lines),
+                    "\n".join(tree_lines),
+                    "\n".join(table_lines),
+                    "\n".join(outline_lines),
                 ]
             )
             resources.append(
@@ -797,7 +1059,7 @@ def _source_grounded_fallback_resources(
                     type=OUTPUT_LABELS.get("mind_map", "知识点思维导图"),
                     title=f"{course} 知识点思维导图",
                     agent="来源生成智能体",
-                    format="Mermaid mindmap",
+                    format="Mermaid mindmap direction right",
                     summary="根据当前来源摘录生成的知识结构导图。",
                     content=mind_map_content,
                     tags=["思维导图", "来源证据"],
@@ -838,13 +1100,15 @@ Markdown table rule: use ASCII "|" separators, include a delimiter row like "| -
 
 要求：
 1. 只生成 requested_outputs 中列出的资产：{requested}
-2. 所有 quiz、闪卡、讲解文档都必须围绕来源里的具体概念、方法、公式、实验、结论或术语。
+2. 所有 quiz、闪卡、讲解文档和 mind_map 都必须围绕来源里的具体概念、方法、公式、实验、结论或术语。
 3. 如果来源证据不足，明确写“来源不足以支持”，不要编造。
 4. study_guide 必须是长 Markdown 文档，至少包含：核心问题、来源要点、概念解释、方法/实验脉络、易混点、自检清单。
 5. study_guide.content 必须是纯 Markdown 正文：不要包裹 ```markdown 代码块，不要把整篇 Markdown 做二次 JSON 字符串化，不要输出字面量 "\\n"；标题必须单独成行，使用 "#"/"##"/"###"，列表使用 "- " 或 "1. " 标准 Markdown。
-6. quiz 必须可互动：payload.questions 里生成 4-8 道题，每题 4 个选项，answer_index 为 0-3，解析必须引用来源依据。
+6. quiz 必须可互动：payload.questions 里生成 4-8 道题，每题 4 个选项，answer_index 为 0-3，解析必须引用来源依据；每题尽量补充 source_title、source_ref 或 evidence，便于错题回跳来源。
 7. flashcards 必须可互动：payload.cards 里生成 6-12 张卡，每张有 front/back/hint，内容必须来自来源。
-8. 输出只允许 JSON，不要 Markdown 代码块。
+8. mind_map.content 必须按以下顺序输出同一套知识内容：第一部分是可直接渲染的 fenced Mermaid 代码块，第一行必须单独是 ```mermaid，第二行必须是 mindmap，第三行必须是两个空格缩进的 direction right，末尾必须用单独一行 ``` 关闭；根节点靠左，所有分支水平向右展开；不要只写很短的点子，一级节点用于模块，下面应按来源证据继续展开关键定义、条件、步骤、例子、易混边界或结论，必要时允许 4-6 层嵌套，但每个节点仍保持可读短句，避免整段长文；禁止 flowchart/graph 语法；第二部分依次输出 "## 树状分层文本"、"## 对比表格"、"## 分级分点列表"，三种格式内容必须一一对应，不要输出无关说明。
+9. reading 必须根据来源主题给出拓展阅读候选，覆盖“相关论文/必读经典/教学视频”三类；优先输出 payload.items，每项包含 title、url、reason，并在 reason 中说明相关性、推荐度、经典度依据。content 中也要用 Markdown 列出候选，按总分从高到低排序。
+10. 输出只允许 JSON，不要 Markdown 代码块。
 
 JSON 结构：
 {{
@@ -929,6 +1193,17 @@ def _normalize_quiz_payload(payload: Any) -> dict[str, Any]:
                 "explanation": _as_text(question.get("explanation"), "请回到来源核对对应证据。"),
             }
         )
+        for field in (
+            "source_id",
+            "source_title",
+            "source_ref",
+            "evidence",
+            "citation",
+            "location",
+        ):
+            value = _as_text(question.get(field))
+            if value:
+                normalized[-1][field] = value
     return {"questions": normalized}
 
 
@@ -990,6 +1265,32 @@ def _normalize_generated_markdown(value: Any) -> str:
     text = _repair_markdown_tables(text)
     text = re.sub(r"(^|\n)[ \t]*#{1,6}[ \t]*(?=\n)", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _normalize_mind_map_content(value: Any) -> str:
+    text = _normalize_generated_markdown(value)
+    if not text:
+        return ""
+
+    text = re.sub(
+        r"```(mermaid|mindmap)[ \t]+((?:flowchart|graph|mindmap)\b)",
+        r"```\1\n\2",
+        text,
+        flags=re.I,
+    )
+    fence_start = re.search(r"```(?:mermaid|mindmap)\s*\n", text, flags=re.I)
+    if fence_start:
+        after_fence = text[fence_start.end() :]
+        section_match = re.search(
+            r"\n##\s*(?:树状分层文本|对比表格|分级分点列表)",
+            after_fence,
+        )
+        closing_index = after_fence.find("```")
+        if section_match and (closing_index == -1 or closing_index > section_match.start()):
+            insert_at = fence_start.end() + section_match.start()
+            text = f"{text[:insert_at]}\n```{text[insert_at:]}"
+
     return text.strip()
 
 
@@ -1126,6 +1427,10 @@ def _normalize_generated_resources(
             payload_value = _normalize_flashcard_payload(payload_value)
         content = _as_text(item.get("content"), "请回到来源核对对应证据。")
         if kind == "study_guide":
+            content = _normalize_generated_markdown(content) or "请回到来源核对对应证据。"
+        elif kind == "mind_map":
+            content = _normalize_mind_map_content(content) or "请回到来源核对对应证据。"
+        elif kind == "reading":
             content = _normalize_generated_markdown(content) or "请回到来源核对对应证据。"
 
         resources.append(

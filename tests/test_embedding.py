@@ -241,11 +241,12 @@ class TestGenerateEmbedding:
     @pytest.mark.asyncio
     async def test_batching(self):
         """Test that large input is split into batches of EMBEDDING_BATCH_SIZE."""
-        from unittest.mock import AsyncMock, MagicMock, call, patch
+        from math import ceil
+        from unittest.mock import AsyncMock, MagicMock, patch
 
         from open_notebook.utils.embedding import EMBEDDING_BATCH_SIZE
 
-        num_texts = 120
+        num_texts = EMBEDDING_BATCH_SIZE * 2 + 3
         texts = [f"text_{i}" for i in range(num_texts)]
 
         mock_model = MagicMock()
@@ -264,11 +265,39 @@ class TestGenerateEmbedding:
             result = await generate_embeddings(texts)
 
             assert len(result) == num_texts
-            # 120 texts / 50 batch size = 3 batches (50, 50, 20)
-            assert mock_model.aembed.call_count == 3
+            expected_batches = ceil(num_texts / EMBEDDING_BATCH_SIZE)
+            assert mock_model.aembed.call_count == expected_batches
             assert len(mock_model.aembed.call_args_list[0][0][0]) == EMBEDDING_BATCH_SIZE
             assert len(mock_model.aembed.call_args_list[1][0][0]) == EMBEDDING_BATCH_SIZE
-            assert len(mock_model.aembed.call_args_list[2][0][0]) == 20
+            assert len(mock_model.aembed.call_args_list[-1][0][0]) == 3
+
+    @pytest.mark.asyncio
+    async def test_dashscope_text_embedding_v4_caps_batches_at_ten(self):
+        """DashScope text-embedding-v4 rejects batches larger than 10."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        texts = [f"text_{i}" for i in range(14)]
+        mock_model = MagicMock()
+        mock_model.model_name = "text-embedding-v4"
+        mock_model.provider = "openai_compatible"
+        mock_model.aembed = AsyncMock(
+            side_effect=lambda batch: [[float(i)] * 3 for i in range(len(batch))]
+        )
+
+        with (
+            patch(
+                "open_notebook.ai.models.model_manager.get_embedding_model",
+                new_callable=AsyncMock,
+                return_value=mock_model,
+            ),
+            patch("open_notebook.utils.embedding.EMBEDDING_BATCH_SIZE", 50),
+        ):
+            result = await generate_embeddings(texts)
+
+            assert len(result) == 14
+            assert mock_model.aembed.call_count == 2
+            assert len(mock_model.aembed.call_args_list[0][0][0]) == 10
+            assert len(mock_model.aembed.call_args_list[1][0][0]) == 4
 
     @pytest.mark.asyncio
     async def test_batch_retry_on_transient_failure(self):

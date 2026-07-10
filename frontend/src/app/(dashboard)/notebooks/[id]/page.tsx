@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { InlineEdit } from '@/components/common/InlineEdit'
 import { SourcesColumn } from '../components/SourcesColumn'
 import { NotesColumn } from '../components/NotesColumn'
 import { ChatColumn } from '../components/ChatColumn'
+import { LearningCurveDialog } from '../components/LearningCurveDialog'
 import { useNotebook, useUpdateNotebook } from '@/lib/hooks/use-notebooks'
 import { useNotebookSources } from '@/lib/hooks/use-sources'
 import { useNotes } from '@/lib/hooks/use-notes'
@@ -16,7 +17,8 @@ import { useIsDesktop } from '@/lib/hooks/use-media-query'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { FileText, StickyNote, MessageSquare } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { FileText, StickyNote, MessageSquare, TrendingUp } from 'lucide-react'
 import {
   applyBulkSourceContext,
   applyBulkNoteContext,
@@ -31,6 +33,21 @@ import {
 // components historically import these from this route file.
 import type { ContextMode, ContextSelections, NoteContextMode } from '@/lib/types/notebook-context'
 export type { ContextMode, ContextSelections, NoteContextMode }
+
+type NotebookColumnWidths = {
+  sources: number
+  chat: number
+  notes: number
+}
+
+const DEFAULT_NOTEBOOK_COLUMN_WIDTHS: NotebookColumnWidths = {
+  sources: 30,
+  chat: 40,
+  notes: 30,
+}
+
+const clampColumnWidth = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value))
 
 export default function NotebookPage() {
   const { t } = useTranslation()
@@ -55,6 +72,14 @@ export default function NotebookPage() {
 
   // Get collapse states for dynamic layout
   const { sourcesCollapsed, notesCollapsed } = useNotebookColumnsStore()
+  const desktopLayoutRef = useRef<HTMLDivElement | null>(null)
+  const columnDragRef = useRef<{
+    handle: 'sources-chat' | 'chat-notes'
+    startX: number
+    containerWidth: number
+    startWidths: NotebookColumnWidths
+  } | null>(null)
+  const [columnWidths, setColumnWidths] = useState<NotebookColumnWidths>(DEFAULT_NOTEBOOK_COLUMN_WIDTHS)
 
   // Detect desktop to avoid double-mounting ChatColumn
   const isDesktop = useIsDesktop()
@@ -88,6 +113,7 @@ export default function NotebookPage() {
     autoUpdateProfile: true,
     useProfileSource: true,
   })
+  const [learningCurveOpen, setLearningCurveOpen] = useState(false)
 
   useEffect(() => {
     if (!notebookId) return
@@ -112,6 +138,82 @@ export default function NotebookPage() {
       JSON.stringify(learningProfileOptions)
     )
   }, [notebookId, learningProfileOptions])
+
+  useEffect(() => {
+    if (!notebookId) return
+    try {
+      const stored = window.localStorage.getItem(`notebook-column-widths:${notebookId}`)
+      if (!stored) return
+      const parsed = JSON.parse(stored) as Partial<NotebookColumnWidths>
+      if (
+        typeof parsed.sources === 'number' &&
+        typeof parsed.chat === 'number' &&
+        typeof parsed.notes === 'number'
+      ) {
+        setColumnWidths({
+          sources: clampColumnWidth(parsed.sources, 16, 55),
+          chat: clampColumnWidth(parsed.chat, 24, 68),
+          notes: clampColumnWidth(parsed.notes, 18, 55),
+        })
+      }
+    } catch {
+      // Ignore malformed local layout state.
+    }
+  }, [notebookId])
+
+  useEffect(() => {
+    if (!notebookId) return
+    window.localStorage.setItem(
+      `notebook-column-widths:${notebookId}`,
+      JSON.stringify(columnWidths)
+    )
+  }, [columnWidths, notebookId])
+
+  const startColumnResize = (
+    handle: 'sources-chat' | 'chat-notes',
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    const rect = desktopLayoutRef.current?.getBoundingClientRect()
+    if (!rect) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    columnDragRef.current = {
+      handle,
+      startX: event.clientX,
+      containerWidth: rect.width,
+      startWidths: columnWidths,
+    }
+  }
+
+  const updateColumnResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = columnDragRef.current
+    if (!drag) return
+    const delta = ((event.clientX - drag.startX) / Math.max(drag.containerWidth, 1)) * 100
+    const { startWidths } = drag
+
+    if (drag.handle === 'sources-chat') {
+      const total = startWidths.sources + startWidths.chat
+      const sources = clampColumnWidth(startWidths.sources + delta, 16, total - 24)
+      setColumnWidths({
+        sources,
+        chat: total - sources,
+        notes: startWidths.notes,
+      })
+      return
+    }
+
+    const total = startWidths.chat + startWidths.notes
+    const chat = clampColumnWidth(startWidths.chat + delta, 24, total - 18)
+    setColumnWidths({
+      sources: startWidths.sources,
+      chat,
+      notes: total - chat,
+    })
+  }
+
+  const stopColumnResize = () => {
+    columnDragRef.current = null
+  }
 
   // Initialize and update selections when sources load or change
   useEffect(() => {
@@ -203,19 +305,70 @@ export default function NotebookPage() {
   return (
     <AppShell
       title={
-        <InlineEdit
-          id="notebook-top-title"
-          name="notebook-top-title"
-          value={notebook.name}
-          onSave={handleUpdateNotebookName}
-          className="max-w-full truncate text-xl font-semibold tracking-tight"
-          inputClassName="h-9 max-w-md text-xl font-semibold tracking-tight"
-          placeholder={t('notebooks.namePlaceholder')}
-        />
+        <div className="flex min-w-0 items-center gap-2">
+          <InlineEdit
+            id="notebook-top-title"
+            name="notebook-top-title"
+            value={notebook.name}
+            onSave={handleUpdateNotebookName}
+            className="max-w-full truncate text-xl font-semibold tracking-tight"
+            inputClassName="h-9 max-w-md text-xl font-semibold tracking-tight"
+            placeholder={t('notebooks.namePlaceholder')}
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0 gap-1.5 rounded-full"
+            onClick={() => setLearningCurveOpen(true)}
+          >
+            <TrendingUp className="h-4 w-4" />
+            学习曲线
+          </Button>
+        </div>
       }
     >
+      <LearningCurveDialog
+        open={learningCurveOpen}
+        onOpenChange={setLearningCurveOpen}
+        notebookId={notebookId}
+        sources={sources}
+        notes={notes}
+      />
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <div className="flex-1 min-h-0 p-6 overflow-x-auto overflow-y-auto flex flex-col">
+          <div className="mb-4 flex flex-col gap-3 rounded-xl border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between lg:hidden">
+            <div>
+              <p className="text-base font-semibold">学习曲线</p>
+              <p className="mt-1 text-sm text-muted-foreground">查看学习量、质量变化和最近学习建议。</p>
+            </div>
+            <Button
+              type="button"
+              variant="default"
+              className="w-full gap-2 rounded-full sm:w-auto"
+              onClick={() => setLearningCurveOpen(true)}
+            >
+              <TrendingUp className="h-4 w-4" />
+              打开学习曲线
+            </Button>
+          </div>
+
+          <div className="mb-4 hidden items-center justify-between rounded-xl border bg-muted/20 p-4 lg:flex">
+            <div>
+              <p className="text-base font-semibold">学习曲线</p>
+              <p className="mt-1 text-sm text-muted-foreground">查看最近 14 天学习量、学习质量、测验表现和下一步建议。</p>
+            </div>
+            <Button
+              type="button"
+              variant="default"
+              className="gap-2 rounded-full px-5"
+              onClick={() => setLearningCurveOpen(true)}
+            >
+              <TrendingUp className="h-4 w-4" />
+              打开学习曲线
+            </Button>
+          </div>
+
           {/* Mobile: Tabbed interface - only render on mobile to avoid double-mounting */}
           {!isDesktop && (
             <>
@@ -286,15 +439,23 @@ export default function NotebookPage() {
           )}
 
           {/* Desktop: Collapsible columns layout */}
-          <div className={cn(
+          <div
+            ref={desktopLayoutRef}
+            className={cn(
             'hidden lg:flex h-full min-h-0 gap-6 transition-all duration-150',
             'flex-row'
-          )}>
+            )}
+            onPointerMove={updateColumnResize}
+            onPointerUp={stopColumnResize}
+            onPointerCancel={stopColumnResize}
+          >
             {/* Sources Column */}
             <div className={cn(
               'transition-all duration-150',
-              sourcesCollapsed ? 'w-12 flex-shrink-0' : 'flex-none basis-1/3'
-            )}>
+              sourcesCollapsed ? 'w-12 flex-shrink-0' : 'min-w-[16rem] flex-none'
+            )}
+              style={sourcesCollapsed ? undefined : { flexBasis: `${columnWidths.sources}%` }}
+            >
               <SourcesColumn
                 sources={sources}
                 isLoading={sourcesLoading}
@@ -312,8 +473,24 @@ export default function NotebookPage() {
               />
             </div>
 
+            {!sourcesCollapsed && (
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                className="-mx-4 flex w-2 shrink-0 cursor-col-resize items-stretch justify-center"
+                onPointerDown={(event) => startColumnResize('sources-chat', event)}
+              >
+                <span className="my-2 w-px rounded-full bg-border transition-colors hover:bg-primary" />
+              </div>
+            )}
+
             {/* Chat Column - always expanded, takes remaining space */}
-            <div className="transition-all duration-150 flex-1 min-w-0">
+            <div
+              className="min-w-[20rem] flex-none transition-all duration-150"
+              style={{
+                flexBasis: `${columnWidths.chat}%`,
+              }}
+            >
               <ChatColumn
                 notebookId={notebookId}
                 contextSelections={contextSelections}
@@ -324,11 +501,24 @@ export default function NotebookPage() {
               />
             </div>
 
+            {!notesCollapsed && (
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                className="-mx-4 flex w-2 shrink-0 cursor-col-resize items-stretch justify-center"
+                onPointerDown={(event) => startColumnResize('chat-notes', event)}
+              >
+                <span className="my-2 w-px rounded-full bg-border transition-colors hover:bg-primary" />
+              </div>
+            )}
+
             {/* Notes Column */}
             <div className={cn(
               'transition-all duration-150',
-              notesCollapsed ? 'w-12 flex-shrink-0' : 'flex-none basis-1/3 lg:pr-6 lg:-mr-6'
-            )}>
+              notesCollapsed ? 'w-12 flex-shrink-0' : 'min-w-[18rem] flex-none lg:pr-6 lg:-mr-6'
+            )}
+              style={notesCollapsed ? undefined : { flexBasis: `${columnWidths.notes}%` }}
+            >
               <NotesColumn
                 notes={notes}
                 isLoading={notesLoading}

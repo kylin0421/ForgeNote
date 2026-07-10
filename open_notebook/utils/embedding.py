@@ -12,7 +12,7 @@ to ensure consistent behavior and proper handling of large content.
 
 import asyncio
 import os
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 import numpy as np
 from loguru import logger
@@ -28,7 +28,7 @@ def _get_embedding_batch_size() -> int:
     This is intentionally configurable because provider limits vary widely, and
     CPU-only local embedding endpoints often need smaller batches than cloud APIs.
     """
-    raw = os.getenv("OPEN_NOTEBOOK_EMBEDDING_BATCH_SIZE", "50").strip()
+    raw = os.getenv("OPEN_NOTEBOOK_EMBEDDING_BATCH_SIZE", "10").strip()
     try:
         value = int(raw)
         if value < 1:
@@ -36,20 +36,71 @@ def _get_embedding_batch_size() -> int:
         return value
     except ValueError:
         logger.warning(
-            "Invalid OPEN_NOTEBOOK_EMBEDDING_BATCH_SIZE='{}'; falling back to 50",
+            "Invalid OPEN_NOTEBOOK_EMBEDDING_BATCH_SIZE='{}'; falling back to 10",
             raw,
         )
-        return 50
+        return 10
 
 
 EMBEDDING_BATCH_SIZE = _get_embedding_batch_size()
 EMBEDDING_MAX_RETRIES = 3
 EMBEDDING_RETRY_DELAY = 2  # seconds
+DASHSCOPE_EMBEDDING_BATCH_LIMIT = 10
 
 # Lazy import to avoid circular dependency:
 # utils -> embedding -> models -> key_provider -> provider_config -> utils
 if TYPE_CHECKING:
     from open_notebook.ai.models import ModelManager
+
+
+def _model_attr_text(model: Any, *names: str) -> str:
+    values: list[str] = []
+    for name in names:
+        value = getattr(model, name, None)
+        if callable(value):
+            try:
+                value = value()
+            except TypeError:
+                value = None
+        if value:
+            values.append(str(value))
+    return " ".join(values).lower()
+
+
+def _effective_embedding_batch_size(model: Any) -> int:
+    """
+    Return a safe batch size for the active embedding model.
+
+    DashScope text-embedding-v4 rejects batches larger than 10. The same limit
+    is a safe default for DashScope-compatible embedding endpoints, while the
+    environment variable can still reduce the value further for smaller hosts.
+    """
+    model_identity = _model_attr_text(
+        model,
+        "model_name",
+        "name",
+        "provider",
+        "base_url",
+        "api_base",
+    )
+    config = getattr(model, "_config", None) or getattr(model, "config", None)
+    if isinstance(config, dict):
+        model_identity = f"{model_identity} {' '.join(str(v) for v in config.values())}".lower()
+
+    requires_dashscope_limit = (
+        "text-embedding-v4" in model_identity
+        or "dashscope" in model_identity
+        or "aliyuncs.com" in model_identity
+    )
+    if requires_dashscope_limit and EMBEDDING_BATCH_SIZE > DASHSCOPE_EMBEDDING_BATCH_LIMIT:
+        logger.debug(
+            "Capping embedding batch size from {} to {} for DashScope-compatible model",
+            EMBEDDING_BATCH_SIZE,
+            DASHSCOPE_EMBEDDING_BATCH_LIMIT,
+        )
+        return DASHSCOPE_EMBEDDING_BATCH_LIMIT
+
+    return EMBEDDING_BATCH_SIZE
 
 
 async def mean_pool_embeddings(embeddings: List[List[float]]) -> List[float]:
@@ -173,15 +224,16 @@ async def generate_embeddings(
         lambda: _get_size_metrics()[3],
     )
 
+    batch_size = _effective_embedding_batch_size(embedding_model)
     all_embeddings: List[List[float]] = []
-    total_batches = (len(texts) + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE
+    total_batches = (len(texts) + batch_size - 1) // batch_size
 
     for batch_idx in range(total_batches):
         if command_id:
             await raise_if_command_canceled(command_id)
 
-        start = batch_idx * EMBEDDING_BATCH_SIZE
-        end = start + EMBEDDING_BATCH_SIZE
+        start = batch_idx * batch_size
+        end = start + batch_size
         batch = texts[start:end]
 
         for attempt in range(1, EMBEDDING_MAX_RETRIES + 1):

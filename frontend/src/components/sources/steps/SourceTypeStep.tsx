@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { Control, FieldErrors, UseFormRegister, UseFormSetValue, useWatch } from "react-hook-form"
-import { FileIcon, LinkIcon, FileTextIcon } from "lucide-react"
+import { FileIcon, LinkIcon, FileTextIcon, Mic } from "lucide-react"
 import { useTranslation } from "@/lib/hooks/use-translation"
 import { FormSection } from "@/components/ui/form-section"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -255,6 +255,13 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
                       <p className="text-xs text-muted-foreground mt-1">
                         {t('sources.selectMultipleFilesHint')}
                       </p>
+                      <div className="mt-2 flex items-start gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground">
+                        <Mic className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                        <div>
+                          <p className="font-medium text-foreground">{t('sources.speechRecognitionTitle')}</p>
+                          <p>{t('sources.speechRecognitionHint')}</p>
+                        </div>
+                      </div>
                       {fileCount > 1 && fileInput instanceof FileList && (
                         <div className="mt-2 p-3 bg-muted rounded-md">
                           <p className="text-xs font-medium mb-2">{t('sources.selectedFiles')}</p>

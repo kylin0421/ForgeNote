@@ -24,7 +24,7 @@ import {
   AlertTriangle,
   Loader2,
   Unlink,
-  Database
+  Search
 } from 'lucide-react'
 import { useSourceStatus } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -435,9 +435,9 @@ function SourceCardImpl({
               {isEmbedding ? (
                 <Loader2 className="h-3 w-3 mr-1 animate-spin" />
               ) : (
-                <Database className="h-3 w-3 mr-1" />
+                <Search className="h-3 w-3 mr-1" />
               )}
-              创建嵌入
+              {isEmbedding ? t('sources.embedding') : t('sources.embedContent')}
             </Button>
           </div>
         ) : null}

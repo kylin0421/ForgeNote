@@ -47,6 +47,7 @@ export function AppShell({ children, title }: AppShellProps) {
   const pathname = usePathname()
   const { t } = useTranslation()
   const { openNotebookDialog, openSourceDialog } = useCreateDialogs()
+  const showHeaderCreate = pathname !== '/sources'
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -109,6 +110,7 @@ export function AppShell({ children, title }: AppShellProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {showHeaderCreate && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" className="gap-2">
@@ -127,6 +129,7 @@ export function AppShell({ children, title }: AppShellProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
 
           <div className={cn('hidden items-center gap-1 sm:flex')}>
             <ThemeToggle iconOnly />

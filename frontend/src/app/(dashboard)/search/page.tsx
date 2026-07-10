@@ -13,8 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Search, ChevronDown, AlertCircle, Settings, Save, MessageCircleQuestion } from 'lucide-react'
+import { Search, AlertCircle, Settings, Save, MessageCircleQuestion } from 'lucide-react'
 import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
@@ -76,6 +75,13 @@ export default function SearchPage() {
   const resolveModelName = (id?: string | null) => {
     if (!id) return t('searchPage.notSet')
     return modelNameById.get(id) ?? id
+  }
+
+  const formatMatchScore = (score: number) => {
+    if (!Number.isFinite(score)) {
+      return '0%'
+    }
+    return score <= 1 ? `${Math.round(score * 100)}%` : score.toFixed(2)
   }
 
   const hasEmbeddingModel = !!modelDefaults?.default_embedding_model
@@ -473,26 +479,10 @@ export default function SearchPage() {
                                     {result.title}
                                   </button>
                                   <Badge variant="secondary" className="ml-2">
-                                    {result.final_score.toFixed(2)}
+                                    匹配程度 {formatMatchScore(result.final_score)}
                                   </Badge>
                                 </div>
                               </div>
-
-                              {result.matches && result.matches.length > 0 && (
-                                <Collapsible className="mt-3">
-                                  <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-                                    <ChevronDown className="h-4 w-4" />
-                                    {t('searchPage.matches').replace('{count}', result.matches.length.toString())}
-                                  </CollapsibleTrigger>
-                                  <CollapsibleContent className="mt-2 space-y-1">
-                                    {result.matches.map((match, i) => (
-                                      <div key={i} className="text-sm pl-6 py-1 border-l-2 border-muted">
-                                        {match}
-                                      </div>
-                                    ))}
-                                  </CollapsibleContent>
-                                </Collapsible>
-                              )}
                             </CardContent>
                           </Card>
                         )})}

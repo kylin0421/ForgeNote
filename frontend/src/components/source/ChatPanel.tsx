@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock } from 'lucide-react'
+import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, Mic } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -25,6 +25,7 @@ import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { cn } from '@/lib/utils'
 
 interface NotebookContextStats {
   sourcesInsights: number
@@ -58,6 +59,45 @@ interface ChatPanelProps {
   notebookId?: string
 }
 
+type BrowserSpeechRecognitionResult = {
+  isFinal: boolean
+  0?: {
+    transcript?: string
+  }
+}
+
+type BrowserSpeechRecognitionEvent = {
+  results: {
+    length: number
+    [index: number]: BrowserSpeechRecognitionResult
+  }
+}
+
+type BrowserSpeechRecognition = {
+  lang: string
+  interimResults: boolean
+  continuous: boolean
+  start: () => void
+  stop: () => void
+  abort: () => void
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null
+  onerror: (() => void) | null
+  onend: (() => void) | null
+}
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition
+
+function getBrowserSpeechRecognition() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const speechWindow = window as Window & {
+    SpeechRecognition?: BrowserSpeechRecognitionConstructor
+    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor
+  }
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null
+}
+
 export function ChatPanel({
   messages,
   isStreaming,
@@ -77,12 +117,15 @@ export function ChatPanel({
   notebookContextStats,
   notebookId
 }: ChatPanelProps) {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const chatInputId = useId()
   const [input, setInput] = useState('')
+  const [isListening, setIsListening] = useState(false)
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null)
+  const voiceBaseInputRef = useRef('')
   const { openModal } = useModalManager()
 
   const handleReferenceClick = (type: string, id: string) => {
@@ -103,6 +146,12 @@ export function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort()
+    }
+  }, [])
+
   const handleSend = () => {
     if (input.trim() && !isStreaming) {
       onSendMessage(input.trim(), modelOverride)
@@ -119,6 +168,50 @@ export function ChatPanel({
       e.preventDefault()
       handleSend()
     }
+  }
+
+  const handleVoiceInput = () => {
+    if (isStreaming) {
+      return
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop()
+      setIsListening(false)
+      return
+    }
+
+    const SpeechRecognition = getBrowserSpeechRecognition()
+    if (!SpeechRecognition) {
+      toast.error(t('chat.voiceUnsupported'))
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.lang = language?.startsWith('zh') ? 'zh-CN' : 'en-US'
+    recognition.interimResults = true
+    recognition.continuous = false
+    voiceBaseInputRef.current = input
+
+    recognition.onresult = (event) => {
+      let transcript = ''
+      for (let index = 0; index < event.results.length; index += 1) {
+        transcript += event.results[index]?.[0]?.transcript ?? ''
+      }
+      const prefix = voiceBaseInputRef.current.trimEnd()
+      setInput(prefix ? `${prefix} ${transcript}` : transcript)
+    }
+    recognition.onerror = () => {
+      setIsListening(false)
+      toast.error(t('chat.voiceFailed'))
+    }
+    recognition.onend = () => {
+      setIsListening(false)
+    }
+
+    recognitionRef.current = recognition
+    setIsListening(true)
+    recognition.start()
   }
 
   // Detect platform for placeholder text
@@ -305,6 +398,24 @@ export function ChatPanel({
               className="flex-1 min-h-[40px] max-h-[100px] resize-none py-2 px-3 min-w-0"
               rows={1}
             />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleVoiceInput}
+              disabled={isStreaming}
+              size="icon"
+              className={cn(
+                'relative h-[40px] w-[40px] flex-shrink-0',
+                isListening && 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300'
+              )}
+              aria-label={isListening ? t('chat.voiceInputListening') : t('chat.voiceInput')}
+              title={isListening ? t('chat.voiceInputListening') : t('chat.voiceInput')}
+            >
+              <Mic className="h-4 w-4" />
+              {isListening && (
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+              )}
+            </Button>
             <Button
               onClick={handleSend}
               disabled={!input.trim() || isStreaming}

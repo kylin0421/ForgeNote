@@ -152,6 +152,10 @@ DASHSCOPE_MODEL_TYPES = {
     "text_to_speech": ["qwen3-tts", "qwen-tts", "cosyvoice"],
 }
 
+MIMO_MODEL_TYPES = {
+    "text_to_speech": ["mimo-v2.5-tts", "mimo-tts"],
+}
+
 MINIMAX_MODEL_TYPES = {
     "language": ["minimax", "abab"],
 }
@@ -183,6 +187,7 @@ def classify_model_type(model_name: str, provider: str) -> str:
         "elevenlabs": ELEVENLABS_MODEL_TYPES,
         "deepgram": DEEPGRAM_MODEL_TYPES,
         "dashscope": DASHSCOPE_MODEL_TYPES,
+        "mimo": MIMO_MODEL_TYPES,
         "minimax": MINIMAX_MODEL_TYPES,
     }
 
@@ -622,6 +627,27 @@ async def discover_dashscope_models() -> List[DiscoveredModel]:
     return models
 
 
+async def discover_mimo_models() -> List[DiscoveredModel]:
+    """Return a curated static list of Xiaomi MiMo TTS models."""
+    api_key = os.environ.get("MIMO_API_KEY") or os.environ.get("XIAOMI_MIMO_API_KEY")
+    if not api_key:
+        return []
+
+    return [
+        DiscoveredModel(name="mimo-v2.5-tts", provider="mimo", model_type="text_to_speech"),
+        DiscoveredModel(
+            name="mimo-v2.5-tts-voicedesign",
+            provider="mimo",
+            model_type="text_to_speech",
+        ),
+        DiscoveredModel(
+            name="mimo-v2.5-tts-voiceclone",
+            provider="mimo",
+            model_type="text_to_speech",
+        ),
+    ]
+
+
 async def discover_minimax_models() -> List[DiscoveredModel]:
     """Fetch available models from MiniMax API."""
     api_key = os.environ.get("MINIMAX_API_KEY")
@@ -740,6 +766,7 @@ PROVIDER_DISCOVERY_FUNCTIONS = {
     "deepgram": discover_deepgram_models,
     "openai_compatible": discover_openai_compatible_models,
     "dashscope": discover_dashscope_models,
+    "mimo": discover_mimo_models,
     "minimax": discover_minimax_models,
     "azure": None,  # Azure requires credential-based discovery (different auth)
     "vertex": None,  # Vertex requires credential-based discovery (service account)

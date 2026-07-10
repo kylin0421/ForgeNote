@@ -69,6 +69,13 @@ LearningOutputKind = Literal[
 ]
 
 
+class LearningSupplementalMaterial(BaseModel):
+    id: str = Field(..., description="Stable material id from the client")
+    title: str = Field(..., description="User-facing material title")
+    material_type: str = Field("note", description="source, note, podcast, transcript, etc.")
+    content: str = Field("", description="Plain text material content")
+
+
 class LearningOrchestrationRequest(BaseModel):
     message: str = Field(
         "",
@@ -108,6 +115,10 @@ class LearningOrchestrationRequest(BaseModel):
     accepted_resource_ids: List[str] = Field(
         default_factory=list,
         description="Collected resource ids the learner has accepted for this run",
+    )
+    supplemental_materials: List[LearningSupplementalMaterial] = Field(
+        default_factory=list,
+        description="Additional user-selected text materials such as notes or podcast transcripts",
     )
     learning_record_id: Optional[str] = Field(
         None,

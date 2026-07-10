@@ -12,6 +12,7 @@ import { FileText, Link as LinkIcon, Upload, AlignLeft, Trash2, ArrowUpDown } fr
 import { formatDistanceToNow } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { AddSourceButton } from '@/components/sources/AddSourceButton'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { cn } from '@/lib/utils'
@@ -278,6 +279,13 @@ export default function SourcesPage() {
           icon={FileText}
           title={t('sources.noSourcesYet')}
           description={t('sources.allSourcesDescShort')}
+          action={
+            <AddSourceButton
+              size="lg"
+              className="mt-2 rounded-full px-6 shadow-sm"
+              onCreated={() => fetchSources(true)}
+            />
+          }
         />
       </AppShell>
     )
@@ -286,11 +294,32 @@ export default function SourcesPage() {
   return (
     <AppShell>
       <div className="flex flex-col h-full w-full max-w-none px-6 py-6">
-        <div className="mb-6 flex-shrink-0">
-          <h1 className="text-3xl font-bold">{t('sources.allSources')}</h1>
-          <p className="mt-2 text-muted-foreground">
-            {t('sources.allSourcesDesc')}
-          </p>
+        <div className="mb-4 flex flex-shrink-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">{t('sources.allSources')}</h1>
+            <p className="mt-2 text-muted-foreground">
+              {t('sources.allSourcesDesc')}
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-5 flex flex-shrink-0 flex-col gap-4 rounded-xl border border-primary/25 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-foreground">{t('sources.addSource')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                上传文件、粘贴文本或添加网页链接，作为后续问答和学习资产生成的资料。
+              </p>
+            </div>
+          </div>
+          <AddSourceButton
+            size="lg"
+            className="h-12 w-full rounded-full px-8 text-base shadow-sm sm:w-auto"
+            onCreated={() => fetchSources(true)}
+          />
         </div>
 
         <div ref={scrollContainerRef} className="flex-1 rounded-md border overflow-auto">

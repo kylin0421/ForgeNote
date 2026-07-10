@@ -67,6 +67,9 @@ PROVIDER_CONFIG = {
     "dashscope": {
         "env_var": "DASHSCOPE_API_KEY",
     },
+    "mimo": {
+        "env_var": "MIMO_API_KEY",
+    },
     "minimax": {
         "env_var": "MINIMAX_API_KEY",
     },

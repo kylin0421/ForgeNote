@@ -113,12 +113,12 @@ function NotebookTile({
                 {notebook.archived ? (
                   <>
                     <ArchiveRestore className="h-4 w-4" />
-                    取消归档
+                    恢复到列表
                   </>
                 ) : (
                   <>
                     <Archive className="h-4 w-4" />
-                    归档
+                    移到已归档
                   </>
                 )}
               </DropdownMenuItem>
@@ -180,7 +180,8 @@ export default function NotebooksPage() {
   const [addSourceDialogOpen, setAddSourceDialogOpen] = useState(false)
   const [createdNotebook, setCreatedNotebook] = useState<NotebookResponse | null>(null)
   const [sourceSearchQuery, setSourceSearchQuery] = useState('')
-  const { data: notebooks, isLoading } = useNotebooks(false)
+  const [showArchived, setShowArchived] = useState(false)
+  const { data: notebooks, isLoading } = useNotebooks(showArchived)
 
   const sortedNotebooks = useMemo(
     () => [...(notebooks ?? [])].sort((a, b) => {
@@ -211,13 +212,62 @@ export default function NotebooksPage() {
     <AppShell>
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[1680px] px-6 py-8 lg:px-10">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-normal">
+                {showArchived ? '已归档学习记录' : '当前学习记录'}
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {showArchived
+                  ? '这些记录已从当前列表隐藏，但内容没有删除，可以随时恢复。'
+                  : '移到已归档会从当前列表隐藏学习记录，不会删除来源、资产或播客。'}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={showArchived ? 'outline' : 'default'}
+                onClick={() => setShowArchived(false)}
+              >
+                当前
+              </Button>
+              <Button
+                type="button"
+                variant={showArchived ? 'default' : 'outline'}
+                onClick={() => setShowArchived(true)}
+              >
+                已归档
+              </Button>
+            </div>
+          </div>
           {isLoading ? (
             <div className="flex min-h-[50vh] items-center justify-center">
               <LoadingSpinner size="lg" />
             </div>
+          ) : sortedNotebooks.length === 0 ? (
+            <div className="rounded-xl border bg-card px-6 py-12 text-center">
+              <p className="text-lg font-medium">
+                {showArchived ? '暂无已归档学习记录' : '暂无当前学习记录'}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {showArchived
+                  ? '当学习记录被移到已归档后，会显示在这里。'
+                  : '新建一个学习记录，或添加来源开始学习。'}
+              </p>
+              {!showArchived && (
+                <Button
+                  type="button"
+                  className="mt-5"
+                  onClick={() => setCreateDialogOpen(true)}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  新建学习记录
+                </Button>
+              )}
+            </div>
           ) : (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
-              <CreateNotebookTile onClick={() => setCreateDialogOpen(true)} />
+              {!showArchived && <CreateNotebookTile onClick={() => setCreateDialogOpen(true)} />}
               {sortedNotebooks.map((notebook, index) => (
                 <NotebookTile
                   key={notebook.id}
