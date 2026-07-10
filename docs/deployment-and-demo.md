@@ -160,3 +160,12 @@ docker compose up -d --build
 - `docs/assets/screenshot-learning-workspace.png`：课程学习工作台。
 - `docs/assets/screenshot-model-settings.png`：模型/API 配置。
 - `docs/assets/screenshot-search-agent.png`：问询与搜索入口。
+
+## 补充：学习曲线演示
+
+进入任意学习记录详情页后，点击页面顶部的“学习曲线”入口。演示时重点说明：
+
+- 柱状图表示近期学习量，折线表示学习质量。
+- 面板汇总近 7 天学习量、活跃天数、学习质量和测验正确率。
+- 系统会根据最近学习状态给出下一步建议，例如补弱、恢复学习节奏或进入综合应用。
+- 该功能与学习画像共享学习事件，但以更直观的图形和建议面板呈现，适合面向学生展示学习进展。
