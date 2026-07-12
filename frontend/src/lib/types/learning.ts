@@ -5,6 +5,7 @@ export type LearningOutputKind =
   | 'mind_map'
   | 'reading'
   | 'code_lab'
+  | 'visual_aid'
 
 export interface LearningOrchestrationRequest {
   message: string
@@ -17,6 +18,8 @@ export interface LearningOrchestrationRequest {
   accepted_resource_ids?: string[]
   supplemental_materials?: LearningSupplementalMaterial[]
   learning_record_id?: string
+  target_language?: string
+  image_model?: string
   auto_update_profile?: boolean
   use_profile_source?: boolean
 }

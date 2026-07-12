@@ -126,6 +126,7 @@ class TestAsyncSourceAssetPersistence:
                 data={
                     "type": "text",
                     "content": "Some text content",
+                    "topics": '["studio_import", "测验"]',
                     "notebooks": '["notebook:1"]',
                     "async_processing": "true",
                 },
@@ -136,6 +137,7 @@ class TestAsyncSourceAssetPersistence:
 
         source = saved_sources[0]
         assert source.asset is None
+        assert source.topics == ["studio_import", "测验"]
 
 
 class TestRetrySourceProcessing:

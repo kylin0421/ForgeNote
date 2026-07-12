@@ -101,6 +101,7 @@ def parse_source_form_data(
     url: Optional[str] = Form(None),
     content: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
+    topics: Optional[str] = Form(None),  # JSON string of source topics
     transformations: Optional[str] = Form(None),  # JSON string of transformation IDs
     embed: str = Form("false"),  # Accept as string, convert to bool
     delete_source: str = Form("false"),  # Accept as string, convert to bool
@@ -135,6 +136,16 @@ def parse_source_form_data(
             logger.error(f"Invalid JSON in transformations field: {transformations}")
             raise ValueError("Invalid JSON in transformations field")
 
+    topics_list = []
+    if topics:
+        try:
+            parsed_topics = json.loads(topics)
+            if isinstance(parsed_topics, list):
+                topics_list = [str(topic) for topic in parsed_topics if str(topic).strip()]
+        except json.JSONDecodeError:
+            logger.error(f"Invalid JSON in topics field: {topics}")
+            raise ValueError("Invalid JSON in topics field")
+
     # Create SourceCreate instance
     try:
         source_data = SourceCreate(
@@ -144,6 +155,7 @@ def parse_source_form_data(
             url=url,
             content=content,
             title=title,
+            topics=topics_list,
             file_path=None,  # Will be set later if file is uploaded
             transformations=transformations_list,
             embed=embed_bool,
@@ -381,7 +393,7 @@ async def create_source(
 
             source = Source(
                 title=source_data.title or "Processing...",
-                topics=[],
+                topics=source_data.topics or [],
                 asset=source_asset,
             )
             await source.save()
@@ -461,7 +473,7 @@ async def create_source(
                 # Create source record - let SurrealDB generate the ID
                 source = Source(
                     title=source_data.title or "Processing...",
-                    topics=[],
+                    topics=source_data.topics or [],
                 )
                 await source.save()
 

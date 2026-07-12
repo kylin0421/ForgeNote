@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import unquote, urlparse
@@ -212,6 +213,64 @@ async def stream_podcast_episode_audio(episode_id: str):
         audio_path,
         media_type="audio/mpeg",
         filename=audio_path.name,
+    )
+
+
+@router.get("/podcasts/episodes/{episode_id}/audio/wav")
+async def export_podcast_episode_audio_wav(episode_id: str):
+    """Export a podcast episode as WAV for user download."""
+    try:
+        episode = await PodcastService.get_episode(episode_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching podcast episode for WAV export: {str(e)}")
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    if not episode.audio_file:
+        raise HTTPException(status_code=404, detail="Episode has no audio file")
+
+    audio_path = _resolve_audio_path(episode.audio_file)
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found on disk")
+
+    if audio_path.suffix.lower() == ".wav":
+        return FileResponse(
+            audio_path,
+            media_type="audio/wav",
+            filename=audio_path.name,
+        )
+
+    wav_path = audio_path.with_suffix(".export.wav")
+    try:
+        if (
+            not wav_path.exists()
+            or wav_path.stat().st_mtime < audio_path.stat().st_mtime
+        ):
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(audio_path),
+                    "-ar",
+                    "44100",
+                    "-ac",
+                    "2",
+                    str(wav_path),
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    except Exception as e:
+        logger.error(f"Failed to convert podcast audio to WAV: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to export WAV audio")
+
+    return FileResponse(
+        wav_path,
+        media_type="audio/wav",
+        filename=f"{audio_path.stem}.wav",
     )
 
 

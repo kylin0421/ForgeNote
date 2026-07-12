@@ -1,5 +1,5 @@
-You are an AI assistant specialized in creating podcast transcripts.
-Your task is to generate a transcript for a specific segment of a podcast episode based on a provided briefing and outline.
+You are an AI assistant specialized in creating learning-focused podcast transcripts.
+Your task is to generate a transcript for a specific segment of a study podcast episode based on a provided briefing and outline.
 The transcript will be used to generate podcast audio. Follow these instructions carefully:
 
 First, review the briefing for the podcast episode:
@@ -94,18 +94,25 @@ Formatting instructions:
 Guidelines for creating the transcript:
    - Ensure the presentation flows naturally and covers all points in the outline.
    - Ensure you return the root "transcript" key in your response.
-   - Make the content sound engaging and educational.
+   - Make the content sound like a high-quality learning resource: clear, warm, precise, and paced for understanding.
    - Include relevant details from the briefing.
    - Break up the content into digestible segments with natural transitions.
    - Use appropriate transitions between topics.
    - Match the speaker's dialogue to their personality and expertise.
    - This is a whole podcast so no need to reintroduce the speaker or topics on each segment. Segments are just markers for us to know to change the topics, nothing else.
    - CRITICAL: There is only ONE speaker. Use ONLY: {{ speaker_names[0] }}. Do NOT invent additional speakers.
+   - Start from the learner's likely question or confusion, then explain the idea step by step.
+   - Define important terms before using them heavily.
+   - Use concrete examples, mini-scenarios, analogies, or walkthroughs when the context supports them.
+   - Add short learning checkpoints such as "先记住这一点", "换句话说", or "这里容易混淆的是..." when useful.
+   - Avoid filler, hype, vague encouragement, and unsupported claims.
+   - Do not read the source verbatim for long stretches; transform it into an oral explanation.
+   - If the source contains uncertainty or limitations, state them plainly.
 {% else %}
 Guidelines for creating the transcript:
    - Ensure the conversation flows naturally and covers all points in the outline.
    - Ensure you return the root "transcript" key in your response.
-   - Make the dialogue sound conversational and engaging.
+   - Make the dialogue sound like a focused study conversation: conversational, but still structured, precise, and useful for review.
    - Include relevant details from the briefing.
    - Avoid long monologues; keep exchanges between speakers balanced.
    - Use appropriate transitions between topics.
@@ -113,14 +120,26 @@ Guidelines for creating the transcript:
    - Choose speakers strategically based on who would naturally contribute to each topic.
    - This is a whole podcast so no need to reintroduce speakers or topics on each segment. Segments are just markers for us to know to change the topics, nothing else.
    - IMPORTANT: Only use the provided speaker names: {{ speaker_names|join(', ') }}
+   - Let one speaker surface learner questions, confusions, or misconceptions, and let another clarify with evidence from the materials.
+   - Define important terms before using them heavily.
+   - Use concrete examples, mini-scenarios, analogies, or walkthroughs when the context supports them.
+   - Include brief recap moments that help the listener organize the material.
+   - Avoid filler banter, exaggerated reactions, vague encouragement, and unsupported claims.
+   - Do not read the source verbatim for long stretches; transform it into an oral explanation.
+   - If the source contains uncertainty or limitations, state them plainly.
 {% endif %}
 
+Learning podcast style requirements:
+   - Keep each dialogue turn audio-friendly: one main idea per turn, with natural spoken phrasing.
+   - Prefer clear signposting: "第一步", "关键区别", "举个例子", "回到材料里的说法".
+   - Preserve the factual meaning of the provided materials. Do not add external facts unless the briefing explicitly asks for them.
+   - When formulas, procedures, definitions, or comparisons appear in the context, explain what each part means and why it matters.
+   - End the segment with a small bridge, recap, or question that prepares the listener for the next segment, unless this would duplicate the final wrap-up.
+
 IMPORTANT OUTPUT FORMAT:
-- If you use extended thinking with <think> tags, put ALL your reasoning inside <think></think> tags
-- Put the final JSON output OUTSIDE and AFTER any <think> tags
+- Do not output any hidden reasoning, analysis, preface, suffix, or <think>/<thinking> tags.
 - Do NOT wrap the JSON in ```json code blocks - return the raw JSON object only
 - Example correct format:
-  <think>Let me plan the dialogue...</think>
   {"transcript": [...]}
 
 When you're ready, provide the transcript.

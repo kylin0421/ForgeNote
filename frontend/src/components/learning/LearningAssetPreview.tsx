@@ -6,9 +6,29 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import type { TFunction } from 'i18next'
-import { Bold, ExternalLink, GitBranch, Italic, List, Minus, Plus, Star, Table2, Trash2, type LucideIcon } from 'lucide-react'
+import {
+  Bold,
+  BookMarked,
+  CheckCircle2,
+  Download,
+  ExternalLink,
+  GitBranch,
+  HelpCircle,
+  Italic,
+  List,
+  Maximize2,
+  Minus,
+  Plus,
+  RotateCcw,
+  Star,
+  Table2,
+  Trash2,
+  XCircle,
+  type LucideIcon,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { LearningResource } from '@/lib/types/learning'
 import { cn } from '@/lib/utils'
 
@@ -81,6 +101,11 @@ type Token = {
   className?: string
 }
 
+type VisualMindMapNodeDimensions = {
+  width: number
+  height: number
+}
+
 export type LearningAssetInteractionEvent = {
   eventType: string
   summary: string
@@ -93,6 +118,7 @@ const LEARNING_ASSET_KIND_LABELS: Record<string, string> = {
   mind_map: '知识导图',
   reading: '拓展阅读',
   code_lab: '代码实验',
+  visual_aid: '辅助理解图片',
 }
 
 export function getLearningAssetKindLabel(
@@ -669,20 +695,151 @@ function getQuizQuestionEvidence(question: QuizQuestion, resource: LearningResou
   }
 }
 
+export type QuizMistakeContext = {
+  notebookId?: string
+  notebookTitle?: string
+  noteId?: string
+  noteTitle?: string
+}
+
+export type QuizMistakeBookItem = {
+  id: string
+  notebookId?: string
+  notebookTitle?: string
+  noteId?: string
+  noteTitle?: string
+  resourceTitle: string
+  questionId: string
+  prompt: string
+  options: string[]
+  answerIndex: number
+  selectedIndex?: number
+  explanation: string
+  sourceTitle?: string
+  sourceId?: string
+  location?: string
+  evidence?: string
+  starred: boolean
+  savedAt: string
+}
+
+export const QUIZ_MISTAKE_BOOK_STORAGE_KEY = 'learning-quiz-mistake-book:v1'
+
+function getQuizMistakeId(resource: LearningResource, question: QuizQuestion) {
+  return `${resource.title || resource.kind}:${question.id || question.prompt}`
+}
+
+export function readQuizMistakeBook(): QuizMistakeBookItem[] {
+  if (typeof window === 'undefined') {
+    return []
+  }
+  try {
+    const stored = window.localStorage.getItem(QUIZ_MISTAKE_BOOK_STORAGE_KEY)
+    if (!stored) {
+      return []
+    }
+    const parsed = JSON.parse(stored)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+export function writeQuizMistakeBook(items: QuizMistakeBookItem[]) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(QUIZ_MISTAKE_BOOK_STORAGE_KEY, JSON.stringify(items.slice(0, 200)))
+}
+
+function QuizMistakeBookPanel({
+  items,
+  onToggleStar,
+  onRemove,
+}: {
+  items: QuizMistakeBookItem[]
+  onToggleStar: (id: string) => void
+  onRemove: (id: string) => void
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+        当前测验还没有错题。答错的题目会自动记录，也可以手动收藏。
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={item.id} className="rounded-md border bg-background p-3 text-sm">
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 font-medium leading-6">
+              {index + 1}. {item.prompt}
+            </p>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                variant={item.starred ? 'secondary' : 'ghost'}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => onToggleStar(item.id)}
+                aria-label={item.starred ? '取消收藏错题' : '收藏错题'}
+                title={item.starred ? '取消收藏错题' : '收藏错题'}
+              >
+                <Star className={cn('h-4 w-4', item.starred && 'fill-current')} />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                onClick={() => onRemove(item.id)}
+                aria-label="移出错题本"
+                title="移出错题本"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
+            {item.selectedIndex !== undefined && (
+              <p>你的答案：{item.options[item.selectedIndex] ?? '未记录'}</p>
+            )}
+            <p>正确答案：{item.options[item.answerIndex] ?? '未记录'}</p>
+            <p>{item.explanation}</p>
+            {(item.sourceTitle || item.evidence) && (
+              <p>
+                来源：{item.sourceTitle || '当前学习资产'}
+                {item.location ? ` · ${item.location}` : ''}
+                {item.evidence ? ` · ${item.evidence}` : ''}
+              </p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function QuizAsset({
   resource,
   compact = false,
   onLearningEvent,
   onGenerateSimilarQuiz,
+  mistakeContext,
 }: {
   resource: LearningResource
   compact?: boolean
   onLearningEvent?: (event: LearningAssetInteractionEvent) => void
   onGenerateSimilarQuiz?: (resource: LearningResource) => void
+  mistakeContext?: QuizMistakeContext
 }) {
   const [answers, setAnswers] = useState<Record<string, number>>({})
   const [currentIndex, setCurrentIndex] = useState(0)
   const [attemptSeed, setAttemptSeed] = useState(1)
+  const [mistakeBook, setMistakeBook] = useState<QuizMistakeBookItem[]>([])
+  const [showMistakeBook, setShowMistakeBook] = useState(false)
   const questions = getQuizQuestions(resource)
   const shuffledOptions = useMemo(
     () =>
@@ -701,8 +858,77 @@ function QuizAsset({
   const accuracy = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0
   const allCorrect = score === questions.length
 
+  useEffect(() => {
+    setMistakeBook(readQuizMistakeBook())
+  }, [])
+
   if (questions.length === 0 || !currentQuestion) {
     return <MarkdownLikeAsset content={resource.content} compact={compact} compactHeight="max-h-80" />
+  }
+
+  const updateMistakeBook = (updater: (current: QuizMistakeBookItem[]) => QuizMistakeBookItem[]) => {
+    setMistakeBook((current) => {
+      const next = updater(current)
+      writeQuizMistakeBook(next)
+      return next
+    })
+  }
+
+  const upsertMistake = (
+    question: QuizQuestion,
+    selectedIndex?: number,
+    starred?: boolean
+  ) => {
+    const evidence = getQuizQuestionEvidence(question, resource)
+    const id = getQuizMistakeId(resource, question)
+    updateMistakeBook((current) => {
+      const existing = current.find((item) => item.id === id)
+      const nextItem: QuizMistakeBookItem = {
+        id,
+        notebookId: mistakeContext?.notebookId ?? existing?.notebookId,
+        notebookTitle: mistakeContext?.notebookTitle ?? existing?.notebookTitle,
+        noteId: mistakeContext?.noteId ?? existing?.noteId,
+        noteTitle: mistakeContext?.noteTitle ?? existing?.noteTitle,
+        resourceTitle: resource.title,
+        questionId: question.id,
+        prompt: question.prompt,
+        options: question.options,
+        answerIndex: question.answer_index,
+        selectedIndex,
+        explanation: question.explanation,
+        sourceTitle: evidence.sourceTitle,
+        sourceId: evidence.sourceId,
+        location: evidence.location,
+        evidence: evidence.evidence,
+        starred: starred ?? existing?.starred ?? false,
+        savedAt: new Date().toISOString(),
+      }
+      const withoutCurrent = current.filter((item) => item.id !== id)
+      return [nextItem, ...withoutCurrent]
+    })
+  }
+
+  const toggleMistakeStar = (id: string) => {
+    updateMistakeBook((current) =>
+      current.map((item) =>
+        item.id === id ? { ...item, starred: !item.starred } : item
+      )
+    )
+  }
+
+  const removeMistake = (id: string) => {
+    updateMistakeBook((current) => current.filter((item) => item.id !== id))
+  }
+
+  const toggleCurrentQuestionBookmark = () => {
+    const id = getQuizMistakeId(resource, currentQuestion)
+    const existing = mistakeBook.find((item) => item.id === id)
+    if (existing) {
+      removeMistake(id)
+      return
+    }
+    upsertMistake(currentQuestion, answers[currentQuestion.id], true)
+    setShowMistakeBook(true)
   }
 
   const handleAnswer = (
@@ -723,6 +949,9 @@ function QuizAsset({
       return total + (nextAnswers[item.id] === item.answer_index ? 1 : 0)
     }, 0)
     const correct = optionIndex === question.answer_index
+    if (!correct) {
+      upsertMistake(question, optionIndex)
+    }
     onLearningEvent?.({
       eventType: 'quiz_answer',
       summary: `Quiz "${resource.title}" question ${questionIndex + 1}/${questions.length} ${
@@ -739,6 +968,9 @@ function QuizAsset({
 
   const selected = answers[currentQuestion.id]
   const answered = selected !== undefined
+  const currentMistakeId = getQuizMistakeId(resource, currentQuestion)
+  const currentMistake = mistakeBook.find((item) => item.id === currentMistakeId)
+  const resourceMistakes = mistakeBook.filter((item) => item.resourceTitle === resource.title)
   const currentOptions = shuffledOptions[currentQuestion.id] ?? currentQuestion.options.map((text, originalIndex) => ({
     originalIndex,
     text,
@@ -749,8 +981,8 @@ function QuizAsset({
     return (
       <div
         className={cn(
-          'flex items-center justify-center',
-          compact ? 'min-h-64' : 'min-h-[360px]'
+          'space-y-3',
+          compact ? 'max-h-80 overflow-y-auto pr-1' : 'max-h-[calc(90vh-220px)] overflow-y-auto pr-1'
         )}
       >
         <div
@@ -762,9 +994,17 @@ function QuizAsset({
           )}
         >
           <p className="text-4xl font-semibold tracking-tight">正确率 {accuracy}%</p>
+          <p className="text-sm text-muted-foreground">
+            本次错题 {questions.length - score} 道；错题本已整理 {resourceMistakes.length} 道。
+          </p>
           <div className="flex flex-wrap justify-center gap-2">
             <Button type="button" onClick={handleRetry}>
+              <RotateCcw className="mr-2 h-4 w-4" />
               重新练习
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setShowMistakeBook((current) => !current)}>
+              <BookMarked className="mr-2 h-4 w-4" />
+              {showMistakeBook ? '收起错题本' : '查看错题本'}
             </Button>
             {onGenerateSimilarQuiz ? (
               <Button type="button" variant="outline" onClick={() => onGenerateSimilarQuiz(resource)}>
@@ -773,6 +1013,13 @@ function QuizAsset({
             ) : null}
           </div>
         </div>
+        {showMistakeBook && (
+          <QuizMistakeBookPanel
+            items={resourceMistakes}
+            onToggleStar={toggleMistakeStar}
+            onRemove={removeMistake}
+          />
+        )}
       </div>
     )
   }
@@ -788,6 +1035,16 @@ function QuizAsset({
         className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm"
       >
         <span>{currentIndex + 1}/{questions.length}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowMistakeBook((current) => !current)}
+          className="h-8"
+        >
+          <BookMarked className="mr-2 h-4 w-4" />
+          错题本 {resourceMistakes.length}
+        </Button>
       </div>
       <div className="rounded-lg border p-3">
         <p className="text-sm font-medium">
@@ -826,6 +1083,32 @@ function QuizAsset({
         </div>
         {answered && (
           <div className="mt-3 space-y-2 rounded-md bg-muted px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs',
+                  selected === currentQuestion.answer_index
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200'
+                    : 'border-destructive bg-destructive/10 text-destructive'
+                )}
+              >
+                {selected === currentQuestion.answer_index ? (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                ) : (
+                  <XCircle className="h-3.5 w-3.5" />
+                )}
+                {selected === currentQuestion.answer_index ? '回答正确' : '已记录到错题本'}
+              </span>
+              <Button
+                type="button"
+                variant={currentMistake ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={toggleCurrentQuestionBookmark}
+              >
+                <Star className={cn('mr-2 h-4 w-4', currentMistake?.starred && 'fill-current')} />
+                {currentMistake ? '移出错题本' : '收藏错题'}
+              </Button>
+            </div>
             <p>{currentQuestion.explanation}</p>
             <div className="rounded-md border bg-background px-2.5 py-2 text-xs leading-5 text-muted-foreground">
               <span className="font-medium text-foreground">来源定位：</span>
@@ -845,6 +1128,13 @@ function QuizAsset({
           </div>
         )}
       </div>
+      {showMistakeBook && (
+        <QuizMistakeBookPanel
+          items={resourceMistakes}
+          onToggleStar={toggleMistakeStar}
+          onRemove={removeMistake}
+        />
+      )}
       <div className="flex justify-end gap-2">
         <Button
           type="button"
@@ -869,17 +1159,145 @@ function QuizAsset({
   )
 }
 
+type FlashcardRating = 'remembered' | 'vague' | 'forgotten'
+
+type FlashcardProgress = {
+  level: number
+  attempts: number
+  mastered: boolean
+}
+
+const FLASHCARD_REVIEW_GAPS = [1, 2, 4, 7]
+
+function buildFlashcardReviewQueue(count: number) {
+  return Array.from({ length: count }, (_, index) => index)
+}
+
 function FlashcardAsset({ resource, compact = false }: { resource: LearningResource; compact?: boolean }) {
-  const [flipped, setFlipped] = useState<Record<number, boolean>>({})
-  const [currentIndex, setCurrentIndex] = useState(0)
   const cards = getFlashcards(resource)
-  const currentCard = cards[Math.min(currentIndex, cards.length - 1)]
+  const [flipped, setFlipped] = useState<Record<number, boolean>>({})
+  const [reviewQueue, setReviewQueue] = useState<number[]>(() =>
+    buildFlashcardReviewQueue(cards.length)
+  )
+  const [progress, setProgress] = useState<Record<number, FlashcardProgress>>({})
+  const [hintsEnabled, setHintsEnabled] = useState(false)
+  const [activeFeedback, setActiveFeedback] = useState<FlashcardRating | null>(null)
+  const [showHint, setShowHint] = useState(false)
+
+  useEffect(() => {
+    setFlipped({})
+    setReviewQueue(buildFlashcardReviewQueue(cards.length))
+    setProgress({})
+    setActiveFeedback(null)
+    setShowHint(false)
+  }, [cards.length, resource.title])
+
+  const currentCardIndex = reviewQueue[0] ?? 0
+  const currentCard = cards[currentCardIndex]
+  const currentProgress = progress[currentCardIndex] ?? {
+    level: 0,
+    attempts: 0,
+    mastered: false,
+  }
+  const masteredCount = Object.values(progress).filter((item) => item.mastered).length
+  const isFlipped = Boolean(flipped[currentCardIndex])
+  const shouldShowHint = Boolean(
+    !isFlipped &&
+    currentCard?.hint &&
+    (hintsEnabled || showHint || activeFeedback === 'vague' || activeFeedback === 'forgotten')
+  )
 
   if (cards.length === 0 || !currentCard) {
     return <MarkdownLikeAsset content={resource.content} compact={compact} compactHeight="max-h-80" />
   }
 
-  const isFlipped = Boolean(flipped[currentIndex])
+  const resetActiveCardState = () => {
+    setFlipped((previous) => ({
+      ...previous,
+      [currentCardIndex]: false,
+    }))
+    setActiveFeedback(null)
+    setShowHint(false)
+  }
+
+  const advanceCard = (rating: FlashcardRating) => {
+    const nextLevel =
+      rating === 'remembered'
+        ? Math.min(currentProgress.level + 1, FLASHCARD_REVIEW_GAPS.length)
+        : rating === 'vague'
+          ? Math.max(0, currentProgress.level)
+          : 0
+    const mastered = rating === 'remembered' && nextLevel >= FLASHCARD_REVIEW_GAPS.length
+    const delay =
+      rating === 'forgotten'
+        ? 1
+        : rating === 'vague'
+          ? 2
+          : FLASHCARD_REVIEW_GAPS[Math.max(0, nextLevel - 1)] ?? FLASHCARD_REVIEW_GAPS[FLASHCARD_REVIEW_GAPS.length - 1]
+
+    setProgress((previous) => ({
+      ...previous,
+      [currentCardIndex]: {
+        level: nextLevel,
+        attempts: currentProgress.attempts + 1,
+        mastered,
+      },
+    }))
+
+    setReviewQueue((current) => {
+      const rest = current.slice(1)
+      if (mastered) {
+        return rest
+      }
+      const insertAt = Math.min(rest.length, delay)
+      return [
+        ...rest.slice(0, insertAt),
+        currentCardIndex,
+        ...rest.slice(insertAt),
+      ]
+    })
+    resetActiveCardState()
+  }
+
+  const handleRating = (rating: FlashcardRating) => {
+    if (rating === 'vague' || rating === 'forgotten') {
+      setActiveFeedback(rating)
+      setShowHint(true)
+      return
+    }
+    advanceCard(rating)
+  }
+
+  const restartReview = () => {
+    setFlipped({})
+    setReviewQueue(cards.map((_, index) => index))
+    setProgress({})
+    setActiveFeedback(null)
+    setShowHint(false)
+  }
+
+  if (reviewQueue.length === 0) {
+    return (
+      <div
+        className={cn(
+          'flex items-center justify-center',
+          compact ? 'min-h-64' : 'min-h-[360px]'
+        )}
+      >
+        <div className="flex flex-col items-center gap-4 rounded-lg border bg-emerald-50 px-8 py-10 text-center text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-50">
+          <CheckCircle2 className="h-10 w-10" />
+          <div>
+            <p className="text-2xl font-semibold">本组闪卡已记住</p>
+            <p className="mt-1 text-sm opacity-80">所有卡片都完成了间隔复习队列。</p>
+          </div>
+          <Button type="button" variant="outline" onClick={restartReview}>
+            <RotateCcw className="mr-2 h-4 w-4" />
+            重新复习
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -889,60 +1307,82 @@ function FlashcardAsset({ resource, compact = false }: { resource: LearningResou
       )}
     >
       <div className="rounded-lg border p-4">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs font-medium text-muted-foreground">
-            卡片 {currentIndex + 1}/{cards.length}
-          </p>
-          <span className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
-            {isFlipped ? '背面' : '正面'}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">
+              队列 {reviewQueue.length} 张 · 已记住 {masteredCount}/{cards.length}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              当前卡片 {currentCardIndex + 1}/{cards.length} · 复习层级 {currentProgress.level}/{FLASHCARD_REVIEW_GAPS.length}
+            </p>
+          </div>
+          <label className="flex h-8 cursor-pointer items-center gap-2 rounded-md border px-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={hintsEnabled}
+              onChange={(event) => setHintsEnabled(event.target.checked)}
+            />
+            <span>提示</span>
+          </label>
         </div>
-        <div className="mt-3 min-h-24">
+
+        <div className="mt-3 min-h-28 rounded-md bg-muted/30 px-3 py-2">
           <MarkdownSnippet content={isFlipped ? currentCard.back : currentCard.front} />
         </div>
-        {!isFlipped && currentCard.hint && (
-          <div className="mt-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-            <p className="font-medium">提示</p>
+
+        {shouldShowHint && (
+          <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            <p className="flex items-center gap-1 font-medium">
+              <HelpCircle className="h-3.5 w-3.5" />
+              提示
+            </p>
             <MarkdownSnippet
-              content={currentCard.hint}
-              className="text-xs leading-5 text-muted-foreground [&_p]:my-1"
+              content={currentCard.hint ?? ''}
+              className="text-xs leading-5 text-amber-900 dark:text-amber-100 [&_p]:my-1"
             />
           </div>
         )}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="mt-3"
-          onClick={() =>
-            setFlipped((previous) => ({
-              ...previous,
-              [currentIndex]: !previous[currentIndex],
-            }))
-          }
-        >
-          {isFlipped ? '返回正面' : '查看答案'}
-        </Button>
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={currentIndex === 0}
-          onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
-        >
-          上一张
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={currentIndex === cards.length - 1}
-          onClick={() => setCurrentIndex((index) => Math.min(cards.length - 1, index + 1))}
-        >
-          下一张
-        </Button>
+
+        {activeFeedback && (
+          <div className="mt-2 rounded-md border bg-muted/40 px-3 py-2 text-xs leading-5 text-muted-foreground">
+            {activeFeedback === 'vague'
+              ? '已标记为“模糊”。先看提示或翻面核对，随后会按间隔复习再次出现。'
+              : '已标记为“忘记”。先看提示或翻面核对，随后会更快再次出现。'}
+          </div>
+        )}
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setFlipped((previous) => ({
+                ...previous,
+                [currentCardIndex]: !previous[currentCardIndex],
+              }))
+            }
+          >
+            {isFlipped ? '返回正面' : '翻面'}
+          </Button>
+          <Button type="button" size="sm" onClick={() => handleRating('remembered')}>
+            <CheckCircle2 className="mr-2 h-4 w-4" />
+            记得
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => handleRating('vague')}>
+            <HelpCircle className="mr-2 h-4 w-4" />
+            模糊
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => handleRating('forgotten')}>
+            <RotateCcw className="mr-2 h-4 w-4" />
+            忘记
+          </Button>
+          {activeFeedback && (
+            <Button type="button" variant="outline" size="sm" onClick={() => advanceCard(activeFeedback)}>
+              加入复习队列
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -1272,9 +1712,92 @@ function ReadingAsset({ resource, compact = false }: { resource: LearningResourc
   )
 }
 
+function getVisualAidImageSrc(resource: LearningResource) {
+  const imageSrc = resource.payload?.image_src
+  return typeof imageSrc === 'string' ? imageSrc : ''
+}
+
+function downloadVisualAidImage(src: string, title: string) {
+  const link = document.createElement('a')
+  link.href = src
+  link.download = `${title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'visual-aid'}.png`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+}
+
+function VisualAidAsset({
+  resource,
+  compact = false,
+  expanded = false,
+}: {
+  resource: LearningResource
+  compact?: boolean
+  expanded?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const imageSrc = getVisualAidImageSrc(resource)
+  const prompt = typeof resource.payload?.prompt === 'string' ? resource.payload.prompt : resource.content
+
+  if (!imageSrc) {
+    return (
+      <MarkdownLikeAsset
+        content={[resource.summary, '', '## 图片生成提示词', prompt].join('\n')}
+        compact={compact}
+        compactHeight={expanded ? 'h-[calc(100vh-210px)] max-h-none' : 'max-h-[540px]'}
+      />
+    )
+  }
+
+  return (
+    <div className={cn('rounded-md border bg-background p-3', compact && 'p-2')}>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-sm font-medium">{resource.summary || resource.title}</p>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+            <Maximize2 className="mr-2 h-4 w-4" />
+            放大
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => downloadVisualAidImage(imageSrc, resource.title)}>
+            <Download className="mr-2 h-4 w-4" />
+            导出
+          </Button>
+        </div>
+      </div>
+      <button
+        type="button"
+        className="block w-full overflow-hidden rounded-md border bg-muted/20"
+        onClick={() => setOpen(true)}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={imageSrc}
+          alt={resource.title}
+          className={cn('h-auto w-full object-contain', compact ? 'max-h-56' : expanded ? 'max-h-[calc(100vh-300px)]' : 'max-h-[620px]')}
+        />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[94vh] overflow-hidden p-0 sm:max-w-6xl">
+          <DialogHeader className="border-b px-5 py-4">
+            <DialogTitle>{resource.title}</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-auto bg-muted/20 p-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageSrc}
+              alt={resource.title}
+              className="mx-auto max-h-[78vh] w-auto max-w-full rounded-md border bg-background object-contain"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 type MindMapViewMode = 'tree' | 'table' | 'outline'
 
-const MAX_MIND_MAP_DEPTH = 6
+const MAX_MIND_MAP_DEPTH = Number.POSITIVE_INFINITY
 const MIND_MAP_PALETTES = [
   {
     module: 'border-blue-200 bg-blue-50 text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100',
@@ -1790,6 +2313,34 @@ function addVisualMindMapChild(
   })
 }
 
+function getVisualMindMapNodeDimensions(node: VisualMindMapNode): VisualMindMapNodeDimensions {
+  const lines = node.text.split(/\r?\n/)
+  const longestLine = Math.max(...lines.map((line) => line.trim().length), 8)
+  const textLength = node.text.replace(/\s+/g, '').length
+  const width = Math.min(420, Math.max(180, Math.ceil(Math.min(longestLine, 36) * 8.5) + 54))
+  const estimatedWrappedLines = Math.max(lines.length, Math.ceil(textLength / 28))
+  const height = Math.max(
+    72,
+    estimatedWrappedLines * 22 + 34 + ((node.sourceRefs?.length ?? 0) > 0 ? 24 : 0)
+  )
+  return { width, height }
+}
+
+function useAutoSizeTextarea(value: string) {
+  const ref = useRef<HTMLTextAreaElement | null>(null)
+
+  useEffect(() => {
+    const textarea = ref.current
+    if (!textarea) {
+      return
+    }
+    textarea.style.height = 'auto'
+    textarea.style.height = `${textarea.scrollHeight}px`
+  }, [value])
+
+  return ref
+}
+
 function escapeMermaidMindMapText(value: string) {
   return value
     .replace(/[`{}[\]]/g, ' ')
@@ -1850,12 +2401,144 @@ function serializeVisualMindMapDocument(document: VisualMindMapDocument) {
   ].join('\n')
 }
 
+function escapeSvgText(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function wrapSvgText(value: string, maxChars: number) {
+  const lines = value.split(/\r?\n/).flatMap((line) => {
+    const compact = line.trim()
+    if (!compact) {
+      return ['']
+    }
+    const chunks: string[] = []
+    let current = ''
+    for (const char of compact) {
+      current += char
+      if (current.length >= maxChars) {
+        chunks.push(current)
+        current = ''
+      }
+    }
+    if (current) {
+      chunks.push(current)
+    }
+    return chunks
+  })
+  return lines.slice(0, 6)
+}
+
+export function mindMapContentToSvg(content: string, title = '思维导图') {
+  const mindMapDocument = createVisualMindMapDocument(content)
+  const flatNodes = flattenVisualMindMapNodes(mindMapDocument.nodes)
+  const dimensionsById = new Map<string, VisualMindMapNodeDimensions>()
+  flatNodes.forEach((node) => {
+    dimensionsById.set(node.id, getVisualMindMapNodeDimensions(node))
+  })
+  const getDimensions = (node: VisualMindMapNode) =>
+    dimensionsById.get(node.id) ?? getVisualMindMapNodeDimensions(node)
+  const minX = Math.min(...flatNodes.map((node) => node.x), 0)
+  const minY = Math.min(...flatNodes.map((node) => node.y), 0)
+  const offsetX = 48 - minX
+  const offsetY = 96 - minY
+  const width = Math.max(
+    960,
+    ...flatNodes.map((node) => node.x + getDimensions(node).width + offsetX + 48)
+  )
+  const height = Math.max(
+    560,
+    ...flatNodes.map((node) => node.y + getDimensions(node).height + offsetY + 48)
+  )
+  const edges = flatNodes.flatMap((node) => {
+    const parentDimensions = getDimensions(node)
+    return node.children.map((child) => {
+      const childDimensions = getDimensions(child)
+      const parentAnchorX = node.x + offsetX + parentDimensions.width
+      const parentAnchorY = node.y + offsetY + parentDimensions.height / 2
+      const childAnchorX = child.x + offsetX
+      const childAnchorY = child.y + offsetY + childDimensions.height / 2
+      const color = escapeSvgText(child.style?.line ?? node.style?.line ?? '#94a3b8')
+      return `<path d="M ${parentAnchorX} ${parentAnchorY} C ${parentAnchorX + 56} ${parentAnchorY}, ${childAnchorX - 56} ${childAnchorY}, ${childAnchorX} ${childAnchorY}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"/>`
+    })
+  })
+  const nodes = flatNodes.map((node) => {
+    const dimensions = getDimensions(node)
+    const x = node.x + offsetX
+    const y = node.y + offsetY
+    const fill = escapeSvgText(node.style?.fill ?? '#ffffff')
+    const line = escapeSvgText(node.style?.line ?? '#cbd5e1')
+    const textColor = escapeSvgText(node.style?.text ?? '#0f172a')
+    const fontWeight = node.style?.bold ? 700 : 600
+    const fontStyle = node.style?.italic ? 'italic' : 'normal'
+    const wrapped = wrapSvgText(node.text, Math.max(10, Math.floor((dimensions.width - 36) / 12)))
+    const text = wrapped.map((lineText, index) =>
+      `<tspan x="${x + 18}" y="${y + 30 + index * 20}">${escapeSvgText(lineText)}</tspan>`
+    ).join('')
+    const refs = (node.sourceRefs?.length ?? 0) > 0
+      ? `<text x="${x + 18}" y="${y + dimensions.height - 14}" fill="${textColor}" opacity="0.62" font-size="11">已关联 ${node.sourceRefs?.length ?? 0} 个素材</text>`
+      : ''
+    return [
+      `<rect x="${x}" y="${y}" width="${dimensions.width}" height="${dimensions.height}" rx="8" fill="${fill}" stroke="${line}" stroke-width="2"/>`,
+      `<text fill="${textColor}" font-size="14" font-weight="${fontWeight}" font-style="${fontStyle}" font-family="Inter, 'Microsoft YaHei', Arial, sans-serif">${text}</text>`,
+      refs,
+    ].join('')
+  })
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(width)}" height="${Math.ceil(height)}" viewBox="0 0 ${Math.ceil(width)} ${Math.ceil(height)}">`,
+    '<rect width="100%" height="100%" fill="#f8fafc"/>',
+    `<text x="48" y="48" fill="#0f172a" font-size="24" font-weight="700" font-family="Inter, 'Microsoft YaHei', Arial, sans-serif">${escapeSvgText(title)}</text>`,
+    ...edges,
+    ...nodes,
+    '</svg>',
+  ].join('')
+}
+
 function isProfileArtifactMindMapContent(content: string) {
   const compact = content.toLowerCase()
   return (
     compact.includes('learning_profile') ||
     /(^|\n)\s*-\s*id:\s*source:/i.test(content) ||
     content.includes('学习画像')
+  )
+}
+
+function VisualMindMapNodeTextEditor({
+  value,
+  onChange,
+  onFinish,
+}: {
+  value: string
+  onChange: (value: string) => void
+  onFinish: () => void
+}) {
+  const textareaRef = useAutoSizeTextarea(value)
+
+  return (
+    <textarea
+      ref={textareaRef}
+      autoFocus
+      value={value}
+      rows={1}
+      onChange={(event) => onChange(event.target.value)}
+      onBlur={onFinish}
+      onKeyDown={(event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+          event.preventDefault()
+          onFinish()
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          onFinish()
+        }
+      }}
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      className="block w-full resize-none overflow-hidden rounded border bg-background px-2 py-1 text-sm font-medium leading-5 text-foreground outline-none focus:ring-2 focus:ring-primary/40"
+    />
   )
 }
 
@@ -1978,7 +2661,7 @@ function MindMapGraphNodeView({
           'rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base font-semibold text-slate-950 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100',
         item.depth === 1 &&
           cn('rounded-md border px-4 py-3 text-sm font-medium', palette.module),
-        item.depth === 2 &&
+        item.depth >= 2 &&
           cn('justify-start gap-2 rounded-sm bg-background/80 px-2 py-1 text-sm', palette.leaf)
       )}
       style={{
@@ -2003,7 +2686,7 @@ function MindMapGraphNodeView({
           {isExpanded ? '-' : '+'}
         </span>
       )}
-      {item.depth === 2 && <span className={cn('h-2 w-2 shrink-0 rounded-full', palette.dot)} />}
+      {item.depth >= 2 && <span className={cn('h-2 w-2 shrink-0 rounded-full', palette.dot)} />}
       <span>{displayMindMapText(item.node.text)}</span>
     </div>
   )
@@ -2320,6 +3003,7 @@ export function MindMapVisualEditor({
     originY: number
     moved: boolean
   } | null>(null)
+  const lastPointerMoveWasDragRef = useRef(false)
   const [document, setDocument] = useState<VisualMindMapDocument>(() =>
     createVisualMindMapDocument(content)
   )
@@ -2408,7 +3092,7 @@ export function MindMapVisualEditor({
   }
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>, node: VisualMindMapNode) => {
-    if ((event.target as HTMLElement).closest('input')) {
+    if ((event.target as HTMLElement).closest('input, textarea')) {
       return
     }
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -2437,11 +3121,33 @@ export function MindMapVisualEditor({
   }
 
   const handlePointerUp = () => {
+    lastPointerMoveWasDragRef.current = Boolean(dragRef.current?.moved)
     dragRef.current = null
   }
 
-  const canvasWidth = Math.max(1100, ...flatNodes.map((node) => node.x + 260))
-  const canvasHeight = Math.max(620, ...flatNodes.map((node) => node.y + 140))
+  const nodeDimensionsById = useMemo(() => {
+    const dimensions = new Map<string, VisualMindMapNodeDimensions>()
+    flatNodes.forEach((node) => {
+      dimensions.set(node.id, getVisualMindMapNodeDimensions(node))
+    })
+    return dimensions
+  }, [flatNodes])
+  const getNodeDimensions = (node: VisualMindMapNode) =>
+    nodeDimensionsById.get(node.id) ?? getVisualMindMapNodeDimensions(node)
+  const canvasWidth = Math.max(
+    1100,
+    ...flatNodes.map((node) => {
+      const dimensions = getNodeDimensions(node)
+      return node.x + dimensions.width + 70
+    })
+  )
+  const canvasHeight = Math.max(
+    620,
+    ...flatNodes.map((node) => {
+      const dimensions = getNodeDimensions(node)
+      return node.y + dimensions.height + 80
+    })
+  )
 
   return (
     <div className={cn('grid min-h-0 gap-3', expanded ? 'h-[calc(100vh-210px)] grid-cols-[minmax(0,1fr)_280px]' : 'lg:grid-cols-[minmax(0,1fr)_260px]')}>
@@ -2485,31 +3191,42 @@ export function MindMapVisualEditor({
               }}
             >
               <svg className="pointer-events-none absolute inset-0" width={canvasWidth} height={canvasHeight}>
-                {flatNodes.flatMap((node) =>
-                  node.children.map((child) => (
-                    <path
-                      key={`${node.id}-${child.id}`}
-                      d={`M ${node.x + 210} ${node.y + 42} C ${node.x + 260} ${node.y + 42}, ${child.x - 50} ${child.y + 42}, ${child.x} ${child.y + 42}`}
-                      fill="none"
-                      stroke={child.style?.line ?? node.style?.line ?? '#94a3b8'}
-                      strokeWidth={1.5}
-                    />
-                  ))
-                )}
+                {flatNodes.flatMap((node) => {
+                  const parentDimensions = getNodeDimensions(node)
+                  return node.children.map((child) => {
+                    const childDimensions = getNodeDimensions(child)
+                    const parentAnchorX = node.x + parentDimensions.width
+                    const parentAnchorY = node.y + parentDimensions.height / 2
+                    const childAnchorX = child.x
+                    const childAnchorY = child.y + childDimensions.height / 2
+                    return (
+                      <path
+                        key={`${node.id}-${child.id}`}
+                        d={`M ${parentAnchorX} ${parentAnchorY} C ${parentAnchorX + 50} ${parentAnchorY}, ${childAnchorX - 50} ${childAnchorY}, ${childAnchorX} ${childAnchorY}`}
+                        fill="none"
+                        stroke={child.style?.line ?? node.style?.line ?? '#94a3b8'}
+                        strokeWidth={1.5}
+                      />
+                    )
+                  })
+                })}
               </svg>
               {flatNodes.map((node) => {
                 const selected = node.id === selectedId
                 const sourceCount = node.sourceRefs?.length ?? 0
+                const dimensions = getNodeDimensions(node)
                 return (
                   <div
                     key={node.id}
                     className={cn(
-                      'absolute w-[210px] rounded-md border-2 px-3 py-2 shadow-sm transition-shadow',
+                      'absolute rounded-md border-2 px-3 py-2 shadow-sm transition-shadow',
                       selected ? 'ring-2 ring-primary ring-offset-2' : 'hover:shadow-md'
                     )}
                     style={{
                       left: node.x,
                       top: node.y,
+                      width: dimensions.width,
+                      minHeight: dimensions.height,
                       backgroundColor: node.style?.fill ?? '#ffffff',
                       borderColor: node.style?.line ?? '#cbd5e1',
                       color: node.style?.text ?? '#0f172a',
@@ -2519,10 +3236,19 @@ export function MindMapVisualEditor({
                     onPointerDown={(event) => handlePointerDown(event, node)}
                     onClick={(event) => {
                       event.stopPropagation()
-                      if (selectedId === node.id && !dragRef.current?.moved) {
-                        setEditingId(node.id)
+                      if (lastPointerMoveWasDragRef.current) {
+                        lastPointerMoveWasDragRef.current = false
+                        setSelectedId(node.id)
+                        return
                       }
                       setSelectedId(node.id)
+                      setEditingId(node.id)
+                    }}
+                    onDoubleClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setSelectedId(node.id)
+                      setEditingId(node.id)
                     }}
                     onContextMenu={(event) => {
                       event.preventDefault()
@@ -2532,18 +3258,13 @@ export function MindMapVisualEditor({
                     }}
                   >
                     {editingId === node.id ? (
-                      <input
-                        autoFocus
+                      <VisualMindMapNodeTextEditor
                         value={node.text}
-                        onChange={(event) => updateNode(node.id, { text: event.target.value })}
-                        onBlur={() => setEditingId(null)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') setEditingId(null)
-                        }}
-                        className="w-full rounded border bg-background px-2 py-1 text-sm text-foreground"
+                        onChange={(value) => updateNode(node.id, { text: value })}
+                        onFinish={() => setEditingId(null)}
                       />
                     ) : (
-                      <p className="min-h-6 break-words text-sm font-medium leading-5 [overflow-wrap:anywhere]">
+                      <p className="min-h-6 whitespace-pre-wrap break-words text-sm font-medium leading-5 [overflow-wrap:anywhere]">
                         {node.text}
                       </p>
                     )}
@@ -2579,14 +3300,9 @@ export function MindMapVisualEditor({
         <h3 className="text-sm font-semibold">节点属性</h3>
         {selectedNode ? (
           <div className="mt-3 space-y-4">
-            <label className="block space-y-1.5 text-xs font-medium">
-              <span>文字</span>
-              <input
-                value={selectedNode.text}
-                onChange={(event) => updateNode(selectedNode.id, { text: event.target.value })}
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-              />
-            </label>
+            <p className="rounded-md border bg-muted/30 p-2 text-xs leading-5 text-muted-foreground">
+              单击画布中的节点即可在原节点上直接编辑文字，节点大小会随内容自动调整。
+            </p>
             <div className="grid grid-cols-3 gap-2 text-xs">
               <label className="space-y-1">
                 <span>填充</span>
@@ -2677,12 +3393,14 @@ export function LearningAssetPreview({
   expanded = false,
   onLearningEvent,
   onGenerateSimilarQuiz,
+  mistakeContext,
 }: {
   resource: LearningResource
   compact?: boolean
   expanded?: boolean
   onLearningEvent?: (event: LearningAssetInteractionEvent) => void
   onGenerateSimilarQuiz?: (resource: LearningResource) => void
+  mistakeContext?: QuizMistakeContext
 }) {
   if (resource.kind === 'quiz') {
     return (
@@ -2691,6 +3409,7 @@ export function LearningAssetPreview({
         compact={compact}
         onLearningEvent={onLearningEvent}
         onGenerateSimilarQuiz={onGenerateSimilarQuiz}
+        mistakeContext={mistakeContext}
       />
     )
   }
@@ -2702,6 +3421,9 @@ export function LearningAssetPreview({
   }
   if (resource.kind === 'reading') {
     return <ReadingAsset resource={resource} compact={compact} />
+  }
+  if (resource.kind === 'visual_aid') {
+    return <VisualAidAsset resource={resource} compact={compact} expanded={expanded} />
   }
   return (
     <MarkdownLikeAsset

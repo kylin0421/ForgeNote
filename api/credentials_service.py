@@ -80,7 +80,7 @@ PROVIDER_MODALITIES: Dict[str, List[str]] = {
     "vertex": ["language", "embedding", "text_to_speech"],
     "azure": ["language", "embedding", "speech_to_text", "text_to_speech"],
     "openai_compatible": ["language", "embedding", "speech_to_text", "text_to_speech"],
-    "dashscope": ["language", "speech_to_text", "text_to_speech"],
+    "dashscope": ["language", "speech_to_text", "text_to_speech", "image"],
     "mimo": ["text_to_speech"],
     "minimax": ["language"],
 }
@@ -506,6 +506,32 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
             return trimmed
         return f"{trimmed}/models"
 
+    curated_image_models: Dict[str, List[str]] = {
+        "openai": ["gpt-image-1", "dall-e-3"],
+        "openai_compatible": ["gpt-image-1", "dall-e-3"],
+        "dashscope": ["qwen-image"],
+    }
+
+    def is_dashscope_endpoint(url: Optional[str]) -> bool:
+        value = (url or "").lower()
+        return "dashscope.aliyuncs.com" in value or "maas.aliyuncs.com" in value
+
+    def append_curated_image_models(models: List[dict], target_provider: str) -> List[dict]:
+        image_provider = "dashscope" if is_dashscope_endpoint(base_url) else target_provider
+        seen = {str(model.get("name", "")).lower() for model in models}
+        for model_name in curated_image_models.get(image_provider, []):
+            if model_name.lower() in seen:
+                continue
+            models.append(
+                {
+                    "name": model_name,
+                    "provider": target_provider,
+                    "model_type": "image",
+                    "description": "Built-in image generation model",
+                }
+            )
+        return models
+
     # Static model lists for providers without a listing API
     STATIC_MODELS: Dict[str, List[str]] = {
         "anthropic": [
@@ -587,14 +613,14 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
                 )
                 response.raise_for_status()
                 data = response.json()
-                return [
+                return append_curated_image_models([
                     model_payload(m.get("id", ""), "openai_compatible")
                     for m in data.get("data", [])
                     if m.get("id")
-                ]
+                ], "openai_compatible")
         except Exception as e:
             logger.warning(f"Failed to discover openai_compatible models: {e}")
-            return []
+            return append_curated_image_models([], "openai_compatible")
 
     if provider == "azure":
         endpoint = config.get("endpoint")
@@ -670,14 +696,14 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
             response.raise_for_status()
             data = response.json()
 
-            return [
+            return append_curated_image_models([
                 model_payload(m.get("id", ""), provider, m.get("name"))
                 for m in data.get("data", [])
                 if m.get("id")
-            ]
+            ], provider)
     except Exception as e:
         logger.warning(f"Failed to discover {provider} models: {e}")
-        return []
+        return append_curated_image_models([], provider)
 
 
 async def register_models(credential_id: str, models_data: list) -> dict:

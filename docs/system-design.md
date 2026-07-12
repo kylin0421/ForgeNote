@@ -23,6 +23,7 @@ FastAPI 后端
   ├─ open_notebook domain models
   ├─ RAG / semantic index
   ├─ model manager / runtime spec
+  ├─ image generation adapter
   ├─ podcast / TTS pipeline
   └─ safety and orchestration helpers
 
@@ -39,6 +40,8 @@ SurrealDB + surreal-commands
 - `commands/learning_commands.py`
 - `frontend/src/components/learning/`
 - `frontend/src/app/(dashboard)/notebooks/components/LearningAssetGenerateDialog.tsx`
+- `frontend/src/app/(dashboard)/notebooks/components/MistakeBookDialog.tsx`
+- `open_notebook/ai/image_generation.py`
 - `open_notebook/ai/model_specs.py`
 - `open_notebook/utils/semantic_index.py`
 - `open_notebook/podcasts/robust_creator.py`
@@ -121,6 +124,16 @@ Studio 区域将生成能力按学习目标组织：
 
 生成结果以 note/asset 形式进入学习记录，后续可被搜索、问答和路径规划继续使用。
 
+编辑和导出规则按资产类型控制：
+
+- 只有思维导图和代码实验室中的 notebook 代码内容显示编辑入口。
+- 课程学习讲解可导出文档。
+- 测验通过错题本导出错题。
+- 思维导图可导出 Markdown，或在展开全部节点后导出图片。
+- 代码实验室可导出 Jupyter Notebook。
+- 播客可导出 WAV 音频。
+- 拓展阅读和闪卡不提供导出入口。
+
 ## 模型与协议适配
 
 系统把模型配置从“供应商列表”升级为“学习用途默认模型”：
@@ -137,15 +150,19 @@ Studio 区域将生成能力按学习目标组织：
 - code_lab
 - podcast
 - embedding
+- image
 - text_to_speech
 - speech_to_text
 
 `open_notebook/ai/model_specs.py` 负责把数据库中保存的 provider、model type、model name 解析为运行时 spec：
 
 - 规范化 OpenAI-compatible、Azure、DashScope 等协议。
+- 根据模型名识别 DashScope/Qwen 图片模型，并通过 `open_notebook/ai/image_generation.py` 调用图片生成接口。
 - 根据模型名识别 Qwen/DashScope TTS、ASR。
 - 区分 DashScope HTTP TTS、realtime TTS、voice conversion、video dubbing。
 - 给不适合普通播客 TTS 的模型返回 warning，避免 quota 和协议误用。
+
+模型配置页在交互上分为基础默认项和高级设置。基础默认项覆盖通用文本、Embedding、图片、TTS、STT；高级设置仅用于某个学习功能需要指定独立模型时覆盖。这样保留供应商接口的灵活性，同时减少每个 Studio 功能都手工选择模型的成本。
 
 ## 防幻觉与安全设计
 
@@ -176,15 +193,18 @@ Studio 区域将生成能力按学习目标组织：
 - 模型配置/default models
 - API 凭据/credentials
 - 后台任务/job
+- 播客 episode 与所属 notebook 的绑定关系
 
 API key 通过加密逻辑写入数据库，避免明文散落在前端或配置文件中。
+
+播客 episode 增加 `notebook_id` 字段，确保音频生成完成后能在对应学习记录的 Studio 区展示。该字段由迁移 `17.surrealql` 创建，并带有 `idx_episode_notebook_id` 索引。
 
 ## 前端交互设计
 
 学习页采用三栏布局：
 
 - 左侧：来源、资源搜索、学习画像。
-- 中间：与学习记录对话，展示引用和上下文 token。
+- 中间：与学习记录对话，展示引用和上下文 token；支持框选助手回答后引用继续追问，并给出下一句推荐问题。
 - 右侧：Studio 资源生成入口和已有学习资产。
 
 这样能同时呈现“资料输入、智能交互、资源产出”三个核心环节，比原通用 notebook 更贴合学习路径和资源生成赛题。
@@ -197,4 +217,5 @@ API key 通过加密逻辑写入数据库，避免明文散落在前端或配置
 
 - 学习画像继续作为长期、可编辑的稳定画像来源。
 - 学习曲线作为短期状态视图，强调趋势、质量和行动建议。
+- 错题本作为独立入口承接测验反馈，不占用左侧资料输入区。
 - 二者共享学习事件，避免用户在多个地方重复填写背景或学习记录。

@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useRef, useEffect, useId } from 'react'
+import { useState, useRef, useEffect, useId, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, Mic } from 'lucide-react'
+import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, Mic, Quote, Sparkles } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -87,6 +87,12 @@ type BrowserSpeechRecognition = {
 
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition
 
+type QuoteAction = {
+  text: string
+  x: number
+  y: number
+}
+
 function getBrowserSpeechRecognition() {
   if (typeof window === 'undefined') {
     return null
@@ -122,6 +128,7 @@ export function ChatPanel({
   const [input, setInput] = useState('')
   const [isListening, setIsListening] = useState(false)
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false)
+  const [quoteAction, setQuoteAction] = useState<QuoteAction | null>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null)
@@ -156,7 +163,73 @@ export function ChatPanel({
     if (input.trim() && !isStreaming) {
       onSendMessage(input.trim(), modelOverride)
       setInput('')
+      setQuoteAction(null)
     }
+  }
+
+  const formatQuotedFollowUp = (selectedText: string) => {
+    const normalized = selectedText
+      .replace(/\s+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+    const excerpt = normalized.length > 1000 ? `${normalized.slice(0, 1000)}...` : normalized
+    const quoted = excerpt
+      .split('\n')
+      .map(line => `> ${line}`)
+      .join('\n')
+
+    return `针对下面这段内容继续讲解：\n\n${quoted}\n\n我想进一步了解：`
+  }
+
+  const handleMessageSelection = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return
+    }
+
+    const container = event.currentTarget
+    window.setTimeout(() => {
+      const selection = window.getSelection()
+      const selectedText = selection?.toString().trim()
+      if (!selection || !selectedText || selectedText.length < 2 || selection.rangeCount === 0) {
+        setQuoteAction(null)
+        return
+      }
+
+      const anchorNode = selection.anchorNode
+      const focusNode = selection.focusNode
+      if (
+        (anchorNode && !container.contains(anchorNode)) ||
+        (focusNode && !container.contains(focusNode))
+      ) {
+        setQuoteAction(null)
+        return
+      }
+
+      const rect = selection.getRangeAt(0).getBoundingClientRect()
+      if (!rect.width && !rect.height) {
+        setQuoteAction(null)
+        return
+      }
+
+      setQuoteAction({
+        text: selectedText,
+        x: Math.min(rect.left + rect.width / 2, window.innerWidth - 160),
+        y: Math.max(rect.top - 44, 12),
+      })
+    }, 0)
+  }
+
+  const useSelectedTextAsFollowUp = () => {
+    if (!quoteAction) {
+      return
+    }
+
+    setInput(formatQuotedFollowUp(quoteAction.text))
+    setQuoteAction(null)
+    window.getSelection()?.removeAllRanges()
+    window.setTimeout(() => {
+      document.getElementById(chatInputId)?.focus()
+    }, 0)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -217,6 +290,41 @@ export function ChatPanel({
   // Detect platform for placeholder text
   const isMac = typeof navigator !== 'undefined' && navigator.userAgent.toUpperCase().indexOf('MAC') >= 0
   const keyHint = isMac ? '⌘+Enter' : 'Ctrl+Enter'
+  const followUpSuggestions = useMemo(() => {
+    const lastAiMessage = [...messages].reverse().find(message => message.type === 'ai')
+    if (!lastAiMessage?.content || isStreaming) {
+      return []
+    }
+
+    const content = lastAiMessage.content.toLowerCase()
+    if (content.includes('```') || content.includes('代码') || content.includes('code')) {
+      return [
+        '把这段代码逐行解释一下',
+        '给我一个可以直接运行的小例子',
+        '这段实现最容易出错的地方是什么？',
+      ]
+    }
+    if (content.includes('公式') || content.includes('定理') || content.includes('证明')) {
+      return [
+        '用更直观的例子解释这个公式',
+        '这个结论的适用条件是什么？',
+        '给我出一道类似练习题',
+      ]
+    }
+    if (content.includes('步骤') || content.includes('流程') || content.includes('首先')) {
+      return [
+        '把这些步骤整理成清单',
+        '每一步为什么要这样做？',
+        '如果中间一步失败该怎么排查？',
+      ]
+    }
+
+    return [
+      '用一个具体例子再讲一遍',
+      '这里最容易混淆的点是什么？',
+      '帮我整理成考试复习要点',
+    ]
+  }, [messages, isStreaming])
 
   return (
     <>
@@ -260,7 +368,7 @@ export function ChatPanel({
       </CardHeader>
       <CardContent className="flex-1 flex flex-col min-h-0 p-0">
         <ScrollArea className="flex-1 min-h-0 px-4" ref={scrollAreaRef}>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4" onMouseUp={handleMessageSelection}>
             {messages.length === 0 ? (
               <div className="text-center text-muted-foreground py-8">
                 <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -334,6 +442,21 @@ export function ChatPanel({
           </div>
         </ScrollArea>
 
+        {quoteAction && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="fixed z-50 h-8 gap-1.5 rounded-full border bg-background px-3 text-xs shadow-lg"
+            style={{ left: quoteAction.x, top: quoteAction.y, transform: 'translateX(-50%)' }}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={useSelectedTextAsFollowUp}
+          >
+            <Quote className="h-3.5 w-3.5" />
+            针对选中内容继续问
+          </Button>
+        )}
+
         {/* Context Indicators */}
         {contextIndicators && (
           <div className="border-t px-4 py-2">
@@ -382,6 +505,25 @@ export function ChatPanel({
                 onModelChange={onModelChange}
                 disabled={isStreaming}
               />
+            </div>
+          )}
+
+          {followUpSuggestions.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {followUpSuggestions.map((suggestion) => (
+                <Button
+                  key={suggestion}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 max-w-full gap-1.5 rounded-full px-2.5 text-xs"
+                  disabled={isStreaming}
+                  onClick={() => setInput(suggestion)}
+                >
+                  <Sparkles className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{suggestion}</span>
+                </Button>
+              ))}
             </div>
           )}
 

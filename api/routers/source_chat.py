@@ -78,6 +78,9 @@ class SendMessageRequest(BaseModel):
     model_override: Optional[str] = Field(
         None, description="Optional model override for this message"
     )
+    target_language: Optional[str] = Field(
+        None, description="Language the UI is currently using; AI replies must use it"
+    )
 
 class SuccessResponse(BaseModel):
     success: bool = Field(True, description="Operation success status")
@@ -415,7 +418,11 @@ async def delete_source_chat_session(
 
 
 async def stream_source_chat_response(
-    session_id: str, source_id: str, message: str, model_override: Optional[str] = None
+    session_id: str,
+    source_id: str,
+    message: str,
+    model_override: Optional[str] = None,
+    target_language: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """Stream the source chat response as Server-Sent Events."""
     try:
@@ -431,6 +438,7 @@ async def stream_source_chat_response(
         state_values["messages"] = state_values.get("messages", [])
         state_values["source_id"] = source_id
         state_values["model_override"] = model_override
+        state_values["target_language"] = target_language
 
         # Add user message to state
         user_message = HumanMessage(content=message)
@@ -538,6 +546,7 @@ async def send_message_to_source_chat(
                 source_id=full_source_id,
                 message=request.message,
                 model_override=model_override,
+                target_language=request.target_language,
             ),
             media_type="text/event-stream",
             headers={

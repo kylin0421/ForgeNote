@@ -13,7 +13,10 @@ from api.models import (
     ModelResponse,
     ProviderAvailabilityResponse,
 )
-from api.model_sync_service import sync_speaker_profiles_to_tts
+from api.model_sync_service import (
+    sync_episode_profiles_to_podcast_model,
+    sync_speaker_profiles_to_tts,
+)
 from open_notebook.ai.connection_tester import test_individual_model
 from open_notebook.ai.key_provider import provision_provider_keys
 from open_notebook.ai.model_specs import build_model_runtime_spec
@@ -229,7 +232,7 @@ async def create_model(model_data: ModelCreate):
     """Create a new model configuration."""
     try:
         # Validate model type
-        valid_types = ["language", "embedding", "text_to_speech", "speech_to_text"]
+        valid_types = ["language", "embedding", "text_to_speech", "speech_to_text", "image"]
         if model_data.type not in valid_types:
             raise HTTPException(
                 status_code=400,
@@ -350,6 +353,7 @@ def _default_models_response(defaults: DefaultModels) -> DefaultModelsResponse:
         default_reading_model=getattr(defaults, "default_reading_model", None),
         default_code_lab_model=getattr(defaults, "default_code_lab_model", None),
         default_podcast_model=getattr(defaults, "default_podcast_model", None),
+        default_image_model=getattr(defaults, "default_image_model", None),
     )
 
 
@@ -373,6 +377,7 @@ async def update_default_models(defaults_data: DefaultModelsResponse):
     try:
         defaults = await DefaultModels.get_instance()
         previous_text_to_speech_model = defaults.default_text_to_speech_model
+        previous_podcast_model = getattr(defaults, "default_podcast_model", None)
 
         provided = defaults_data.model_fields_set
         fields = [
@@ -394,6 +399,7 @@ async def update_default_models(defaults_data: DefaultModelsResponse):
             "default_reading_model",
             "default_code_lab_model",
             "default_podcast_model",
+            "default_image_model",
         ]
 
         for field in fields:
@@ -419,6 +425,11 @@ async def update_default_models(defaults_data: DefaultModelsResponse):
             await sync_speaker_profiles_to_tts(
                 defaults_data.default_text_to_speech_model,
                 previous_text_to_speech_model,
+            )
+        if "default_podcast_model" in provided:
+            await sync_episode_profiles_to_podcast_model(
+                defaults_data.default_podcast_model,
+                previous_podcast_model,
             )
 
         # No cache refresh needed - next access will fetch fresh data from DB
@@ -532,6 +543,8 @@ async def get_provider_availability():
                     ):
                         if has_db_cred or _check_openai_compatible_support(mode):
                             supported_types[provider].append(model_type)
+                if has_db_cred or _check_openai_compatible_support("LLM"):
+                    supported_types[provider].append("image")
             # Special handling for azure to check mode-specific availability
             elif provider == "azure":
                 has_db_cred = await _check_provider_has_credential("azure")
@@ -547,6 +560,8 @@ async def get_provider_availability():
                 for model_type, providers in esperanto_available.items():
                     if provider in providers:
                         supported_types[provider].append(model_type)
+                if provider in {"openai", "google", "vertex", "openrouter", "dashscope"}:
+                    supported_types[provider].append("image")
 
         return ProviderAvailabilityResponse(
             available=available_providers,
@@ -795,6 +810,7 @@ async def auto_assign_defaults():
             "embedding": [],
             "text_to_speech": [],
             "speech_to_text": [],
+            "image": [],
         }
 
         for model in all_models:
@@ -815,6 +831,7 @@ async def auto_assign_defaults():
             ("default_reading_model", "language", getattr(defaults, "default_reading_model", None)),
             ("default_code_lab_model", "language", getattr(defaults, "default_code_lab_model", None)),
             ("default_podcast_model", "language", getattr(defaults, "default_podcast_model", None)),
+            ("default_image_model", "image", getattr(defaults, "default_image_model", None)),
             ("default_embedding_model", "embedding", defaults.default_embedding_model),  # type: ignore[attr-defined]
             ("default_text_to_speech_model", "text_to_speech", defaults.default_text_to_speech_model),  # type: ignore[attr-defined]
             ("default_speech_to_text_model", "speech_to_text", defaults.default_speech_to_text_model),  # type: ignore[attr-defined]
@@ -859,6 +876,10 @@ async def auto_assign_defaults():
             if assigned.get("default_text_to_speech_model"):
                 await sync_speaker_profiles_to_tts(
                     assigned["default_text_to_speech_model"]
+                )
+            if assigned.get("default_podcast_model"):
+                await sync_episode_profiles_to_podcast_model(
+                    assigned["default_podcast_model"]
                 )
 
         return AutoAssignResult(

@@ -97,6 +97,7 @@ export function SourceDetailContent({
   const [isEmbedding, setIsEmbedding] = useState(false)
   const [isDownloadingFile, setIsDownloadingFile] = useState(false)
   const [fileAvailable, setFileAvailable] = useState<boolean | null>(null)
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null)
   const [selectedInsight, setSelectedInsight] = useState<SourceInsightResponse | null>(null)
   const [insightToDelete, setInsightToDelete] = useState<string | null>(null)
   const [deletingInsight, setDeletingInsight] = useState(false)
@@ -356,6 +357,46 @@ export function SourceDetailContent({
     return getYouTubeVideoId(source.asset.url)
   }, [source?.asset?.url])
 
+  const isPdfSource = useMemo(() => {
+    const filePath = source?.asset?.file_path || ''
+    const title = source?.title || ''
+    return /\.pdf$/i.test(filePath) || /\.pdf$/i.test(title)
+  }, [source?.asset?.file_path, source?.title])
+
+  useEffect(() => {
+    let previewUrl: string | null = null
+    let canceled = false
+    setPdfPreviewUrl(null)
+
+    if (!source?.id || !source.asset?.file_path || !isPdfSource || fileAvailable === false) {
+      return
+    }
+
+    const loadPdfPreview = async () => {
+      try {
+        const response = await sourcesApi.downloadFile(source.id)
+        if (canceled) {
+          return
+        }
+        previewUrl = URL.createObjectURL(
+          new Blob([response.data], { type: 'application/pdf' })
+        )
+        setPdfPreviewUrl(previewUrl)
+      } catch (error) {
+        console.debug('Unable to load PDF preview:', error)
+      }
+    }
+
+    void loadPdfPreview()
+
+    return () => {
+      canceled = true
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl)
+      }
+    }
+  }, [fileAvailable, isPdfSource, source?.asset?.file_path, source?.id])
+
   const handleDelete = async () => {
     if (!source) return
 
@@ -522,32 +563,87 @@ export function SourceDetailContent({
                     )}
                   </div>
                 )}
+                {isPdfSource && (
+                  <div className="mb-6 overflow-hidden rounded-lg border bg-muted/20">
+                    {pdfPreviewUrl ? (
+                      <iframe
+                        src={pdfPreviewUrl}
+                        title={source.title || 'PDF preview'}
+                        className="h-[72vh] w-full bg-background"
+                      />
+                    ) : fileAvailable === false ? (
+                      <div className="p-4 text-sm text-muted-foreground">
+                        原 PDF 文件不可用，下面显示系统提取的索引文本。
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+                        <LoadingSpinner size="sm" />
+                        正在加载 PDF 预览...
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none prose-headings:font-semibold prose-a:text-blue-600 prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                    components={{
-                      p: ({ children }) => <p className="mb-4">{children}</p>,
-                      h1: ({ children }) => <h1 className="text-2xl font-bold mt-6 mb-4">{children}</h1>,
-                      h2: ({ children }) => <h2 className="text-xl font-bold mt-5 mb-3">{children}</h2>,
-                      h3: ({ children }) => <h3 className="text-lg font-semibold mt-4 mb-2">{children}</h3>,
-                      ul: ({ children }) => <ul className="mb-4 list-disc pl-6">{children}</ul>,
-                      ol: ({ children }) => <ol className="mb-4 list-decimal pl-6">{children}</ol>,
-                      li: ({ children }) => <li className="mb-1">{children}</li>,
-                      table: ({ children }) => (
-                        <div className="my-4 overflow-x-auto">
-                          <table className="min-w-full border-collapse border border-border">{children}</table>
-                        </div>
-                      ),
-                      thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
-                      tbody: ({ children }) => <tbody>{children}</tbody>,
-                      tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
-                      th: ({ children }) => <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>,
-                      td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
-                    }}
-                  >
-                    {source.full_text || t('sources.noContent')}
-                  </ReactMarkdown>
+                  {isPdfSource ? (
+                    <details className="rounded-lg border bg-muted/20 p-4">
+                      <summary className="cursor-pointer text-sm font-medium">
+                        查看搜索索引用文本
+                      </summary>
+                      <div className="mt-4">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkMath]}
+                          rehypePlugins={[rehypeKatex]}
+                          components={{
+                            p: ({ children }) => <p className="mb-4">{children}</p>,
+                            h1: ({ children }) => <h1 className="text-2xl font-bold mt-6 mb-4">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-xl font-bold mt-5 mb-3">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-lg font-semibold mt-4 mb-2">{children}</h3>,
+                            ul: ({ children }) => <ul className="mb-4 list-disc pl-6">{children}</ul>,
+                            ol: ({ children }) => <ol className="mb-4 list-decimal pl-6">{children}</ol>,
+                            li: ({ children }) => <li className="mb-1">{children}</li>,
+                            table: ({ children }) => (
+                              <div className="my-4 overflow-x-auto">
+                                <table className="min-w-full border-collapse border border-border">{children}</table>
+                              </div>
+                            ),
+                            thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
+                            tbody: ({ children }) => <tbody>{children}</tbody>,
+                            tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
+                            th: ({ children }) => <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>,
+                            td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
+                          }}
+                        >
+                          {source.full_text || t('sources.noContent')}
+                        </ReactMarkdown>
+                      </div>
+                    </details>
+                  ) : (
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                      components={{
+                        p: ({ children }) => <p className="mb-4">{children}</p>,
+                        h1: ({ children }) => <h1 className="text-2xl font-bold mt-6 mb-4">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-xl font-bold mt-5 mb-3">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-lg font-semibold mt-4 mb-2">{children}</h3>,
+                        ul: ({ children }) => <ul className="mb-4 list-disc pl-6">{children}</ul>,
+                        ol: ({ children }) => <ol className="mb-4 list-decimal pl-6">{children}</ol>,
+                        li: ({ children }) => <li className="mb-1">{children}</li>,
+                        table: ({ children }) => (
+                          <div className="my-4 overflow-x-auto">
+                            <table className="min-w-full border-collapse border border-border">{children}</table>
+                          </div>
+                        ),
+                        thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
+                        tbody: ({ children }) => <tbody>{children}</tbody>,
+                        tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
+                        th: ({ children }) => <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>,
+                        td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
+                      }}
+                    >
+                      {source.full_text || t('sources.noContent')}
+                    </ReactMarkdown>
+                  )}
                 </div>
               </CardContent>
             </Card>

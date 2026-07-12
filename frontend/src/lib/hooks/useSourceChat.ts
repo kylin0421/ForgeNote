@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { sourceChatApi } from '@/lib/api/source-chat'
+import { getGenerationLanguageFromLocale } from '@/lib/utils/language'
 import {
   SourceChatSession,
   SourceChatMessage,
@@ -15,7 +16,7 @@ import {
 } from '@/lib/types/api'
 
 export function useSourceChat(sourceId: string) {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const queryClient = useQueryClient()
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<SourceChatMessage[]>([])
@@ -134,7 +135,8 @@ export function useSourceChat(sourceId: string) {
     try {
       const response = await sourceChatApi.sendMessage(sourceId, sessionId, {
         message,
-        model_override: modelOverride
+        model_override: modelOverride,
+        target_language: getGenerationLanguageFromLocale(language),
       })
 
       if (!response) {
@@ -202,7 +204,7 @@ export function useSourceChat(sourceId: string) {
       // Refetch session to get persisted messages
       refetchCurrentSession()
     }
-  }, [sourceId, currentSessionId, refetchCurrentSession, queryClient, t])
+  }, [sourceId, currentSessionId, refetchCurrentSession, queryClient, language, t])
 
   // Cancel streaming
   const cancelStreaming = useCallback(() => {

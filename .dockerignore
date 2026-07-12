@@ -12,6 +12,9 @@ venv
 ENV
 env
 .pytest_cache
+.pytest_tmp
+.pytest_tmp_run
+.pytest_tmp*
 .mypy_cache
 .ruff_cache
 

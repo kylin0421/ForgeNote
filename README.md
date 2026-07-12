@@ -27,11 +27,16 @@
 ## 当前版本体验更新
 
 - 学习记录页新增独立“学习曲线”入口，展示最近 14 天学习量、学习质量、测验正确率、每日明细和近期学习建议。
+- 错题本从左侧来源区移出，作为学习记录顶部独立入口展示；测验错题可集中查看，并支持错题本导出。
 - 学习画像改为用户友好的摘要视图，自动压缩后台学习信号、题干和错题记录，突出背景、当前目标、易错点和资源偏好。
 - 来源栏将“添加来源”和“搜集资料”调整为标题下方的大按钮，便于继续导入网页、文件、音频或文本资料。
 - Studio 侧强化测验总结与相似题练习、播客播放队列、字幕同步、倍速控制，以及更清晰的学习资产入口。
-- 思维导图体验侧重图形化树状展示、默认折叠、全屏查看和后续编辑能力，避免直接暴露 Mermaid/Markdown 原始内容。
-- 语音与播客配置补充 MiMo/Xiaomi TTS 适配说明，Embedding 批量请求已兼容单批不超过 10 条的模型限制。
+- 对话区支持鼠标框选历史回答后引用继续追问，并根据最近回答推荐下一句可问的问题。
+- 思维导图体验侧重图形化树状展示、默认折叠、全屏查看和后续编辑能力；代码实验室支持可编辑的 notebook 代码内容，其他学习资产默认不暴露编辑入口。
+- 导出能力按资产类型收敛：课程学习讲解可导出文档，测验可导出错题本，思维导图可导出 Markdown 或展开节点后的图片，代码实验室可导出 Jupyter Notebook，播客可导出 WAV，拓展阅读和闪卡不提供导出。
+- 模型设置页改为“基础默认项 + 高级覆盖”：基础区配置通用文本、Embedding、图片、TTS、STT；高级区再按 Studio 功能指定模型，避免每个功能都重复手动设置。
+- DashScope/Qwen 图片模型已接入 `qwen-image`，可作为 `default_image_model` 用于图片生成和视觉辅助测试。
+- 语音与播客配置补充 MiMo/Xiaomi TTS 适配说明，Embedding 批量请求已兼容单批不超过 10 条的模型限制，播客 episode 已绑定 notebook 以便 Studio 正确显示。
 
 ## 实际运行截图
 
@@ -72,8 +77,8 @@
 ## 技术亮点
 
 - 以 notebook 为知识底座：复用资料导入、来源管理、笔记、RAG、引用、模型和数据库能力，把通用资料库改造成课程学习空间。
-- 模型用途化管理：不仅按供应商配置模型，还按聊天、RAG、资源搜索、学习资产、讲解、测验、闪卡、导图、阅读、代码实验、播客、Embedding、TTS、STT 等用途设置默认模型。
-- 多协议模型适配：支持 OpenAI、OpenAI-compatible、DashScope、Azure/OpenAI 等协议归一；TTS 管线额外区分 DashScope HTTP TTS、realtime TTS、语音克隆/配音模型，避免把不适合的模型用于普通播客 TTS。
+- 模型用途化管理：保留供应商/API key 管理，同时提供通用文本、Embedding、图片、TTS、STT 基础默认项；高级设置可覆盖聊天、RAG、资源搜索、学习资产、讲解、测验、闪卡、导图、阅读、代码实验、播客等具体用途。
+- 多协议模型适配：支持 OpenAI、OpenAI-compatible、DashScope、Azure/OpenAI 等协议归一；TTS 管线额外区分 DashScope HTTP TTS、realtime TTS、语音克隆/配音模型；图片生成支持 DashScope `qwen-image` 原生多模态接口。
 - 来源约束生成：学习资产优先基于已接受来源和语义索引生成，减少“看似合理但不可追溯”的内容。
 - 任务可观测：长任务走 command job，前端任务浮窗可显示状态、日志、失败原因和结果摘要，适合演示多智能体流程。
 - 多模态资源形态：文本讲解、结构化题目、闪卡、思维导图、拓展阅读、代码实验、播客音频脚本/TTS 管线共同组成资源池。
@@ -132,7 +137,7 @@ docker compose up -d --build
 2. 上传课程讲义、论文、网页或笔记材料，形成初始知识库。
 3. 在学习画像区输入学生背景、目标、薄弱点和偏好。
 4. 使用“按目标搜集资料”让资源搜索智能体给出候选外部资料。
-5. 在 Studio 中生成课程学习讲解、测验、闪卡、思维导图、拓展阅读、代码实验和播客。
+5. 在 Studio 中生成课程学习讲解、测验、闪卡、思维导图、拓展阅读、代码实验和播客，并验证各资产的编辑/导出规则。
 6. 观察任务浮窗和生成日志，展示多智能体协作进度。
 7. 通过问答、测验反馈或资产使用事件更新画像，再生成下一阶段学习路径。
 
@@ -152,4 +157,6 @@ docker compose up -d --build
 - `pytest tests/test_credentials_api.py tests/test_models_api.py tests/test_learning_api.py tests/test_learning_service.py tests/test_semantic_index.py tests/test_command_service.py -q`：55 passed
 - `npm run lint`：0 errors，存在少量既有 warning
 - `npm run build`：通过
-- `docker compose build zhixue`：Dockerfile 已加入 apt retry；当前环境遇到 Debian apt 源 502，属于外部包源问题，非应用代码编译错误。
+- `uv run pytest tests/test_podcast_path.py tests/test_utils.py -q`：33 passed
+- 针对 ChatPanel、NotesColumn、模型设置页执行过 ESLint 定向检查。
+- `docker compose up -d --build --no-deps zhixue`：已完成应用容器重建；如遇 Debian apt 源 502，可稍后重试或切换镜像源。

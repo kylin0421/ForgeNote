@@ -56,6 +56,7 @@ async def submit_resource_search_job(request: LearningOrchestrationRequest):
         payload = request.model_dump(mode="json")
         payload["mode"] = "collect"
         payload["requested_outputs"] = []
+        payload.pop("image_model", None)
         job_id = submit_command(
             "open_notebook",
             "collect_learning_resources",

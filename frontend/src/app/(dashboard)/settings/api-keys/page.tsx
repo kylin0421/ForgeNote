@@ -19,7 +19,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  RefreshCw,
   Key,
   ShieldAlert,
   AlertTriangle,
@@ -37,6 +36,7 @@ import {
   Mic,
   Volume2,
   Bot,
+  Image as ImageIcon,
 } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useModels, useDeleteModel, useModelDefaults, useUpdateModelDefaults, useAutoAssignDefaults, useTestModel } from '@/lib/hooks/use-models'
@@ -51,7 +51,6 @@ import {
   useTestCredential,
   useDiscoverModels,
   useRegisterModels,
-  useMigrateFromEnv,
 } from '@/lib/hooks/use-credentials'
 import { Credential, CreateCredentialRequest, UpdateCredentialRequest, DiscoveredModel } from '@/lib/api/credentials'
 import { Model, ModelDefaults } from '@/lib/types/models'
@@ -59,7 +58,7 @@ import { MigrationBanner, ModelTestResultDialog } from '@/components/settings'
 import { EmbeddingModelChangeDialog } from '@/components/settings/EmbeddingModelChangeDialog'
 import { modelProviderLabel, modelWarnings } from '@/lib/utils/models'
 
-type ModelType = 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
+type ModelType = 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text' | 'image'
 
 // Provider display names
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
@@ -92,22 +91,22 @@ const ALL_PROVIDERS = [
 
 // Default modalities per provider
 const PROVIDER_MODALITIES: Record<string, ModelType[]> = {
-  openai: ['language', 'embedding', 'text_to_speech', 'speech_to_text'],
+  openai: ['language', 'embedding', 'text_to_speech', 'speech_to_text', 'image'],
   anthropic: ['language'],
   google: ['language', 'embedding', 'text_to_speech', 'speech_to_text'],
   groq: ['language', 'speech_to_text'],
   mistral: ['language', 'embedding', 'speech_to_text', 'text_to_speech'],
   deepseek: ['language'],
   xai: ['language', 'text_to_speech'],
-  openrouter: ['language', 'embedding'],
+  openrouter: ['language', 'embedding', 'image'],
   voyage: ['embedding'],
   elevenlabs: ['text_to_speech', 'speech_to_text'],
   deepgram: ['text_to_speech'],
   ollama: ['language', 'embedding'],
   azure: ['language', 'embedding', 'text_to_speech', 'speech_to_text'],
-  vertex: ['language', 'embedding', 'text_to_speech'],
-  openai_compatible: ['language', 'embedding', 'text_to_speech', 'speech_to_text'],
-  dashscope: ['language', 'speech_to_text', 'text_to_speech'],
+  vertex: ['language', 'embedding', 'text_to_speech', 'image'],
+  openai_compatible: ['language', 'embedding', 'text_to_speech', 'speech_to_text', 'image'],
+  dashscope: ['language', 'speech_to_text', 'text_to_speech', 'image'],
   mimo: ['text_to_speech'],
   minimax: ['language'],
 }
@@ -138,6 +137,7 @@ const TYPE_ICONS: Record<ModelType, React.ReactNode> = {
   embedding: <Code className="h-3 w-3" />,
   text_to_speech: <Volume2 className="h-3 w-3" />,
   speech_to_text: <Mic className="h-3 w-3" />,
+  image: <ImageIcon className="h-3 w-3" />,
 }
 
 const TYPE_COLORS: Record<ModelType, string> = {
@@ -145,6 +145,7 @@ const TYPE_COLORS: Record<ModelType, string> = {
   embedding: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
   text_to_speech: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
   speech_to_text: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
+  image: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300',
 }
 
 const TYPE_COLOR_INACTIVE = 'bg-muted text-muted-foreground opacity-50'
@@ -154,6 +155,7 @@ const TYPE_LABELS: Record<ModelType, string> = {
   embedding: 'Embedding',
   text_to_speech: 'TTS',
   speech_to_text: 'STT',
+  image: 'Image',
 }
 
 const modelTypeLabel = (type?: string) =>
@@ -842,6 +844,7 @@ function CredentialItem({
       'Reading': defaults.default_reading_model,
       'Code': defaults.default_code_lab_model,
       'Podcast': defaults.default_podcast_model,
+      'Image': defaults.default_image_model,
       'Embedding': defaults.default_embedding_model,
       'TTS': defaults.default_text_to_speech_model,
       'STT': defaults.default_speech_to_text_model,
@@ -928,7 +931,7 @@ function CredentialItem({
         {/* Linked models grouped by type */}
         {linkedModels.length > 0 && (
           <div className="space-y-1.5 pt-1">
-            {(['language', 'embedding', 'text_to_speech', 'speech_to_text'] as ModelType[])
+            {(['language', 'embedding', 'text_to_speech', 'speech_to_text', 'image'] as ModelType[])
               .filter(type => linkedModels.some(m => m.type === type))
               .map(type => (
                 <div key={type} className="flex items-start gap-1.5">
@@ -1164,15 +1167,33 @@ function DefaultModelSelectors({
     return value === key ? fallback : value
   }
 
+  const languageDefaultKeys: Array<keyof ModelDefaults> = [
+    'default_chat_model',
+    'default_rag_model',
+    'default_retrieval_model',
+    'default_resource_search_model',
+    'default_tools_model',
+    'default_learning_asset_model',
+    'default_transformation_model',
+    'default_study_guide_model',
+    'default_quiz_model',
+    'default_flashcards_model',
+    'default_mind_map_model',
+    'default_reading_model',
+    'default_code_lab_model',
+    'default_podcast_model',
+  ]
+
   const primaryConfigs: DefaultConfig[] = [
-    { key: 'default_chat_model', label: modelText('models.conversationModelLabel', 'Conversation tutor'), description: modelText('models.conversationModelDesc', 'Used for notebook chat and instant tutoring.'), modelType: 'language', required: true, id: `${generatedId}-chat` },
-    { key: 'default_rag_model', label: modelText('models.ragModelLabel', 'RAG answer model'), description: modelText('models.ragModelDesc', 'Used to answer questions over selected sources and notes.'), modelType: 'language', required: true, id: `${generatedId}-rag` },
-    { key: 'default_resource_search_model', label: modelText('models.resourceSearchModelLabel', 'Resource search agent'), description: modelText('models.resourceSearchModelDesc', 'Plans web searches and reranks learning resources.'), modelType: 'language', id: `${generatedId}-resource-search` },
-    { key: 'default_learning_asset_model', label: modelText('models.learningAssetModelLabel', 'General asset generator'), description: modelText('models.learningAssetModelDesc', 'Fallback model for all generated study assets.'), modelType: 'language', required: true, id: `${generatedId}-asset` },
+    { key: 'default_chat_model', label: '通用文本模型', description: '默认用于 Studio、聊天、RAG、播客脚本等文本生成。', modelType: 'language', required: true, id: `${generatedId}-language` },
     { key: 'default_embedding_model', label: t('models.embeddingModelLabel'), description: t('models.embeddingModelDesc'), modelType: 'embedding', required: true, id: `${generatedId}-embed` },
+    { key: 'default_image_model', label: '辅助图片模型', description: '用于 Studio 的辅助理解图片生成。', modelType: 'image', id: `${generatedId}-image` },
   ]
 
   const assetConfigs: DefaultConfig[] = [
+    { key: 'default_rag_model', label: modelText('models.ragModelLabel', 'RAG answer model'), description: modelText('models.ragModelDesc', 'Used to answer questions over selected sources and notes.'), modelType: 'language', id: `${generatedId}-rag` },
+    { key: 'default_resource_search_model', label: modelText('models.resourceSearchModelLabel', 'Resource search agent'), description: modelText('models.resourceSearchModelDesc', 'Plans web searches and reranks learning resources.'), modelType: 'language', id: `${generatedId}-resource-search` },
+    { key: 'default_learning_asset_model', label: modelText('models.learningAssetModelLabel', 'General asset generator'), description: modelText('models.learningAssetModelDesc', 'Fallback model for all generated study assets.'), modelType: 'language', id: `${generatedId}-asset` },
     { key: 'default_study_guide_model', label: modelText('models.studyGuideModelLabel', 'Study guide'), description: modelText('models.studyGuideModelDesc', 'Generates long-form Markdown explanations.'), modelType: 'language', id: `${generatedId}-study-guide` },
     { key: 'default_quiz_model', label: modelText('models.quizModelLabel', 'Quiz'), description: modelText('models.quizModelDesc', 'Generates diagnostic and practice questions.'), modelType: 'language', id: `${generatedId}-quiz` },
     { key: 'default_flashcards_model', label: modelText('models.flashcardsModelLabel', 'Flashcards'), description: modelText('models.flashcardsModelDesc', 'Generates concise recall cards.'), modelType: 'language', id: `${generatedId}-flashcards` },
@@ -1198,6 +1219,16 @@ function DefaultModelSelectors({
         return
       }
     }
+    if (key === 'default_chat_model') {
+      const nextValue = value || null
+      const payload = Object.fromEntries(
+        languageDefaultKeys.map((modelKey) => [modelKey, nextValue])
+      ) as Partial<ModelDefaults>
+      languageDefaultKeys.forEach((modelKey) => setValue(modelKey, nextValue))
+      updateDefaults.mutate(payload)
+      return
+    }
+
     updateDefaults.mutate({ [key]: value || null })
   }
 
@@ -1244,12 +1275,18 @@ function DefaultModelSelectors({
           </Alert>
         )}
 
-        {/* Primary purpose models */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {primaryConfigs.map(config => {
+        {/* Base model defaults */}
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-3">
+            基础默认模型
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[...primaryConfigs, ...mediaConfigs].map(config => {
             const available = getModelsForType(config.modelType)
             const currentValue = watch(config.key) || undefined
             const isValid = currentValue && available.some(m => m.id === currentValue)
+            const currentModel = currentValue ? available.find(m => m.id === currentValue) : undefined
+            const warnings = currentModel ? modelWarnings(currentModel) : []
 
             return (
               <div key={config.key} className="space-y-1">
@@ -1289,17 +1326,27 @@ function DefaultModelSelectors({
                     </Button>
                   )}
                 </div>
+                <p className="text-[10px] text-muted-foreground leading-tight">{config.description}</p>
+                {warnings.length > 0 && (
+                  <p className="text-[10px] leading-tight text-amber-600 dark:text-amber-400">
+                    {warnings[0]}
+                  </p>
+                )}
               </div>
             )
           })}
+          </div>
         </div>
 
-        {/* Asset generation models */}
-        <div className="border-t pt-3">
-          <p className="text-xs font-medium text-muted-foreground mb-3">
-            {modelText('models.assetSpecificModels', 'Asset-specific generation')}
+        {/* Advanced per-feature models */}
+        <details className="border-t pt-3">
+          <summary className="cursor-pointer select-none text-xs font-medium text-muted-foreground">
+            高级设置：逐功能指定模型
+          </summary>
+          <p className="mt-2 text-xs text-muted-foreground">
+            只有某个功能需要不同文本模型时再改这里；留空时会使用基础通用文本模型。
           </p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {assetConfigs.map(config => {
                 const available = getModelsForType(config.modelType)
                 const currentValue = watch(config.key) || undefined
@@ -1348,70 +1395,7 @@ function DefaultModelSelectors({
                 )
               })}
             </div>
-        </div>
-
-        {/* Voice models */}
-        <div className="border-t pt-3">
-          <p className="text-xs font-medium text-muted-foreground mb-3">
-            {modelText('models.voiceModels', 'Voice and audio')}
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {mediaConfigs.map(config => {
-              const available = getModelsForType(config.modelType)
-              const currentValue = watch(config.key) || undefined
-              const isValid = currentValue && available.some(m => m.id === currentValue)
-              const currentModel = currentValue ? available.find(m => m.id === currentValue) : undefined
-              const warnings = currentModel ? modelWarnings(currentModel) : []
-
-              return (
-                <div key={config.key} className="space-y-1">
-                  <Label htmlFor={config.id} className="text-xs">
-                    {config.label}
-                    {config.required && <span className="text-destructive ml-0.5">*</span>}
-                  </Label>
-                  <div className="flex gap-1">
-                    <Select
-                      value={currentValue || ""}
-                      onValueChange={(v) => handleChange(config.key, v)}
-                    >
-                      <SelectTrigger
-                        id={config.id}
-                        className={`h-8 text-xs ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
-                      >
-                        <SelectValue placeholder={
-                          config.required && !isValid && available.length > 0
-                            ? t('models.requiredModelPlaceholder')
-                            : t('models.selectModelPlaceholder')
-                        } />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {available.sort((a, b) => a.name.localeCompare(b.name)).map(model => (
-                          <SelectItem key={model.id} value={model.id}>
-                            <div className="flex items-center justify-between w-full">
-                              <span>{model.name}</span>
-                              <span className="text-xs text-muted-foreground ml-2">{modelProviderLabel(model)}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {!config.required && currentValue && (
-                      <Button variant="ghost" size="icon" onClick={() => handleChange(config.key, "")} className="h-8 w-8 shrink-0">
-                        <X className="h-3 w-3" />
-                      </Button>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground leading-tight">{config.description}</p>
-                  {warnings.length > 0 && (
-                    <p className="text-[10px] leading-tight text-amber-600 dark:text-amber-400">
-                      {warnings[0]}
-                    </p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        </details>
       </CardContent>
 
       <EmbeddingModelChangeDialog

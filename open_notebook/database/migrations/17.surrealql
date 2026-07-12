@@ -1,0 +1,5 @@
+-- Migration 17: Associate podcast episodes with notebooks.
+
+DEFINE FIELD IF NOT EXISTS notebook_id ON TABLE episode TYPE option<record<notebook>>;
+DEFINE INDEX IF NOT EXISTS idx_episode_notebook_id ON TABLE episode COLUMNS notebook_id CONCURRENTLY;
+

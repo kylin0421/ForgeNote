@@ -23,12 +23,26 @@ import { Textarea } from '@/components/ui/textarea'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getLearningAssetKindLabel } from '@/components/learning/LearningAssetPreview'
 import type { LearningOutputKind, LearningSupplementalMaterial } from '@/lib/types/learning'
+import { getGenerationLanguageFromLocale } from '@/lib/utils/language'
 import { cn } from '@/lib/utils'
 
 export const DEFAULT_ASSET_GOAL =
   '请基于当前学习记录中的来源生成通用但具体的学习资产。覆盖核心概念、方法脉络、关键术语、易混点、可自测问题和复习卡片；所有内容必须严格依据来源。'
 
 export type LearningAssetLength = 'short' | 'default' | 'long'
+
+const OUTPUT_LANGUAGE_OPTIONS = [
+  '中文',
+  'English',
+  '日本語',
+  '한국어',
+  'Français',
+  'Deutsch',
+  'Español',
+  'Português',
+  'Italiano',
+  'Русский',
+]
 
 export interface LearningProfileOptions {
   autoUpdateProfile: boolean
@@ -132,6 +146,17 @@ export const LEARNING_ASSET_OPTIONS: Array<{
       { id: 'project', label: '小项目', description: '小项目导向。' },
     ],
   },
+  {
+    kind: 'visual_aid',
+    label: '辅助理解图片',
+    description: '生成一张用于理解概念、流程或对比关系的学习图片。',
+    formats: [
+      { id: 'concept_visual', label: '概念图解', description: '把抽象概念变成清晰图解。' },
+      { id: 'process_diagram', label: '流程图解', description: '展示步骤、机制和因果关系。' },
+      { id: 'comparison_visual', label: '对比图', description: '对比相近概念和适用边界。' },
+      { id: 'memory_card', label: '记忆卡片', description: '适合复习的一页式视觉总结。' },
+    ],
+  },
 ]
 
 export function getDefaultLearningAssetDetail(
@@ -199,7 +224,8 @@ export function LearningAssetGenerateDialog({
   onDeleteMaterial,
 }: LearningAssetGenerateDialogProps) {
   const option = LEARNING_ASSET_OPTIONS.find((item) => item.kind === outputKind)
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
+  const targetLanguage = getGenerationLanguageFromLocale(language)
   const optionLabel = option
     ? getLearningAssetKindLabel(option.kind, t)
     : t('common.aiGenerated')
@@ -235,8 +261,11 @@ export function LearningAssetGenerateDialog({
       setSelectedMaterialIds(materialOptions.map((material) => material.id))
       setMaterialSearch('')
       setMaterialLibraryExpanded(false)
+      if (!detailConfig.language || (detailConfig.language === '中文' && targetLanguage !== '中文')) {
+        onDetailConfigChange({ ...detailConfig, language: targetLanguage })
+      }
     }
-  }, [open, materialOptions])
+  }, [detailConfig, materialOptions, onDetailConfigChange, open, targetLanguage])
 
   const updateDetail = (patch: Partial<LearningAssetDetailConfig>) => {
     onDetailConfigChange({ ...detailConfig, ...patch })
@@ -247,7 +276,10 @@ export function LearningAssetGenerateDialog({
     if (!outputKind) return
 
     onGenerate({
-      goal: buildLearningAssetGoal(outputKind, detailConfig),
+      goal: buildLearningAssetGoal(outputKind, {
+        ...detailConfig,
+        language: detailConfig.language || targetLanguage,
+      }),
       outputs: [outputKind],
       autoUpdateProfile: profileOptions.autoUpdateProfile,
       useProfileSource: profileOptions.useProfileSource,
@@ -353,21 +385,24 @@ export function LearningAssetGenerateDialog({
 
             <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
               <section className="space-y-3">
-                <h3 className="text-base font-semibold">选择语言</h3>
+                <h3 className="text-base font-semibold">输出语言</h3>
                 <Select
-                  value={detailConfig.language}
-                  onValueChange={(language) => updateDetail({ language })}
+                  value={detailConfig.language || targetLanguage}
+                  onValueChange={(value) => updateDetail({ language: value })}
                   disabled={isGenerating}
                 >
                   <SelectTrigger className="h-12 w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="中文">中文</SelectItem>
-                    <SelectItem value="English">English</SelectItem>
-                    <SelectItem value="中英双语">中英双语</SelectItem>
+                    {Array.from(new Set([targetLanguage, ...OUTPUT_LANGUAGE_OPTIONS])).map((item) => (
+                      <SelectItem key={item} value={item}>{item}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  默认跟随系统语言，也可以为本次生成单独选择输出语言。
+                </p>
               </section>
 
               <section className="space-y-3">
@@ -395,12 +430,16 @@ export function LearningAssetGenerateDialog({
             </div>
 
             <section className="space-y-3">
-              <h3 className="text-base font-semibold">这次生成要重点关注什么？</h3>
+              <h3 className="text-base font-semibold">
+                {outputKind === 'visual_aid' ? '这张辅助图片要怎么生成？' : '这次生成要重点关注什么？'}
+              </h3>
               <Textarea
                 value={detailConfig.focus}
                 onChange={(event) => updateDetail({ focus: event.target.value })}
                 placeholder={
-                  '可选：例如「只覆盖第二篇论文」「更关注方法和实验」「面向第一次接触这个主题的人解释」。留空则自动根据来源生成。'
+                  outputKind === 'visual_aid'
+                    ? '可选：例如「画成流程图」「对比两个概念」「用一页式复习卡呈现」「突出公式含义和变量关系」。留空则自动根据来源生成。'
+                    : '可选：例如「只覆盖第二篇论文」「更关注方法和实验」「面向第一次接触这个主题的人解释」。留空则自动根据来源生成。'
                 }
                 className="min-h-36 resize-none"
                 disabled={isGenerating}

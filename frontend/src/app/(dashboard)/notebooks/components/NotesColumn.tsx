@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ClipboardList,
   Code2,
+  Download,
   FileText,
   Headphones,
   ListMusic,
@@ -27,6 +28,7 @@ import {
   FastForward,
   Sparkles,
   StickyNote,
+  Image as ImageIcon,
   TimerReset,
   Trash2,
   User,
@@ -56,6 +58,7 @@ import {
   LearningAssetPreview,
   getLearningAssetKindLabel,
   getVisibleLearningAssetContent,
+  mindMapContentToSvg,
   parseLearningAssetNote,
   type MindMapMaterial,
 } from '@/components/learning/LearningAssetPreview'
@@ -65,6 +68,7 @@ import { learningApi } from '@/lib/api/learning'
 import { resolvePodcastAssetUrl } from '@/lib/api/podcasts'
 import { QUERY_KEYS } from '@/lib/api/query-client'
 import { useDeleteNote } from '@/lib/hooks/use-notes'
+import { useModelDefaults } from '@/lib/hooks/use-models'
 import {
   useEpisodeProfiles,
   useDeletePodcastEpisode,
@@ -77,6 +81,7 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
 import { cn } from '@/lib/utils'
 import { getDateLocale } from '@/lib/utils/date-locale'
+import { getGenerationLanguageFromLocale } from '@/lib/utils/language'
 import type { NoteResponse, SourceListResponse } from '@/lib/types/api'
 import type { LearningOutputKind, LearningResource } from '@/lib/types/learning'
 import {
@@ -104,6 +109,9 @@ const LEARNING_PROFILE_TOPIC = 'learning_profile'
 const LEARNING_PROFILE_TITLE = '学习画像'
 
 const ACTIVE_JOB_STATUSES = new Set(['new', 'queued', 'running'])
+const DEFAULT_PODCAST_MATERIAL_LIMIT = 6
+const PODCAST_CONTEXT_CHAR_LIMIT = 22000
+const PODCAST_SUPPLEMENTAL_CHAR_LIMIT = 4000
 
 type AssetJobTracker = {
   jobId: string
@@ -192,6 +200,7 @@ const STUDIO_ASSET_ICONS: Record<StudioAssetKind, typeof FileText> = {
   mind_map: Network,
   reading: Search,
   code_lab: Code2,
+  visual_aid: ImageIcon,
   podcast: Headphones,
 }
 
@@ -202,12 +211,25 @@ const STUDIO_ASSET_STYLES: Record<StudioAssetKind, string> = {
   mind_map: 'border-violet-300 bg-violet-50 hover:border-violet-500 hover:bg-violet-100 dark:border-violet-500/70 dark:bg-violet-950/35 dark:hover:border-violet-400 dark:hover:bg-violet-950/50',
   reading: 'border-rose-300 bg-rose-50 hover:border-rose-500 hover:bg-rose-100 dark:border-rose-500/70 dark:bg-rose-950/35 dark:hover:border-rose-400 dark:hover:bg-rose-950/50',
   code_lab: 'border-cyan-300 bg-cyan-50 hover:border-cyan-500 hover:bg-cyan-100 dark:border-cyan-500/70 dark:bg-cyan-950/35 dark:hover:border-cyan-400 dark:hover:bg-cyan-950/50',
+  visual_aid: 'border-fuchsia-300 bg-fuchsia-50 hover:border-fuchsia-500 hover:bg-fuchsia-100 dark:border-fuchsia-500/70 dark:bg-fuchsia-950/35 dark:hover:border-fuchsia-400 dark:hover:bg-fuchsia-950/50',
   podcast: 'border-indigo-300 bg-indigo-50 hover:border-indigo-500 hover:bg-indigo-100 dark:border-indigo-500/70 dark:bg-indigo-950/35 dark:hover:border-indigo-400 dark:hover:bg-indigo-950/50',
 }
 
-function getGenerationLanguageFromLocale(language?: string) {
-  return language?.startsWith('zh') ? '中文' : 'English'
-}
+type StudioCategoryFilter = StudioAssetKind | 'all'
+
+const STUDIO_CATEGORY_OPTIONS: Array<{ id: StudioCategoryFilter; label: string }> = [
+  { id: 'all', label: '全部' },
+  { id: 'study_guide', label: '讲解文档' },
+  { id: 'quiz', label: '测验' },
+  { id: 'flashcards', label: '知识闪卡' },
+  { id: 'mind_map', label: '思维导图' },
+  { id: 'reading', label: '阅读材料' },
+  { id: 'code_lab', label: '代码实验' },
+  { id: 'visual_aid', label: '辅助图片' },
+  { id: 'podcast', label: '播客' },
+]
+
+const QUIZ_MISTAKE_BOOK_STORAGE_KEY = 'learning-quiz-mistake-book:v1'
 
 const DEFAULT_ASSET_DETAILS = LEARNING_ASSET_OPTIONS.reduce(
   (accumulator, option) => {
@@ -230,6 +252,377 @@ function getPodcastStatusLabel(status?: string | null) {
     return '失败'
   }
   return '等待中'
+}
+
+function normalizeRecordId(value?: string | null) {
+  if (!value) {
+    return ''
+  }
+  return value.includes(':') ? value.split(':', 2)[1] : value
+}
+
+function sameRecordId(left?: string | null, right?: string | null) {
+  return Boolean(left && right && normalizeRecordId(left) === normalizeRecordId(right))
+}
+
+type StudioExportTarget =
+  | {
+      type: 'learning_asset'
+      note: NoteResponse
+      asset: LearningResource | null
+      visibleContent: string
+      assetKind: LearningOutputKind | null
+      assetKindLabel: string | null
+    }
+  | {
+      type: 'podcast'
+      episode: PodcastEpisode
+    }
+
+type StudioExportFormat = 'default' | 'mind_map_md' | 'mind_map_png'
+
+type StudioExportMistakeBookItem = {
+  id: string
+  resourceTitle: string
+  questionId: string
+  prompt: string
+  options: string[]
+  answerIndex: number
+  selectedIndex?: number
+  explanation: string
+  sourceTitle?: string
+  sourceId?: string
+  location?: string
+  evidence?: string
+  starred: boolean
+  savedAt: string
+}
+
+function getStudioAssetTitle(target: StudioExportTarget) {
+  if (target.type === 'podcast') {
+    return target.episode.name || '未命名播客'
+  }
+  return (
+    target.asset?.title ||
+    stripLearningAssetTitlePrefix(target.note.title) ||
+    target.note.title ||
+    '未命名资料'
+  )
+}
+
+function isStudioTargetExportable(target: StudioExportTarget) {
+  if (target.type === 'podcast') {
+    return Boolean(target.episode.audio_url || target.episode.audio_file)
+  }
+  if (!target.asset) {
+    return false
+  }
+  if (target.asset.kind === 'code_lab') {
+    return extractExecutableCodeBlocks(target.asset.content).length > 0
+  }
+  return ['study_guide', 'quiz', 'mind_map', 'visual_aid'].includes(target.asset.kind)
+}
+
+function getStudioExportLabel(target: StudioExportTarget) {
+  if (target.type === 'podcast') {
+    return '导出 WAV'
+  }
+  if (!target.asset) {
+    return '导出'
+  }
+  if (target.asset.kind === 'study_guide') {
+    return '导出 PDF'
+  }
+  if (target.asset.kind === 'quiz') {
+    return '导出错题本'
+  }
+  if (target.asset.kind === 'mind_map') {
+    return '导出导图'
+  }
+  if (target.asset.kind === 'code_lab') {
+    return '导出 Notebook'
+  }
+  if (target.asset.kind === 'visual_aid') {
+    return '导出图片'
+  }
+  return '导出'
+}
+
+function safeExportFilename(value: string, fallback = 'studio-export') {
+  const compact = value
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+  return compact || fallback
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function svgToPngBlob(svg: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const width = Number(svg.match(/\bwidth="(\d+)"/)?.[1] ?? 1600)
+    const height = Number(svg.match(/\bheight="(\d+)"/)?.[1] ?? 1000)
+    const image = new Image()
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }))
+
+    image.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const context = canvas.getContext('2d')
+        if (!context) {
+          throw new Error('Canvas context is unavailable')
+        }
+        context.fillStyle = '#ffffff'
+        context.fillRect(0, 0, width, height)
+        context.drawImage(image, 0, 0)
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(url)
+          if (blob) {
+            resolve(blob)
+          } else {
+            reject(new Error('Failed to render mind map image'))
+          }
+        }, 'image/png')
+      } catch (error) {
+        URL.revokeObjectURL(url)
+        reject(error)
+      }
+    }
+
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Failed to load mind map SVG'))
+    }
+    image.src = url
+  })
+}
+
+function getAuthenticatedDownloadHeaders(): HeadersInit {
+  if (typeof window === 'undefined') {
+    return {}
+  }
+  try {
+    const raw = window.localStorage.getItem('auth-storage')
+    if (!raw) {
+      return {}
+    }
+    const parsed = JSON.parse(raw)
+    const token = parsed?.state?.token
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  } catch {
+    return {}
+  }
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function formatInlineMarkdown(value: string) {
+  return escapeHtml(value)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+}
+
+function markdownToPrintableHtml(markdown: string) {
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n')
+  const html: string[] = []
+  let inList = false
+  let inCode = false
+  let codeLines: string[] = []
+
+  const closeList = () => {
+    if (inList) {
+      html.push('</ul>')
+      inList = false
+    }
+  }
+
+  for (const line of lines) {
+    if (line.trim().startsWith('```')) {
+      closeList()
+      if (inCode) {
+        html.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`)
+        codeLines = []
+        inCode = false
+      } else {
+        inCode = true
+      }
+      continue
+    }
+
+    if (inCode) {
+      codeLines.push(line)
+      continue
+    }
+
+    const trimmed = line.trim()
+    if (!trimmed) {
+      closeList()
+      html.push('<p class="spacer"></p>')
+      continue
+    }
+
+    const heading = trimmed.match(/^(#{1,4})\s+(.+)$/)
+    if (heading) {
+      closeList()
+      const level = Math.min(heading[1].length, 4)
+      html.push(`<h${level}>${formatInlineMarkdown(heading[2])}</h${level}>`)
+      continue
+    }
+
+    const listItem = trimmed.match(/^[-*]\s+(.+)$/) || trimmed.match(/^\d+\.\s+(.+)$/)
+    if (listItem) {
+      if (!inList) {
+        html.push('<ul>')
+        inList = true
+      }
+      html.push(`<li>${formatInlineMarkdown(listItem[1])}</li>`)
+      continue
+    }
+
+    closeList()
+    html.push(`<p>${formatInlineMarkdown(trimmed)}</p>`)
+  }
+
+  closeList()
+  if (inCode) {
+    html.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`)
+  }
+  return html.join('\n')
+}
+
+function openPrintableDocument(title: string, bodyHtml: string) {
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer')
+  if (!printWindow) {
+    toast.error('浏览器阻止了导出窗口，请允许弹窗后重试')
+    return
+  }
+  printWindow.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #111827; line-height: 1.65; margin: 40px; }
+    h1, h2, h3, h4 { line-height: 1.3; margin: 1.2em 0 0.5em; }
+    p { margin: 0.65em 0; }
+    .spacer { height: 0.35rem; }
+    ul { padding-left: 1.35rem; }
+    li { margin: 0.3rem 0; }
+    code { background: #f3f4f6; border-radius: 4px; padding: 0.1rem 0.25rem; }
+    pre { background: #f3f4f6; border-radius: 8px; padding: 1rem; overflow-x: auto; white-space: pre-wrap; }
+    .export-note { color: #6b7280; font-size: 12px; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 18px; }
+    @page { margin: 18mm; }
+  </style>
+</head>
+<body>
+  <div class="export-note">导出自 Studio。打印时选择“另存为 PDF”即可保存 PDF。</div>
+  ${bodyHtml}
+  <script>window.addEventListener('load', () => setTimeout(() => window.print(), 250));</script>
+</body>
+</html>`)
+  printWindow.document.close()
+}
+
+function readStudioQuizMistakeBook(): StudioExportMistakeBookItem[] {
+  if (typeof window === 'undefined') {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(QUIZ_MISTAKE_BOOK_STORAGE_KEY) || '[]')
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function buildQuizMistakeMarkdown(resource: LearningResource) {
+  const mistakes = readStudioQuizMistakeBook().filter((item) => item.resourceTitle === resource.title)
+  if (mistakes.length === 0) {
+    return ''
+  }
+  return [
+    `# ${resource.title} 错题本`,
+    '',
+    ...mistakes.flatMap((item, index) => [
+      `## ${index + 1}. ${item.prompt}`,
+      '',
+      item.selectedIndex !== undefined ? `你的答案：${item.options[item.selectedIndex] ?? '未记录'}` : '你的答案：未记录',
+      `正确答案：${item.options[item.answerIndex] ?? '未记录'}`,
+      item.explanation ? `解析：${item.explanation}` : '',
+      item.sourceTitle ? `来源：${item.sourceTitle}${item.location ? ` · ${item.location}` : ''}` : '',
+      item.evidence ? `依据：${item.evidence}` : '',
+      '',
+    ]),
+  ].filter(Boolean).join('\n')
+}
+
+function extractExecutableCodeBlocks(content: string) {
+  const blocks: Array<{ language: string; code: string }> = []
+  const pattern = /```([A-Za-z0-9_+-]*)\s*\n([\s\S]*?)```/g
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(content)) !== null) {
+    const language = (match[1] || 'python').toLowerCase()
+    const code = match[2].trim()
+    if (code && /^(python|py|julia|r|javascript|js|typescript|ts|bash|sh|sql)$/.test(language)) {
+      blocks.push({ language, code })
+    }
+  }
+  return blocks
+}
+
+function buildNotebookFromCodeLab(resource: LearningResource) {
+  const blocks = extractExecutableCodeBlocks(resource.content)
+  if (blocks.length === 0) {
+    return null
+  }
+  return {
+    cells: [
+      {
+        cell_type: 'markdown',
+        metadata: {},
+        source: [`# ${resource.title}\n\n`, `${resource.summary || ''}\n`],
+      },
+      ...blocks.map((block) => ({
+        cell_type: 'code',
+        execution_count: null,
+        metadata: { language: block.language },
+        outputs: [],
+        source: block.code.split('\n').map((line) => `${line}\n`),
+      })),
+    ],
+    metadata: {
+      kernelspec: {
+        display_name: 'Python 3',
+        language: 'python',
+        name: 'python3',
+      },
+      language_info: {
+        name: 'python',
+      },
+    },
+    nbformat: 4,
+    nbformat_minor: 5,
+  }
 }
 
 function getPodcastStatusClassName(status?: string | null) {
@@ -458,6 +851,7 @@ type NotebookPodcastAssetCardProps = {
   displayMode?: 'card' | 'studio'
   onOpenStudio?: (episode: PodcastEpisode) => void
   onBack?: () => void
+  onExport?: (episode: PodcastEpisode) => void
   onDelete?: (episode: PodcastEpisode) => void
   playbackSnapshot?: PodcastPlaybackSnapshot
   onPlaybackChange?: (patch: PodcastPlaybackSnapshot) => void
@@ -473,6 +867,7 @@ function NotebookPodcastAssetCard({
   displayMode = 'card',
   onOpenStudio,
   onBack,
+  onExport,
   onDelete,
   playbackSnapshot,
   onPlaybackChange,
@@ -746,18 +1141,34 @@ function NotebookPodcastAssetCard({
             <p className="text-xs tracking-wide text-muted-foreground">播客</p>
             <h3 className="truncate text-base font-semibold">{episode.name}</h3>
           </div>
-          {onDelete ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="shrink-0 text-muted-foreground hover:bg-muted hover:text-destructive"
-              onClick={() => onDelete(episode)}
-              aria-label="删除播客"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          ) : <span className="h-9 w-9 shrink-0" />}
+          <div className="flex shrink-0 items-center gap-1">
+            {onExport ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => onExport(episode)}
+                aria-label="导出播客音频"
+                title="导出 WAV"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                导出 WAV
+              </Button>
+            ) : null}
+            {onDelete ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground hover:bg-muted hover:text-destructive"
+                onClick={() => onDelete(episode)}
+                aria-label="删除播客"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            ) : <span className="h-9 w-9 shrink-0" />}
+          </div>
         </header>
 
         {audioSrc ? (
@@ -974,6 +1385,20 @@ function NotebookPodcastAssetCard({
                 <Maximize2 className="h-4 w-4" />
               </Button>
             ) : null}
+            {onExport ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0"
+                onClick={() => onExport(episode)}
+                aria-label="导出播客音频"
+                title="导出 WAV"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                导出 WAV
+              </Button>
+            ) : null}
             {onDelete ? (
               <Button
                 type="button"
@@ -1104,6 +1529,12 @@ function NotebookPodcastAssetCard({
                     取消定时
                   </DropdownMenuItem>
                 )}
+                {onExport && (
+                  <DropdownMenuItem onClick={() => onExport(episode)}>
+                    <Download className="mr-2 h-4 w-4" />
+                    导出 WAV
+                  </DropdownMenuItem>
+                )}
                 {onDelete && (
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive"
@@ -1159,6 +1590,7 @@ export function NotesColumn({
   onProfileOptionsChange = () => {},
 }: NotesColumnProps) {
   const { t, language } = useTranslation()
+  const { data: modelDefaults } = useModelDefaults()
   const queryClient = useQueryClient()
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [detailAssetKind, setDetailAssetKind] = useState<LearningOutputKind | null>(null)
@@ -1181,6 +1613,8 @@ export function NotesColumn({
   const [podcastMaterialSearch, setPodcastMaterialSearch] = useState('')
   const [selectedPodcastMaterialIds, setSelectedPodcastMaterialIds] = useState<string[]>([])
   const [studioPodcastEpisode, setStudioPodcastEpisode] = useState<PodcastEpisode | null>(null)
+  const [studioCategoryFilter, setStudioCategoryFilter] = useState<StudioCategoryFilter>('all')
+  const [isExportingStudioAsset, setIsExportingStudioAsset] = useState(false)
   const [podcastPlaybackById, setPodcastPlaybackById] = useState<Record<string, PodcastPlaybackSnapshot>>({})
   const [podcastQueue, setPodcastQueue] = useState<string[]>([])
   const deleteNote = useDeleteNote()
@@ -1221,13 +1655,15 @@ export function NotesColumn({
   const notebookPodcastEpisodes = useMemo(() => {
     const legacyEpisodeName = `${notebookName || '学习记录'} 播客`
     return podcastEpisodesQuery.episodes.filter((episode) => {
-      if (episode.notebook_id === notebookId) {
+      if (sameRecordId(episode.notebook_id, notebookId)) {
         return true
       }
+      const isCompletedLegacyEpisode =
+        episode.job_status === 'completed' || Boolean(episode.audio_url)
       return (
         !episode.notebook_id &&
-        episode.name === legacyEpisodeName &&
-        (episode.job_status === 'completed' || Boolean(episode.audio_url))
+        isCompletedLegacyEpisode &&
+        (episode.name === legacyEpisodeName || episode.name.startsWith(`${legacyEpisodeName} `))
       )
     })
   }, [notebookId, notebookName, podcastEpisodesQuery.episodes])
@@ -1342,6 +1778,47 @@ export function NotesColumn({
     ))
   }, [materialOptions, podcastMaterialSearch])
   const isAssetListLoading = isLoading || podcastEpisodesQuery.isLoading
+  const studioCategoryCounts = useMemo(() => {
+    const counts = STUDIO_CATEGORY_OPTIONS.reduce<Record<StudioCategoryFilter, number>>(
+      (accumulator, option) => {
+        accumulator[option.id] = 0
+        return accumulator
+      },
+      {} as Record<StudioCategoryFilter, number>
+    )
+    counts.podcast = notebookPodcastEpisodes.length
+    for (const note of notes ?? []) {
+      const asset = parseLearningAssetNote(note.content)
+      const kind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
+      if (kind && counts[kind] !== undefined) {
+        counts[kind] += 1
+      }
+    }
+    counts.all = notebookPodcastEpisodes.length + (notes?.length ?? 0)
+    return counts
+  }, [notebookPodcastEpisodes.length, notes])
+  const visibleNotebookPodcastEpisodes = useMemo(
+    () => (
+      studioCategoryFilter === 'all' || studioCategoryFilter === 'podcast'
+        ? notebookPodcastEpisodes
+        : []
+    ),
+    [notebookPodcastEpisodes, studioCategoryFilter]
+  )
+  const visibleStudioNotes = useMemo(
+    () => (notes ?? []).filter((note) => {
+      if (studioCategoryFilter === 'all') {
+        return true
+      }
+      if (studioCategoryFilter === 'podcast') {
+        return false
+      }
+      const asset = parseLearningAssetNote(note.content)
+      const kind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
+      return kind === studioCategoryFilter
+    }),
+    [notes, studioCategoryFilter]
+  )
   const [isBuildingPodcast, setIsBuildingPodcast] = useState(false)
 
   const { notesCollapsed, toggleNotes } = useNotebookColumnsStore()
@@ -1394,6 +1871,120 @@ export function NotesColumn({
       await queryClient.invalidateQueries({ queryKey: ['learning', 'profile-source', notebookId] })
     } catch (error) {
       console.debug('Failed to record learning profile event:', error)
+    }
+  }
+
+  const handleExportStudioTarget = async (
+    target: StudioExportTarget,
+    format: StudioExportFormat = 'default'
+  ) => {
+    const title = getStudioAssetTitle(target)
+    setIsExportingStudioAsset(true)
+
+    try {
+      if (target.type === 'podcast') {
+        const exportUrl = await resolvePodcastAssetUrl(`/api/podcasts/episodes/${encodeURIComponent(target.episode.id)}/audio/wav`)
+        if (!exportUrl) {
+          toast.error('当前播客没有可导出的音频')
+          return
+        }
+        const response = await fetch(exportUrl, { headers: getAuthenticatedDownloadHeaders() })
+        if (!response.ok) {
+          throw new Error(`Podcast export failed with status ${response.status}`)
+        }
+        const blob = await response.blob()
+        downloadBlob(blob, `${safeExportFilename(title, 'podcast')}.wav`)
+        return
+      }
+
+      const asset = target.asset
+      if (!asset) {
+        toast.error('当前文本资产暂不支持导出')
+        return
+      }
+
+      if (asset.kind === 'study_guide') {
+        openPrintableDocument(title, markdownToPrintableHtml(target.visibleContent || asset.content))
+        return
+      }
+
+      if (asset.kind === 'quiz') {
+        const mistakeMarkdown = buildQuizMistakeMarkdown(asset)
+        if (!mistakeMarkdown) {
+          toast.error('当前测验还没有错题可导出')
+          return
+        }
+        openPrintableDocument(`${title} 错题本`, markdownToPrintableHtml(mistakeMarkdown))
+        return
+      }
+
+      if (asset.kind === 'mind_map') {
+        if (format === 'mind_map_png') {
+          const svg = mindMapContentToSvg(asset.content, title)
+          const blob = await svgToPngBlob(svg)
+          downloadBlob(blob, `${safeExportFilename(title, 'mind-map')}.png`)
+          return
+        }
+
+        downloadBlob(
+          new Blob(
+            [
+              [
+                `# ${title}`,
+                '',
+                asset.content,
+              ].join('\n'),
+            ],
+            { type: 'text/markdown;charset=utf-8' }
+          ),
+          `${safeExportFilename(title, 'mind-map')}.md`
+        )
+        return
+      }
+
+      if (asset.kind === 'visual_aid') {
+        const imageSrc = typeof asset.payload?.image_src === 'string' ? asset.payload.image_src : ''
+        if (imageSrc) {
+          const response = await fetch(imageSrc)
+          const blob = await response.blob()
+          downloadBlob(blob, `${safeExportFilename(title, 'visual-aid')}.png`)
+          return
+        }
+        downloadBlob(
+          new Blob(
+            [
+              [
+                `# ${title}`,
+                '',
+                asset.content,
+              ].join('\n'),
+            ],
+            { type: 'text/markdown;charset=utf-8' }
+          ),
+          `${safeExportFilename(title, 'visual-aid')}.md`
+        )
+        return
+      }
+
+      if (asset.kind === 'code_lab') {
+        const notebook = buildNotebookFromCodeLab(asset)
+        if (!notebook) {
+          toast.error('当前代码实验没有可执行代码块，暂不能导出 Jupyter Notebook')
+          return
+        }
+        downloadBlob(
+          new Blob([JSON.stringify(notebook, null, 2)], { type: 'application/x-ipynb+json' }),
+          `${safeExportFilename(title, 'code-lab')}.ipynb`
+        )
+        return
+      }
+
+      toast.info('当前资源类型不适合导出')
+    } catch (error) {
+      console.error('Failed to export Studio asset:', error)
+      toast.error('导出失败')
+    } finally {
+      setIsExportingStudioAsset(false)
     }
   }
 
@@ -1471,7 +2062,7 @@ export function NotesColumn({
 
     if (changed) {
       setHandledPodcastJobIds(Array.from(nextHandled))
-      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.podcastEpisodes })
+      void queryClient.refetchQueries({ queryKey: QUERY_KEYS.podcastEpisodes })
     }
 
     if (terminalCount === podcastJobs.length && terminalCount > 0) {
@@ -1528,6 +2119,10 @@ export function NotesColumn({
         accepted_resource_ids: acceptedResourceIds,
         supplemental_materials: supplementalMaterials,
         learning_record_id: notebookId,
+        target_language: getGenerationLanguageFromLocale(language),
+        image_model: config.outputs.includes('visual_aid')
+          ? (modelDefaults?.default_image_model || undefined)
+          : undefined,
         auto_update_profile: config.autoUpdateProfile,
         use_profile_source: config.useProfileSource,
       })
@@ -1570,11 +2165,15 @@ export function NotesColumn({
           .filter((sourceId): sourceId is string => Boolean(sourceId))
       : contentSources.map((source) => source.id)
     const selectedSourceSet = new Set(selectedSourceIds)
-    const selectedSources = contentSources.filter((source) => selectedSourceSet.has(source.id))
+    const selectedSources = contentSources
+      .filter((source) => selectedSourceSet.has(source.id))
+    const podcastSources = hasExplicitSelection
+      ? selectedSources
+      : selectedSources.slice(0, DEFAULT_PODCAST_MATERIAL_LIMIT)
     const supplementalMaterials = hasExplicitSelection
       ? selectedMaterials.filter((material) => !material.sourceId && material.content?.trim())
       : []
-    const sourcesConfig = [...selectedSources, ...(profileOptions.useProfileSource ? profileSources : [])]
+    const sourcesConfig = [...podcastSources, ...(profileOptions.useProfileSource ? profileSources : [])]
       .reduce<Record<string, string>>((accumulator, source) => {
         const sourceId = source.id.replace(/^source:/, '')
         accumulator[sourceId] = source.insights_count && source.insights_count > 0
@@ -1594,7 +2193,7 @@ export function NotesColumn({
       })
 
       if (response.char_count > 0) {
-        parts.push(JSON.stringify(response.context, null, 2))
+        parts.push(JSON.stringify(response.context, null, 2).slice(0, PODCAST_CONTEXT_CHAR_LIMIT))
       }
     }
 
@@ -1604,13 +2203,13 @@ export function NotesColumn({
           .map((material, index) => [
             `补充素材 ${index + 1}: ${material.title}`,
             `类型: ${material.materialType}`,
-            material.content ?? '',
+            (material.content ?? '').slice(0, PODCAST_SUPPLEMENTAL_CHAR_LIMIT),
           ].join('\n'))
           .join('\n\n')
       )
     }
 
-    return parts.join('\n\n')
+    return parts.join('\n\n').slice(0, PODCAST_CONTEXT_CHAR_LIMIT)
   }, [contentSources, materialOptions, notebookId, profileOptions.useProfileSource, profileSources])
 
   const handleGeneratePodcast = useCallback(async (options?: {
@@ -1690,7 +2289,7 @@ export function NotesColumn({
         }
         return [...previous, { jobId: response.job_id }]
       })
-      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.podcastEpisodes })
+      await queryClient.refetchQueries({ queryKey: QUERY_KEYS.podcastEpisodes })
     } catch (error) {
       console.error('Failed to generate podcast:', error)
       toast.error('播客生成任务提交失败')
@@ -1718,9 +2317,10 @@ export function NotesColumn({
       return
     }
 
+    const targetLanguage = getGenerationLanguageFromLocale(language)
     const detail = assetDetails[kind] ?? getDefaultLearningAssetDetail(kind)
     void handleGenerateAssets({
-      goal: buildLearningAssetGoal(kind, detail),
+      goal: buildLearningAssetGoal(kind, { ...detail, language: targetLanguage }),
       outputs: [kind],
       autoUpdateProfile: profileOptions.autoUpdateProfile,
       useProfileSource: profileOptions.useProfileSource,
@@ -1777,7 +2377,9 @@ export function NotesColumn({
       return
     }
     setPodcastEpisodeName(nextPodcastEpisodeName)
-    setSelectedPodcastMaterialIds(materialOptions.map((material) => material.id))
+    setSelectedPodcastMaterialIds(
+      materialOptions.slice(0, DEFAULT_PODCAST_MATERIAL_LIMIT).map((material) => material.id)
+    )
     setPodcastMaterialSearch('')
     setPodcastMaterialLibraryExpanded(false)
   }, [materialOptions, nextPodcastEpisodeName, podcastGenerateDialogOpen])
@@ -1891,6 +2493,7 @@ export function NotesColumn({
                 episode={studioPodcastEpisode}
                 displayMode="studio"
                 onBack={() => setStudioPodcastEpisode(null)}
+                onExport={(episode) => void handleExportStudioTarget({ type: 'podcast', episode })}
                 onDelete={(episode) => {
                   void handleDeletePodcastEpisode(episode)
                 }}
@@ -1974,6 +2577,34 @@ export function NotesColumn({
               </Button>
             </div>
 
+            {studioCategoryCounts.all > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {STUDIO_CATEGORY_OPTIONS
+                  .filter((option) => option.id === 'all' || studioCategoryCounts[option.id] > 0)
+                  .map((option) => {
+                    const active = studioCategoryFilter === option.id
+                    return (
+                      <Button
+                        key={option.id}
+                        type="button"
+                        variant={active ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-8 shrink-0 rounded-full"
+                        onClick={() => setStudioCategoryFilter(option.id)}
+                      >
+                        {option.label}
+                        <span className={cn(
+                          'ml-2 rounded-full px-1.5 text-[11px]',
+                          active ? 'bg-primary-foreground/20' : 'bg-muted text-muted-foreground'
+                        )}>
+                          {studioCategoryCounts[option.id]}
+                        </span>
+                      </Button>
+                    )
+                  })}
+              </div>
+            )}
+
             <div className="space-y-3">
               {isAssetListLoading ? (
                 <div className="flex items-center justify-center py-8">
@@ -1985,13 +2616,20 @@ export function NotesColumn({
                   title="生成内容会保存在这里"
                   description="添加来源后，点击上方按钮生成讲解文档、测验、知识闪卡等资产。"
                 />
+              ) : visibleStudioNotes.length === 0 && visibleNotebookPodcastEpisodes.length === 0 ? (
+                <EmptyState
+                  icon={Sparkles}
+                  title="当前分类暂无内容"
+                  description="切换分类，或点击上方按钮生成对应类型的学习资产。"
+                />
               ) : (
                 <>
-                  {notebookPodcastEpisodes.map((episode) => (
+                  {visibleNotebookPodcastEpisodes.map((episode) => (
                     <NotebookPodcastAssetCard
                       key={episode.id}
                       episode={episode}
                       onOpenStudio={setStudioPodcastEpisode}
+                      onExport={(podcastEpisode) => void handleExportStudioTarget({ type: 'podcast', episode: podcastEpisode })}
                       onDelete={(podcastEpisode) => {
                         void handleDeletePodcastEpisode(podcastEpisode)
                       }}
@@ -2004,12 +2642,22 @@ export function NotesColumn({
                       queuePosition={podcastQueue.indexOf(episode.id) + 1 || undefined}
                     />
                   ))}
-                  {notes?.map((note) => {
+                  {visibleStudioNotes.map((note) => {
                   const asset = parseLearningAssetNote(note.content)
                   const visibleContent = getVisibleLearningAssetContent(note.content)
                   const assetKind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
                   const assetKindLabel =
                     assetKind ? getLearningAssetKindLabel(assetKind, t) : asset?.type || null
+                  const exportTarget: StudioExportTarget = {
+                    type: 'learning_asset',
+                    note,
+                    asset,
+                    visibleContent,
+                    assetKind,
+                    assetKindLabel,
+                  }
+                  const canExportAsset = isStudioTargetExportable(exportTarget)
+                  const showInlineExport = canExportAsset && asset?.kind === 'study_guide'
                   return (
                     <div
                       key={note.id}
@@ -2037,6 +2685,24 @@ export function NotesColumn({
                         </div>
 
                         <div className="flex shrink-0 items-center gap-2">
+                          {showInlineExport && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 shrink-0"
+                              title={getStudioExportLabel(exportTarget)}
+                              aria-label={getStudioExportLabel(exportTarget)}
+                              disabled={isExportingStudioAsset}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void handleExportStudioTarget(exportTarget)
+                              }}
+                            >
+                              <Download className="mr-2 h-4 w-4" />
+                              导出 PDF
+                            </Button>
+                          )}
                           <Button
                             type="button"
                             variant="ghost"
@@ -2081,6 +2747,41 @@ export function NotesColumn({
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48">
+                              {canExportAsset && asset?.kind === 'mind_map' ? (
+                                <>
+                                  <DropdownMenuItem
+                                    disabled={isExportingStudioAsset}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      void handleExportStudioTarget(exportTarget, 'mind_map_md')
+                                    }}
+                                  >
+                                    <Download className="h-4 w-4 mr-2" />
+                                    导出 MD
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    disabled={isExportingStudioAsset}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      void handleExportStudioTarget(exportTarget, 'mind_map_png')
+                                    }}
+                                  >
+                                    <Download className="h-4 w-4 mr-2" />
+                                    导出图片 PNG
+                                  </DropdownMenuItem>
+                                </>
+                              ) : canExportAsset && !showInlineExport ? (
+                                <DropdownMenuItem
+                                  disabled={isExportingStudioAsset}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    void handleExportStudioTarget(exportTarget)
+                                  }}
+                                >
+                                  <Download className="h-4 w-4 mr-2" />
+                                  {getStudioExportLabel(exportTarget)}
+                                </DropdownMenuItem>
+                              ) : null}
                               <DropdownMenuItem
                                 onClick={(event) => {
                                   event.stopPropagation()
@@ -2124,6 +2825,12 @@ export function NotesColumn({
                               void recordLearningEvent(event.eventType, event.summary)
                             }}
                             onGenerateSimilarQuiz={handleGenerateSimilarQuiz}
+                            mistakeContext={{
+                              notebookId,
+                              notebookTitle: notebookName || '当前学习记录',
+                              noteId: note.id,
+                              noteTitle: asset.title || stripLearningAssetTitlePrefix(note.title),
+                            }}
                           />
                         </div>
                       ) : visibleContent ? (

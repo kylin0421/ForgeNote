@@ -105,6 +105,7 @@ export interface CreateSourceRequest {
   file_path?: string
   content?: string
   title?: string
+  topics?: string[]
   transformations?: string[]
   embed?: boolean
   delete_source?: boolean
@@ -179,6 +180,7 @@ export interface UpdateSourceChatSessionRequest {
 export interface SendMessageRequest {
   message: string
   model_override?: string
+  target_language?: string
 }
 
 export interface SourceChatStreamEvent {
@@ -224,6 +226,7 @@ export interface SendNotebookChatMessageRequest {
     notes: Array<Record<string, unknown>>
   }
   model_override?: string
+  target_language?: string
   auto_update_profile?: boolean
 }
 

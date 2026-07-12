@@ -10,6 +10,7 @@ from api.models import (
     LearningOrchestrationRequest,
     LearningOutputKind,
     LearningResource,
+    LearningSupplementalMaterial,
 )
 from open_notebook.domain.notebook import Note, Notebook
 from open_notebook.utils.command_cancellation import raise_if_command_canceled
@@ -24,7 +25,10 @@ class LearningResourceSearchInput(CommandInput):
     learning_history: List[str] = []
     requested_outputs: List[str] = []
     accepted_resource_ids: List[str] = []
+    supplemental_materials: List[LearningSupplementalMaterial] = []
     learning_record_id: Optional[str] = None
+    target_language: Optional[str] = None
+    image_model: Optional[str] = None
     auto_update_profile: bool = True
     use_profile_source: bool = True
 
@@ -47,7 +51,10 @@ class LearningAssetGenerationInput(CommandInput):
     goal: Optional[str] = None
     learning_history: List[str] = []
     accepted_resource_ids: List[str] = []
+    supplemental_materials: List[LearningSupplementalMaterial] = []
     learning_record_id: str
+    target_language: Optional[str] = None
+    image_model: Optional[str] = None
     auto_update_profile: bool = True
     use_profile_source: bool = True
 
@@ -68,6 +75,7 @@ LEARNING_ASSET_KIND_LABELS = {
     "mind_map": "思维导图",
     "reading": "拓展阅读材料",
     "code_lab": "代码实操案例",
+    "visual_aid": "辅助理解图片",
 }
 
 

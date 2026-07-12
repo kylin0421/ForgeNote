@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, BarChart3, Lightbulb, TrendingUp } from 'lucide-react'
+import { Activity, BarChart3, BookOpen, CheckCircle2, Lightbulb, Sparkles, TrendingUp, type LucideIcon } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -189,46 +189,92 @@ function buildAdvice(points: TimelinePoint[]) {
 
 function CurveChart({ points }: { points: TimelinePoint[] }) {
   const maxActivities = Math.max(...points.map((point) => point.activities), 1)
+  const averageQuality = Math.round(points.reduce((sum, point) => sum + point.quality, 0) / Math.max(points.length, 1))
+  const averageY = 122 - (averageQuality / 100) * 92
   const coordinates = points.map((point, index) => {
     const x = 22 + index * (336 / Math.max(points.length - 1, 1))
     const y = 122 - (point.quality / 100) * 92
     return { x, y }
   })
   const path = coordinates.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+  const areaPath = `${path} L ${coordinates[coordinates.length - 1]?.x ?? 22} 122 L ${coordinates[0]?.x ?? 22} 122 Z`
 
   return (
-    <div className="overflow-x-auto rounded-lg border bg-background p-3">
-      <svg viewBox="0 0 390 160" className="h-56 min-w-[520px] w-full" role="img" aria-label="学习曲线">
-        <line x1="20" y1="122" x2="372" y2="122" className="stroke-muted-foreground/25" />
-        <line x1="20" y1="30" x2="20" y2="122" className="stroke-muted-foreground/25" />
+    <div className="overflow-x-auto rounded-lg border bg-slate-50 p-3 dark:bg-slate-950/40">
+      <svg viewBox="0 0 390 172" className="h-64 min-w-[560px] w-full" role="img" aria-label="学习曲线">
+        <defs>
+          <linearGradient id="learning-quality-area" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#2563eb" stopOpacity="0.26" />
+            <stop offset="100%" stopColor="#14b8a6" stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
+        {[30, 53, 76, 99, 122].map((y) => (
+          <line key={y} x1="20" y1={y} x2="372" y2={y} className="stroke-slate-300/70 dark:stroke-slate-700/70" strokeDasharray={y === 122 ? undefined : '4 5'} />
+        ))}
+        <line x1="20" y1="30" x2="20" y2="122" className="stroke-slate-300 dark:stroke-slate-700" />
+        <text x="24" y="24" className="fill-slate-500 text-[9px]">质量评分</text>
+        <text x="330" y={averageY - 5} className="fill-amber-600 text-[9px]">均线 {averageQuality}</text>
+        <line x1="20" y1={averageY} x2="372" y2={averageY} stroke="#d97706" strokeWidth="1.2" strokeDasharray="5 5" />
         {points.map((point, index) => {
           const x = 16 + index * (344 / Math.max(points.length - 1, 1))
           const barHeight = Math.max(3, (point.activities / maxActivities) * 54)
+          const active = point.activities > 0
           return (
             <g key={point.key}>
               <rect
                 x={x}
                 y={122 - barHeight}
-                width="10"
+                width="11"
                 height={barHeight}
                 rx="3"
-                className={cn(point.activities > 0 ? 'fill-primary/25' : 'fill-muted')}
+                fill={active ? '#38bdf8' : '#e2e8f0'}
+                opacity={active ? 0.58 : 0.55}
               />
               {index % 2 === 0 ? (
-                <text x={x + 5} y="145" textAnchor="middle" className="fill-muted-foreground text-[8px]">
+                <text x={x + 5.5} y="151" textAnchor="middle" className="fill-slate-500 text-[8px]">
                   {point.label}
                 </text>
               ) : null}
             </g>
           )
         })}
-        <path d={path} fill="none" className="stroke-primary" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={areaPath} fill="url(#learning-quality-area)" />
+        <path d={path} fill="none" stroke="#2563eb" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
         {coordinates.map((point, index) => (
-          <circle key={points[index].key} cx={point.x} cy={point.y} r="4" className="fill-background stroke-primary" strokeWidth="2">
+          <circle key={points[index].key} cx={point.x} cy={point.y} r={points[index].activities > 0 ? 4.6 : 3.2} fill="#ffffff" stroke={points[index].activities > 0 ? '#2563eb' : '#94a3b8'} strokeWidth="2">
             <title>{`${points[index].label}: 质量 ${points[index].quality}，学习 ${points[index].activities} 项`}</title>
           </circle>
         ))}
       </svg>
+    </div>
+  )
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  accent,
+}: {
+  label: string
+  value: string
+  hint: string
+  icon: LucideIcon
+  accent: string
+}) {
+  return (
+    <div className="rounded-lg border bg-background p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="mt-2 text-2xl font-semibold">{value}</p>
+        </div>
+        <span className={cn('flex h-10 w-10 items-center justify-center rounded-md', accent)}>
+          <Icon className="h-5 w-5" />
+        </span>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-muted-foreground">{hint}</p>
     </div>
   )
 }
@@ -275,31 +321,11 @@ export function LearningCurveDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-3 sm:grid-cols-4">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">近 7 天学习量</p>
-              <p className="mt-2 text-2xl font-semibold">{totals.activities}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">活跃天数</p>
-              <p className="mt-2 text-2xl font-semibold">{totals.activeDays}/7</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">学习质量</p>
-              <p className="mt-2 text-2xl font-semibold">{totals.quality}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">测验正确率</p>
-              <p className="mt-2 text-2xl font-semibold">{totals.accuracy === null ? '待评估' : `${totals.accuracy}%`}</p>
-            </CardContent>
-          </Card>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="近 7 天学习量" value={String(totals.activities)} hint="资料、笔记、问答、生成和练习的综合活动数。" icon={Activity} accent="bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300" />
+          <StatCard label="活跃天数" value={`${totals.activeDays}/7`} hint="越连续，曲线越能反映真实学习节奏。" icon={BookOpen} accent="bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" />
+          <StatCard label="学习质量" value={String(totals.quality)} hint="由测验表现、学习量和行为多样性估算。" icon={Sparkles} accent="bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" />
+          <StatCard label="测验正确率" value={totals.accuracy === null ? '待评估' : `${totals.accuracy}%`} hint="做过测验后会成为复习优先级的重要信号。" icon={CheckCircle2} accent="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" />
         </div>
 
         <Card>
@@ -312,8 +338,9 @@ export function LearningCurveDialog({
           <CardContent>
             <CurveChart points={points} />
             <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-4 rounded bg-primary/25" />学习量</span>
-              <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 rounded bg-primary" />质量评分</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-4 rounded bg-sky-300" />学习量</span>
+              <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 rounded bg-blue-600" />质量评分</span>
+              <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 rounded bg-amber-600" />质量均线</span>
             </div>
           </CardContent>
         </Card>
@@ -350,7 +377,8 @@ export function LearningCurveDialog({
           <CardContent>
             <div className="grid gap-2 md:grid-cols-2">
               {points.filter((point) => point.activities > 0).slice(-8).reverse().map((point) => (
-                <div key={point.key} className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
+                <div key={point.key} className="rounded-lg border p-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-medium">{point.label}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
@@ -358,6 +386,13 @@ export function LearningCurveDialog({
                     </p>
                   </div>
                   <Badge variant="outline">质量 {point.quality}</Badge>
+                  </div>
+                  <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-muted">
+                    <span className="bg-sky-400" style={{ width: `${Math.min(100, point.sources * 18)}%` }} />
+                    <span className="bg-emerald-400" style={{ width: `${Math.min(100, point.notes * 18)}%` }} />
+                    <span className="bg-violet-400" style={{ width: `${Math.min(100, point.chats * 18)}%` }} />
+                    <span className="bg-amber-400" style={{ width: `${Math.min(100, (point.generated + point.quizTotal) * 18)}%` }} />
+                  </div>
                 </div>
               ))}
             </div>

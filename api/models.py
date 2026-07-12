@@ -66,6 +66,7 @@ LearningOutputKind = Literal[
     "mind_map",
     "reading",
     "code_lab",
+    "visual_aid",
 ]
 
 
@@ -123,6 +124,14 @@ class LearningOrchestrationRequest(BaseModel):
     learning_record_id: Optional[str] = Field(
         None,
         description="Notebook id used as the persisted learning record",
+    )
+    target_language: Optional[str] = Field(
+        None,
+        description="Language the UI is currently using; generated user-facing text must use this language",
+    )
+    image_model: Optional[str] = Field(
+        None,
+        description="Optional image generation model name or registered model id for visual aid assets",
     )
     auto_update_profile: bool = Field(
         True,
@@ -303,6 +312,7 @@ class DefaultModelsResponse(BaseModel):
     default_reading_model: Optional[str] = None
     default_code_lab_model: Optional[str] = None
     default_podcast_model: Optional[str] = None
+    default_image_model: Optional[str] = None
 
 
 class ProviderAvailabilityResponse(BaseModel):
@@ -507,6 +517,9 @@ class SourceCreate(BaseModel):
     file_path: Optional[str] = Field(None, description="File path for upload type")
     content: Optional[str] = Field(None, description="Text content for text type")
     title: Optional[str] = Field(None, description="Source title")
+    topics: Optional[List[str]] = Field(
+        default_factory=list, description="Source topics"
+    )
     transformations: Optional[List[str]] = Field(
         default_factory=list, description="Transformation IDs to apply"
     )

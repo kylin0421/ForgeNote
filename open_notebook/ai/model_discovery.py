@@ -25,7 +25,7 @@ class DiscoveredModel:
 
     name: str
     provider: str
-    model_type: str  # language, embedding, speech_to_text, text_to_speech
+    model_type: str  # language, embedding, speech_to_text, text_to_speech, image
     description: Optional[str] = None
 
 
@@ -50,6 +50,7 @@ OPENAI_MODEL_TYPES = {
     "embedding": ["text-embedding", "embedding"],
     "speech_to_text": ["whisper"],
     "text_to_speech": ["tts"],
+    "image": ["gpt-image", "dall-e"],
 }
 
 ANTHROPIC_MODELS = {
@@ -150,6 +151,7 @@ DASHSCOPE_MODEL_TYPES = {
     "language": ["qwen"],
     "speech_to_text": ["qwen3-asr", "qwen-asr"],
     "text_to_speech": ["qwen3-tts", "qwen-tts", "cosyvoice"],
+    "image": ["qwen-image", "wanx", "flux", "stable-diffusion"],
 }
 
 MIMO_MODEL_TYPES = {
@@ -165,7 +167,7 @@ def classify_model_type(model_name: str, provider: str) -> str:
     """
     Classify a model into a type based on its name and provider.
 
-    Returns one of: language, embedding, speech_to_text, text_to_speech
+    Returns one of: language, embedding, speech_to_text, text_to_speech, image
     """
     name_lower = model_name.lower()
     provider_lower = provider.lower()
@@ -194,7 +196,7 @@ def classify_model_type(model_name: str, provider: str) -> str:
     mapping = type_mappings.get(provider_lower, {})
 
     # Check each type in order of specificity
-    for model_type in ["speech_to_text", "text_to_speech", "embedding", "language"]:
+    for model_type in ["speech_to_text", "text_to_speech", "image", "embedding", "language"]:
         patterns = mapping.get(model_type, [])
         for pattern in patterns:
             if pattern in name_lower:
@@ -215,7 +217,10 @@ async def discover_openai_models() -> List[DiscoveredModel]:
     if not api_key:
         return []
 
-    models = []
+    models = [
+        DiscoveredModel(name="gpt-image-1", provider="openai", model_type="image"),
+        DiscoveredModel(name="dall-e-3", provider="openai", model_type="image"),
+    ]
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(

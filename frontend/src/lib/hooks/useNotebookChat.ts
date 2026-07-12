@@ -7,6 +7,7 @@ import { getApiErrorMessage } from '@/lib/utils/error-handler'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { chatApi } from '@/lib/api/chat'
 import { QUERY_KEYS } from '@/lib/api/query-client'
+import { getGenerationLanguageFromLocale } from '@/lib/utils/language'
 import {
   NotebookChatMessage,
   CreateNotebookChatSessionRequest,
@@ -40,7 +41,7 @@ export function useNotebookChat({
   autoUpdateProfile = true,
   useProfileSource = true,
 }: UseNotebookChatParams) {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const queryClient = useQueryClient()
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<NotebookChatMessage[]>([])
@@ -242,6 +243,7 @@ export function useNotebookChat({
         message,
         context,
         model_override: modelOverride ?? (currentSession?.model_override ?? undefined),
+        target_language: getGenerationLanguageFromLocale(language),
         auto_update_profile: autoUpdateProfile,
       })
 
@@ -268,6 +270,7 @@ export function useNotebookChat({
     buildContext,
     refetchCurrentSession,
     queryClient,
+    language,
     t
   ])
 

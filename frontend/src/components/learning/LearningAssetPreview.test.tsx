@@ -87,7 +87,7 @@ describe('serializeLearningAssetNote', () => {
 
     const serialized = serializeLearningAssetNote(resource)
 
-    expect(serialized).toContain('Type: Quiz')
+    expect(serialized).toContain('Type: 测验')
     expect(serialized).not.toContain('Diagnostic')
   })
 })
@@ -156,7 +156,7 @@ describe('LearningAssetPreview mind maps', () => {
     expect(screen.getByText(/SimCLR/)).toBeInTheDocument()
   })
 
-  it('limits mind maps to three displayed levels', () => {
+  it('keeps deep mind map levels available for expansion', () => {
     const resource: LearningResource = {
       kind: 'mind_map',
       type: 'Mind map',
@@ -183,8 +183,6 @@ describe('LearningAssetPreview mind maps', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Level one/ }))
     expect(screen.getByText('Level two')).toBeInTheDocument()
-    expect(screen.queryByText('Level three')).not.toBeInTheDocument()
-
     fireEvent.click(screen.getByRole('button', { name: /Level two/ }))
     expect(screen.getByText('Level three')).toBeInTheDocument()
   })
@@ -297,9 +295,10 @@ describe('LearningAssetPreview flashcards', () => {
 
     expect(screen.getByText('Term')).toBeInTheDocument()
     expect(screen.getByText('one')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /模糊/ }))
     expect(screen.getByText('Look')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Answer' }))
+    fireEvent.click(screen.getByRole('button', { name: '翻面' }))
     expect(screen.getByText('code')).toBeInTheDocument()
   })
 })

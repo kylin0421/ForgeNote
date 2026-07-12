@@ -13,7 +13,7 @@ export interface Model {
     batch_tts_supported: boolean
     warnings: string[]
   } | null
-  type: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
+  type: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text' | 'image'
   credential?: string | null
   created: string
   updated: string
@@ -22,7 +22,7 @@ export interface Model {
 export interface CreateModelRequest {
   name: string
   provider: string
-  type: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
+  type: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text' | 'image'
   credential?: string
 }
 
@@ -45,6 +45,7 @@ export interface ModelDefaults {
   default_reading_model?: string | null
   default_code_lab_model?: string | null
   default_podcast_model?: string | null
+  default_image_model?: string | null
 }
 
 export interface ProviderAvailability {
@@ -57,7 +58,7 @@ export interface ProviderAvailability {
 export interface DiscoveredModel {
   name: string
   provider: string
-  model_type?: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
+  model_type?: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text' | 'image'
   description?: string
 }
 

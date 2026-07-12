@@ -43,6 +43,9 @@ export const sourcesApi = {
     if (data.title) {
       formData.append('title', data.title)
     }
+    if (data.topics !== undefined) {
+      formData.append('topics', JSON.stringify(data.topics))
+    }
     if (data.url) {
       formData.append('url', data.url)
     }

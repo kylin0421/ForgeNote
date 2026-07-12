@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 import { Toaster } from "@/components/ui/sonner";
@@ -9,8 +8,6 @@ import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { ConnectionGuard } from "@/components/common/ConnectionGuard";
 import { themeScript } from "@/lib/theme-script";
 import { I18nProvider } from "@/components/providers/I18nProvider";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "智学工坊",
@@ -27,7 +24,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className={inter.className}>
+      <body className="font-sans">
         <ErrorBoundary>
           <ThemeProvider>
             <QueryProvider>

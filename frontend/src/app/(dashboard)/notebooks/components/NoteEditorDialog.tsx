@@ -5,9 +5,22 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Edit3, Eye, Maximize2, Minimize2, Save } from 'lucide-react'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Download, Edit3, Eye, Maximize2, Minimize2, Save, Upload, X } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { useCreateNote, useUpdateNote, useNote } from '@/lib/hooks/use-notes'
 import { QUERY_KEYS } from '@/lib/api/query-client'
 import { MarkdownEditor } from '@/components/ui/markdown-editor'
@@ -20,6 +33,7 @@ import {
   MarkdownLikeAsset,
   getLearningAssetKindLabel,
   getLearningAssetTypeLabel,
+  mindMapContentToSvg,
   parseLearningAssetNote,
   serializeLearningAssetNote,
   type MindMapMaterial,
@@ -48,6 +62,95 @@ const isLikelyMarkdownContent = (content: string | null | undefined) => {
     || /(^|\n)```/.test(content)
     || /(^|\n)\|.+\|/.test(content)
 }
+
+const isLikelyMindMapContent = (
+  content: string | null | undefined,
+  title?: string | null
+) => {
+  if (!content) {
+    return false
+  }
+  const combined = `${title ?? ''}\n${content}`
+  return /思维导图|知识导图|知识图谱|mind\s*map|concept\s*map/i.test(combined)
+    || /<!--\s*mind-map-visual/i.test(content)
+    || /(^|\n)\s*mindmap\b/i.test(content)
+    || /(^|\n)\s*```(?:mermaid|mindmap)?[\s\S]{0,80}\b(?:mindmap|flowchart\s+LR|graph\s+LR)\b/i.test(content)
+    || /(^|\n)\s*(?:flowchart|graph)\s+LR\b/i.test(content)
+}
+
+const hasExecutableCodeBlock = (content: string | null | undefined) => {
+  if (!content) {
+    return false
+  }
+
+  const pattern = /```([A-Za-z0-9_+-]*)\s*\n([\s\S]*?)```/g
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(content)) !== null) {
+    const language = (match[1] || 'python').toLowerCase()
+    const code = match[2].trim()
+    if (code && /^(python|py|julia|r|javascript|js|typescript|ts|bash|sh|sql)$/.test(language)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+const safeExportFilename = (value: string | null | undefined, fallback = 'learning-asset') => {
+  const compact = (value || '')
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+  return compact || fallback
+}
+
+const downloadTextFile = (content: string, filename: string, type = 'text/markdown;charset=utf-8') => {
+  const blob = new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+const svgToPngBlob = (svg: string): Promise<Blob> =>
+  new Promise((resolve, reject) => {
+    const image = new Image()
+    const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(svgBlob)
+
+    image.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = image.naturalWidth || image.width
+      canvas.height = image.naturalHeight || image.height
+      const context = canvas.getContext('2d')
+      if (!context) {
+        URL.revokeObjectURL(url)
+        reject(new Error('Canvas is not available'))
+        return
+      }
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(image, 0, 0)
+      canvas.toBlob((blob) => {
+        URL.revokeObjectURL(url)
+        if (blob) {
+          resolve(blob)
+        } else {
+          reject(new Error('Unable to create PNG'))
+        }
+      }, 'image/png')
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Unable to load SVG'))
+    }
+    image.src = url
+  })
 
 type CreateNoteFormData = z.infer<typeof createNoteSchema>
 
@@ -100,7 +203,26 @@ export function NoteEditorDialog({
   const watchContent = useWatch({ control, name: 'content' })
   const [isEditorFullscreen, setIsEditorFullscreen] = useState(false)
   const [isAssetEditing, setIsAssetEditing] = useState(false)
-  const learningAsset = isEditing ? parseLearningAssetNote(watchContent) : null
+  const [mindMapImportOpen, setMindMapImportOpen] = useState(false)
+  const [mindMapImportText, setMindMapImportText] = useState('')
+  const [mindMapEditorVersion, setMindMapEditorVersion] = useState(0)
+  const parsedLearningAsset = isEditing ? parseLearningAssetNote(watchContent) : null
+  const inferredMindMapAsset =
+    isEditing && !parsedLearningAsset && isLikelyMindMapContent(watchContent, watchTitle)
+      ? {
+          kind: 'mind_map' as const,
+          type: 'Mind map',
+          title: watchTitle || '思维导图',
+          agent: 'studio',
+          format: 'visual mind map',
+          summary: '',
+          content: watchContent || '',
+          tags: [],
+          payload: {},
+        }
+      : null
+  const learningAsset = parsedLearningAsset ?? inferredMindMapAsset
+  const isInferredMindMapAsset = Boolean(inferredMindMapAsset && !parsedLearningAsset)
   const learningAssetKindLabel = learningAsset
     ? getLearningAssetKindLabel(learningAsset.kind, t)
     : null
@@ -109,9 +231,11 @@ export function NoteEditorDialog({
     : null
   const showLearningAssetPreview = Boolean(learningAsset)
   const canEditLearningAsset =
-    showLearningAssetPreview &&
-    learningAsset?.kind !== 'quiz' &&
-    learningAsset?.kind !== 'flashcards'
+    learningAsset?.kind === 'mind_map' ||
+    (
+      learningAsset?.kind === 'code_lab' &&
+      hasExecutableCodeBlock(learningAsset.content)
+    )
   const currentNoteType = fetchedNote?.note_type ?? note?.note_type ?? null
   const showMarkdownPreview =
     !learningAsset &&
@@ -120,6 +244,7 @@ export function NoteEditorDialog({
   const showLearningAssetReadOnlyPreview =
     showLearningAssetPreview && (!isAssetEditing || !canEditLearningAsset)
   const showReadOnlyPreview = showLearningAssetReadOnlyPreview || showMarkdownPreview
+  const canExportCurrentContent = learningAsset?.kind === 'study_guide' || learningAsset?.kind === 'mind_map'
   const [activeHydrationKey, setActiveHydrationKey] = useState<string | null>(null)
 
   useEffect(() => {
@@ -157,16 +282,6 @@ export function NoteEditorDialog({
 
     reset({ title, content: sourceContent })
   }, [open, note, fetchedNote, activeHydrationKey, reset])
-
-  useEffect(() => {
-    if (!open) return
-
-    const observer = new MutationObserver(() => {
-      setIsEditorFullscreen(!!document.querySelector('.w-md-editor-fullscreen'))
-    })
-    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] })
-    return () => observer.disconnect()
-  }, [open])
 
   const onSubmit = async (data: CreateNoteFormData) => {
     const title = stripLearningAssetTitlePrefix(data.title)
@@ -218,6 +333,10 @@ export function NoteEditorDialog({
     if (!learningAsset) {
       return
     }
+    if (isInferredMindMapAsset) {
+      setValue('content', value ?? '', { shouldDirty: true })
+      return
+    }
     const nextAsset = {
       ...learningAsset,
       content: value ?? '',
@@ -232,12 +351,55 @@ export function NoteEditorDialog({
     )
   }
 
+  const handleExportCurrentContent = async (format: 'md' | 'png' = 'md') => {
+    const title = watchTitle || learningAsset?.title || fetchedNote?.title || note?.title || '学习资料'
+    if (format === 'png' && learningAsset?.kind === 'mind_map') {
+      const svg = mindMapContentToSvg(learningAsset.content || '', title)
+      const blob = await svgToPngBlob(svg)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${safeExportFilename(title)}.png`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      return
+    }
+    const body = learningAsset
+      ? [
+          `# ${title}`,
+          '',
+          `类型：${learningAssetKindLabel ?? getLearningAssetKindLabel(learningAsset.kind, t)}`,
+          '',
+          learningAsset.content || '',
+        ].join('\n')
+      : watchContent || ''
+    downloadTextFile(body, `${safeExportFilename(title)}.md`)
+  }
+
+  const handleImportMindMap = () => {
+    const nextContent = mindMapImportText.trim()
+    if (!nextContent) {
+      window.alert('请先粘贴 Mermaid、Markdown 或分级列表形式的思维导图内容。')
+      return
+    }
+    handleLearningAssetContentChange(nextContent)
+    setMindMapEditorVersion((current) => current + 1)
+    setIsAssetEditing(true)
+    setMindMapImportOpen(false)
+    setMindMapImportText('')
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className={cn(
+      <DialogContent
+        showCloseButton={false}
+        className={cn(
           "sm:max-w-3xl w-full max-h-[90vh] overflow-hidden p-0 flex flex-col",
           isEditorFullscreen && "!h-screen !max-h-none !w-screen !max-w-none !rounded-none !border-0"
-        )}>
+        )}
+      >
         <DialogTitle className="sr-only">
           {learningAsset ? '学习资产' : isEditing ? t('sources.editNote') : t('sources.createNote')}
         </DialogTitle>
@@ -287,6 +449,50 @@ export function NoteEditorDialog({
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    {learningAsset?.kind === 'mind_map' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setMindMapImportText(learningAsset.content || '')
+                          setMindMapImportOpen(true)
+                        }}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        导入
+                      </Button>
+                    )}
+                    {canExportCurrentContent && (
+                      learningAsset?.kind === 'mind_map' ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button type="button" variant="outline" size="sm">
+                              <Download className="mr-2 h-4 w-4" />
+                              导出
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem onClick={() => void handleExportCurrentContent('png')}>
+                              导出图片 PNG
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void handleExportCurrentContent('md')}>
+                              导出 MD
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleExportCurrentContent('md')}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          导出
+                        </Button>
+                      )
+                    )}
                     {canEditLearningAsset && (
                       <Button
                         type="button"
@@ -315,6 +521,17 @@ export function NoteEditorDialog({
                       )}
                       {isEditorFullscreen ? '退出全屏' : '全屏'}
                     </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9"
+                      onClick={handleClose}
+                      aria-label="关闭"
+                      title="关闭"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -331,6 +548,7 @@ export function NoteEditorDialog({
                   />
                 ) : showLearningAssetPreview && learningAsset?.kind === 'mind_map' ? (
                   <MindMapVisualEditor
+                    key={mindMapEditorVersion}
                     content={learningAsset.content}
                     expanded={isEditorFullscreen}
                     materials={mindMapMaterials}
@@ -402,6 +620,32 @@ export function NoteEditorDialog({
             )}
           </div>
         </form>
+        <Dialog open={mindMapImportOpen} onOpenChange={setMindMapImportOpen}>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>导入知识图谱</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                粘贴 Mermaid mindmap、Markdown 分级列表或已有导图内容。确认后会覆盖当前导图，并继续在当前编辑窗口中编辑。
+              </p>
+              <Textarea
+                value={mindMapImportText}
+                onChange={(event) => setMindMapImportText(event.target.value)}
+                className="min-h-80 font-mono text-sm"
+                placeholder={'```mermaid\nmindmap\n  direction right\n  root((主题))\n    模块\n      关键概念\n```'}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setMindMapImportOpen(false)}>
+                取消
+              </Button>
+              <Button type="button" onClick={handleImportMindMap}>
+                导入并覆盖
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   )

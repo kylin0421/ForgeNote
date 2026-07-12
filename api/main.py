@@ -146,17 +146,21 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Podcast profile migration encountered errors: {e}")
         # Non-fatal: profiles can be migrated manually via UI
 
-    # Align built-in podcast speaker profiles with the centrally managed
-    # default TTS model. This repairs older records where the default changed
-    # but the speaker profiles still point at a previous model.
+    # Align built-in podcast profiles with centrally managed defaults. This
+    # repairs older records where defaults changed but profiles still point at
+    # previous models.
     try:
-        from api.model_sync_service import sync_speaker_profiles_to_tts
+        from api.model_sync_service import (
+            sync_episode_profiles_to_podcast_model,
+            sync_speaker_profiles_to_tts,
+        )
         from open_notebook.ai.models import DefaultModels
 
         defaults = await DefaultModels.get_instance()
         await sync_speaker_profiles_to_tts(defaults.default_text_to_speech_model)
+        await sync_episode_profiles_to_podcast_model(defaults.default_podcast_model)
     except Exception as e:
-        logger.warning(f"Default TTS speaker profile sync encountered errors: {e}")
+        logger.warning(f"Default podcast profile sync encountered errors: {e}")
 
     logger.success("API initialization completed successfully")
 

@@ -183,6 +183,41 @@ DEFAULT_TEST_VOICES = {
 }
 
 
+async def _test_image_model(model) -> Tuple[bool, str]:
+    """Test image-generation models through the provider-specific image API."""
+    from open_notebook.ai.image_generation import (
+        generate_image,
+        image_generation_target,
+        resolve_image_model_config,
+    )
+
+    provider, model_name, api_key, base_url = await resolve_image_model_config(model)
+    if not api_key:
+        return False, f"No API key configured for {provider}"
+
+    target = image_generation_target(provider, model_name, base_url)
+
+    try:
+        image_src, _ = await generate_image(
+            provider=provider,
+            model_name=model_name,
+            api_key=api_key,
+            prompt="A simple blue square icon on a white background.",
+            base_url=base_url,
+        )
+    except httpx.HTTPStatusError as e:
+        detail = e.response.text[:500] if e.response is not None else str(e)
+        _, normalized = _normalize_error_message(f"{e.response.status_code if e.response else ''} {detail}")
+        return False, f"{normalized}. Image test used {target} with model '{model_name}'."
+    except Exception as e:
+        _, normalized = _normalize_error_message(str(e))
+        return False, f"{normalized}. Image test used {target} with model '{model_name}'."
+
+    if image_src:
+        return True, f"Image generation successful ({image_src[:80]})"
+    return False, "Image generation returned no image data"
+
+
 def _generate_test_wav() -> io.BytesIO:
     """Generate a minimal 0.5s silence WAV file in memory (16kHz, 16-bit mono)."""
     sample_rate = 16000
@@ -271,6 +306,9 @@ async def test_individual_model(model) -> Tuple[bool, str]:
     from open_notebook.ai.models import ModelManager
 
     try:
+        if model.type == "image":
+            return await _test_image_model(model)
+
         manager = ModelManager()
         esp_model = await manager.get_model(model.id)
 

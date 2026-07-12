@@ -14,6 +14,7 @@ from commands.podcast_commands import (
     build_episode_output_dir,
     build_podcast_error_message,
 )
+from open_notebook.podcasts.robust_creator import clean_transcript_json_output
 
 
 class TestBuildEpisodeOutputDir:
@@ -92,6 +93,18 @@ def test_invalid_json_error_still_includes_model_guidance():
 
     assert "extended thinking" in message
     assert "Resolved models:" in message
+
+
+def test_clean_transcript_json_output_handles_thinking_wrapper_and_suffix():
+    raw = (
+        "<thinking>plan the dialogue</thinking> "
+        '{"transcript":[{"speaker":"Johny Bing","dialogue":"开始。"}]} '
+        "For troubleshooting, visit: https://docs.langchain.com/errors"
+    )
+
+    assert clean_transcript_json_output(raw) == (
+        '{"transcript":[{"speaker":"Johny Bing","dialogue":"开始。"}]}'
+    )
 
 
 def test_tts_404_error_includes_model_provider_guidance():

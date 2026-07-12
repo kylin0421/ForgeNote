@@ -1,4 +1,5 @@
 import json
+import re
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, HTTPException
@@ -8,11 +9,217 @@ from loguru import logger
 from api.models import AskRequest, AskResponse, SearchRequest, SearchResponse
 from open_notebook.ai.models import Model, model_manager
 from open_notebook.domain.content_settings import ContentSettings
-from open_notebook.domain.notebook import semantic_search, text_search, vector_search
+from open_notebook.domain.notebook import (
+    Note,
+    Source,
+    SourceInsight,
+    semantic_search,
+    text_search,
+    vector_search,
+)
 from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 from open_notebook.graphs.ask import graph as ask_graph
 
 router = APIRouter()
+
+
+def _coerce_match_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        matches: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                matches.append(item)
+            elif isinstance(item, list):
+                matches.extend(str(part) for part in item if part)
+            elif item:
+                matches.append(str(item))
+        return [match for match in matches if match.strip()]
+    return [str(value)] if str(value).strip() else []
+
+
+def _search_terms(query: str) -> list[str]:
+    compact = re.sub(r"\s+", " ", query).strip()
+    if not compact:
+        return []
+    terms = [term for term in re.split(r"\s+", compact) if len(term) > 1]
+    return terms or [compact]
+
+
+def _clean_search_display_text(value: str) -> str:
+    text = value or ""
+    text = re.sub(
+        r"<!--\s*(?:learning-asset|mind-map-visual)[\s\S]*?-->",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"^\s*(?:flowchart|graph|mindmap|direction)\b.*$", " ", text, flags=re.IGNORECASE | re.MULTILINE)
+    text = re.sub(r"```(?:[a-zA-Z0-9_-]+)?", " ", text)
+    text = text.replace("```", " ")
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"!\[[^\]]*]\([^)]+\)", " ", text)
+    text = re.sub(r"\[([^\]]+)]\([^)]+\)", r"\1", text)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    text = re.sub(r"[*_~]{1,3}([^*_~]+)[*_~]{1,3}", r"\1", text)
+    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*\d+\.\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\b(?:flowchart|graph)\s+(?:LR|RL|TD|TB|BT)\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bmindmap\b|\bdirection\s+\w+\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b[A-Za-z][\w:-]*\s*(?:\(\(|\(|\[|\{)\s*([^()[\]{}]+?)\s*(?:\)\)|\)|]|\})", r"\1", text)
+    text = re.sub(r"[-=]+>|--+|==+|[{}\[\]();]", " ", text)
+    text = re.sub(r"[\"']", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _source_search_text(source: Source) -> str:
+    asset = getattr(source, "asset", None)
+    file_path = getattr(asset, "file_path", None) if asset else None
+    url = getattr(asset, "url", None) if asset else None
+    file_name = ""
+    if file_path:
+        file_name = str(file_path).replace("\\", "/").rsplit("/", 1)[-1]
+    return "\n".join(
+        part
+        for part in [
+            source.title or "",
+            file_name,
+            str(file_path or ""),
+            str(url or ""),
+            source.full_text or "",
+        ]
+        if part
+    )
+
+
+def _query_matches_text(query: str, text: str) -> bool:
+    haystack = text.lower()
+    compact_query = re.sub(r"\s+", " ", query).strip().lower()
+    if not compact_query:
+        return False
+    if compact_query in haystack:
+        return True
+    terms = [term.lower() for term in _search_terms(query)]
+    return bool(terms) and all(term in haystack for term in terms)
+
+
+def _build_match_snippets(text: str | None, query: str, limit: int = 3) -> list[str]:
+    if not text:
+        return []
+    normalized_text = _clean_search_display_text(text)
+    if not normalized_text:
+        return []
+
+    lower_text = normalized_text.lower()
+    snippets: list[str] = []
+    seen: set[str] = set()
+    for term in _search_terms(query):
+        index = lower_text.find(term.lower())
+        if index < 0:
+            continue
+        start = max(0, index - 90)
+        end = min(len(normalized_text), index + len(term) + 130)
+        snippet = normalized_text[start:end].strip()
+        if start > 0:
+            snippet = "…" + snippet
+        if end < len(normalized_text):
+            snippet += "…"
+        if snippet not in seen:
+            seen.add(snippet)
+            snippets.append(snippet)
+        if len(snippets) >= limit:
+            break
+    return snippets
+
+
+async def _fallback_source_text_results(query: str, limit: int) -> list[dict]:
+    try:
+        sources = await Source.get_all(order_by="updated desc")
+    except Exception as e:
+        logger.debug(f"Unable to run fallback source text search: {e}")
+        return []
+
+    matches: list[dict] = []
+    for source in sources:
+        source_text = _source_search_text(source)
+        if not _query_matches_text(query, source_text):
+            continue
+        source_id = str(source.id or "")
+        if not source_id:
+            continue
+        matches.append(
+            {
+                "id": source_id,
+                "parent_id": source_id,
+                "title": source.title or "未命名来源",
+                "relevance": 1,
+            }
+        )
+        if len(matches) >= limit:
+            break
+    return matches
+
+
+async def _load_result_text(parent_id: str | None) -> str:
+    if not parent_id:
+        return ""
+    try:
+        record_id = str(parent_id)
+        if record_id.startswith("source_insight:"):
+            insight = await SourceInsight.get(record_id)
+            return insight.content or ""
+        if record_id.startswith("source:"):
+            source = await Source.get(record_id)
+            return _source_search_text(source)
+        if record_id.startswith("note:"):
+            note = await Note.get(record_id)
+            return "\n".join(
+                part for part in [note.title or "", note.content or ""] if part
+            )
+    except Exception as e:
+        logger.debug(f"Unable to load search result text for snippets: {e}")
+    return ""
+
+
+async def _add_search_match_snippets(results, query: str) -> list[dict]:
+    enhanced: list[dict] = []
+    for result in results or []:
+        item = dict(result)
+        if item.get("id") is not None:
+            item["id"] = str(item["id"])
+        if item.get("parent_id") is not None:
+            item["parent_id"] = str(item["parent_id"])
+
+        matches = _coerce_match_list(item.get("matches") or item.get("content"))
+        matches = [_clean_search_display_text(match) for match in matches]
+        matches = [match for match in matches if match]
+        if not matches:
+            text = await _load_result_text(item.get("parent_id") or item.get("id"))
+            matches = _build_match_snippets(text, query)
+        item["matches"] = matches[:3]
+        item.pop("content", None)
+        enhanced.append(item)
+    return enhanced
+
+
+def _merge_search_results(primary: list, fallback: list[dict], limit: int) -> list:
+    merged: list = []
+    seen: set[str] = set()
+    for result in fallback + list(primary or []):
+        item = dict(result)
+        key = str(item.get("parent_id") or item.get("id") or "")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+        if len(merged) >= limit:
+            break
+    return merged
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -50,9 +257,25 @@ async def search_knowledge_base(search_request: SearchRequest):
                 note=search_request.search_notes,
             )
 
+        fallback_results = (
+            await _fallback_source_text_results(search_request.query, search_request.limit)
+            if search_request.search_sources
+            else []
+        )
+        merged_results = _merge_search_results(
+            results or [],
+            fallback_results,
+            search_request.limit,
+        )
+
+        enhanced_results = await _add_search_match_snippets(
+            merged_results,
+            search_request.query,
+        )
+
         return SearchResponse(
-            results=results or [],
-            total_count=len(results) if results else 0,
+            results=enhanced_results,
+            total_count=len(enhanced_results),
             search_type=search_request.type,
         )
 

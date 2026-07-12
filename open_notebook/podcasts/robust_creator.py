@@ -7,6 +7,7 @@ transcript node with a repair-aware version.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -34,11 +35,76 @@ from podcast_creator.retry import create_retry_decorator, get_retry_config
 from podcast_creator.speakers import load_speaker_config
 from podcast_creator.state import PodcastState
 
+THINKING_BLOCK_PATTERN = re.compile(
+    r"<(?:think|thinking)>(.*?)</(?:think|thinking)>",
+    re.DOTALL | re.IGNORECASE,
+)
+THINKING_NO_OPEN_PATTERN = re.compile(
+    r"^(.*?)</(?:think|thinking)>",
+    re.DOTALL | re.IGNORECASE,
+)
+
 
 def _truncate_for_repair(text: str, limit: int = 6000) -> str:
     if len(text) <= limit:
         return text
     return f"{text[: limit // 2]}\n\n...[truncated]...\n\n{text[-limit // 2:]}"
+
+
+def _extract_first_json_object(text: str) -> str:
+    """Return the first balanced JSON object in text, or the original text."""
+    start = text.find("{")
+    if start < 0:
+        return text
+
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1].strip()
+
+    return text
+
+
+def clean_transcript_json_output(content: str) -> str:
+    """Clean model wrappers before strict transcript JSON parsing.
+
+    Some OpenAI-compatible models emit hidden reasoning as <thinking>...</thinking>
+    instead of <think>...</think>, or append troubleshooting text after the JSON.
+    The upstream parser expects a bare JSON object, so normalize that here.
+    """
+    if not isinstance(content, str):
+        content = str(content) if content is not None else ""
+
+    cleaned = clean_thinking_content(content)
+    cleaned = THINKING_BLOCK_PATTERN.sub("", cleaned)
+    malformed_match = THINKING_NO_OPEN_PATTERN.match(cleaned)
+    if malformed_match:
+        cleaned = cleaned[malformed_match.end() :]
+
+    cleaned = cleaned.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    return _extract_first_json_object(cleaned)
 
 
 def _build_transcript_repair_prompt(
@@ -108,7 +174,7 @@ async def generate_transcript_node_with_repair(
     @llm_retry
     async def _invoke_and_parse(prompt_text: str, segment_name: str):
         result = await transcript_model.ainvoke(prompt_text)
-        content = clean_thinking_content(extract_text_content(result.content))
+        content = clean_transcript_json_output(extract_text_content(result.content))
         try:
             return validated_transcript_parser.invoke(content)
         except Exception as parse_error:
@@ -123,7 +189,7 @@ async def generate_transcript_node_with_repair(
                 speaker_names=speaker_names,
             )
             repair_result = await transcript_model.ainvoke(repair_prompt)
-            repair_content = clean_thinking_content(
+            repair_content = clean_transcript_json_output(
                 extract_text_content(repair_result.content)
             )
             return validated_transcript_parser.invoke(repair_content)

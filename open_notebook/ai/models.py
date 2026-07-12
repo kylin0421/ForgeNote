@@ -82,6 +82,7 @@ class DefaultModels(RecordModel):
     default_reading_model: Optional[str] = None
     default_code_lab_model: Optional[str] = None
     default_podcast_model: Optional[str] = None
+    default_image_model: Optional[str] = None
 
     @classmethod
     async def get_instance(cls) -> "DefaultModels":

@@ -72,6 +72,15 @@ def looks_like_dashscope_tts(model_name: str, config: Optional[Dict[str, Any]] =
     return "dashscope.aliyuncs.com" in base_url or "maas.aliyuncs.com" in base_url
 
 
+def looks_like_dashscope_image(model_name: str, config: Optional[Dict[str, Any]] = None) -> bool:
+    """Return True when an image model should use DashScope native image APIs."""
+    name = _name(model_name)
+    if name.startswith(("qwen-image", "wanx", "flux", "stable-diffusion")):
+        return True
+    base_url = _base_url(config)
+    return "dashscope.aliyuncs.com" in base_url or "maas.aliyuncs.com" in base_url
+
+
 def looks_like_mimo_tts(model_name: str, config: Optional[Dict[str, Any]] = None) -> bool:
     """Return True when a TTS model should use the Xiaomi MiMo adapter."""
     name = _name(model_name)
@@ -146,6 +155,9 @@ def build_model_runtime_spec(
     elif model_type == "text_to_speech" and looks_like_dashscope_tts(model_name, config):
         runtime_provider = DASHSCOPE_TTS_PROVIDER
         api_protocol, batch_tts_supported, warnings = _dashscope_tts_protocol(model_name)
+    elif model_type == "image" and looks_like_dashscope_image(model_name, config):
+        runtime_provider = "dashscope"
+        api_protocol = "dashscope-image"
     elif stored_provider == "azure":
         api_protocol = "azure-openai"
     elif stored_provider == "openai_compatible":

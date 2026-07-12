@@ -84,6 +84,51 @@ export default function SearchPage() {
     return score <= 1 ? `${Math.round(score * 100)}%` : score.toFixed(2)
   }
 
+  const formatSearchSnippet = (value: string) => value
+    .replace(/<!--\s*(?:learning-asset|mind-map-visual)[\s\S]*?-->/gi, ' ')
+    .replace(/^\s*(?:flowchart|graph|mindmap|direction)\b.*$/gim, ' ')
+    .replace(/```(?:[a-zA-Z0-9_-]+)?/g, ' ')
+    .replace(/```/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
+    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/[*_~]{1,3}([^*_~]+)[*_~]{1,3}/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s*/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\b(?:flowchart|graph)\s+(?:LR|RL|TD|TB|BT)\b/gi, ' ')
+    .replace(/\bmindmap\b|\bdirection\s+\w+\b/gi, ' ')
+    .replace(/\b[A-Za-z][\w:-]*\s*(?:\(\(|\(|\[|\{)\s*([^()[\]{}]+?)\s*(?:\)\)|\)|]|\})/g, '$1')
+    .replace(/[-=]+>|--+|==+|[{}\[\]();]/g, ' ')
+    .replace(/["']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const highlightMatch = (value: string) => {
+    const snippet = formatSearchSnippet(value)
+    const terms = (searchQuery.trim().split(/\s+/).filter(Boolean).length > 0
+      ? searchQuery.trim().split(/\s+/).filter(Boolean)
+      : [searchQuery.trim()].filter(Boolean)
+    ).map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+
+    if (!snippet || terms.length === 0) {
+      return snippet
+    }
+
+    const matcher = new RegExp(`(${terms.join('|')})`, 'gi')
+    const exactMatcher = new RegExp(`^(?:${terms.join('|')})$`, 'i')
+    return snippet.split(matcher).map((part, index) => (
+      exactMatcher.test(part) ? (
+        <mark key={`${part}-${index}`} className="rounded bg-yellow-200 px-0.5 text-yellow-950">
+          {part}
+        </mark>
+      ) : (
+        <span key={`${part}-${index}`}>{part}</span>
+      )
+    ))
+  }
+
   const hasEmbeddingModel = !!modelDefaults?.default_embedding_model
   const defaultRagModel =
     modelDefaults?.default_rag_model ||
@@ -481,6 +526,22 @@ export default function SearchPage() {
                                   <Badge variant="secondary" className="ml-2">
                                     匹配程度 {formatMatchScore(result.final_score)}
                                   </Badge>
+                                  {result.matches && result.matches.some((match) => formatSearchSnippet(match)) && (
+                                    <div className="mt-3 space-y-2">
+                                      {result.matches
+                                        .map((match) => formatSearchSnippet(match))
+                                        .filter(Boolean)
+                                        .slice(0, 3)
+                                        .map((match, matchIndex) => (
+                                        <p
+                                          key={`${result.id}-match-${matchIndex}`}
+                                          className="rounded-md border bg-muted/30 px-3 py-2 text-sm leading-6 text-muted-foreground"
+                                        >
+                                          {highlightMatch(match)}
+                                        </p>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </CardContent>

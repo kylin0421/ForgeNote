@@ -8,6 +8,7 @@ import { SourcesColumn } from '../components/SourcesColumn'
 import { NotesColumn } from '../components/NotesColumn'
 import { ChatColumn } from '../components/ChatColumn'
 import { LearningCurveDialog } from '../components/LearningCurveDialog'
+import { MistakeBookDialog } from '../components/MistakeBookDialog'
 import { useNotebook, useUpdateNotebook } from '@/lib/hooks/use-notebooks'
 import { useNotebookSources } from '@/lib/hooks/use-sources'
 import { useNotes } from '@/lib/hooks/use-notes'
@@ -18,7 +19,7 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { FileText, StickyNote, MessageSquare, TrendingUp } from 'lucide-react'
+import { BookMarked, FileText, StickyNote, MessageSquare, TrendingUp } from 'lucide-react'
 import {
   applyBulkSourceContext,
   applyBulkNoteContext,
@@ -114,6 +115,7 @@ export default function NotebookPage() {
     useProfileSource: true,
   })
   const [learningCurveOpen, setLearningCurveOpen] = useState(false)
+  const [mistakeBookOpen, setMistakeBookOpen] = useState(false)
 
   useEffect(() => {
     if (!notebookId) return
@@ -283,6 +285,31 @@ export default function NotebookPage() {
     })
   }
 
+  const notebookActionButtons = (buttonClassName: string) => (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className={cn('gap-1.5 rounded-full text-xs', buttonClassName)}
+        onClick={() => setLearningCurveOpen(true)}
+      >
+        <TrendingUp className="h-4 w-4" />
+        学习曲线
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className={cn('gap-1.5 rounded-full text-xs', buttonClassName)}
+        onClick={() => setMistakeBookOpen(true)}
+      >
+        <BookMarked className="h-4 w-4" />
+        错题本
+      </Button>
+    </>
+  )
+
   if (notebookLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -305,28 +332,17 @@ export default function NotebookPage() {
   return (
     <AppShell
       title={
-        <div className="flex min-w-0 items-center gap-2">
-          <InlineEdit
-            id="notebook-top-title"
-            name="notebook-top-title"
-            value={notebook.name}
-            onSave={handleUpdateNotebookName}
-            className="max-w-full truncate text-xl font-semibold tracking-tight"
-            inputClassName="h-9 max-w-md text-xl font-semibold tracking-tight"
-            placeholder={t('notebooks.namePlaceholder')}
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="shrink-0 gap-1.5 rounded-full"
-            onClick={() => setLearningCurveOpen(true)}
-          >
-            <TrendingUp className="h-4 w-4" />
-            学习曲线
-          </Button>
-        </div>
+        <InlineEdit
+          id="notebook-top-title"
+          name="notebook-top-title"
+          value={notebook.name}
+          onSave={handleUpdateNotebookName}
+          className="max-w-full truncate text-xl font-semibold tracking-tight"
+          inputClassName="h-9 max-w-md text-xl font-semibold tracking-tight"
+          placeholder={t('notebooks.namePlaceholder')}
+        />
       }
+      titleActions={notebookActionButtons('h-8 px-3')}
     >
       <LearningCurveDialog
         open={learningCurveOpen}
@@ -335,38 +351,16 @@ export default function NotebookPage() {
         sources={sources}
         notes={notes}
       />
+      <MistakeBookDialog
+        open={mistakeBookOpen}
+        onOpenChange={setMistakeBookOpen}
+        notebookId={notebookId}
+        notebookName={notebook?.name}
+      />
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <div className="flex-1 min-h-0 p-6 overflow-x-auto overflow-y-auto flex flex-col">
-          <div className="mb-4 flex flex-col gap-3 rounded-xl border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between lg:hidden">
-            <div>
-              <p className="text-base font-semibold">学习曲线</p>
-              <p className="mt-1 text-sm text-muted-foreground">查看学习量、质量变化和最近学习建议。</p>
-            </div>
-            <Button
-              type="button"
-              variant="default"
-              className="w-full gap-2 rounded-full sm:w-auto"
-              onClick={() => setLearningCurveOpen(true)}
-            >
-              <TrendingUp className="h-4 w-4" />
-              打开学习曲线
-            </Button>
-          </div>
-
-          <div className="mb-4 hidden items-center justify-between rounded-xl border bg-muted/20 p-4 lg:flex">
-            <div>
-              <p className="text-base font-semibold">学习曲线</p>
-              <p className="mt-1 text-sm text-muted-foreground">查看最近 14 天学习量、学习质量、测验表现和下一步建议。</p>
-            </div>
-            <Button
-              type="button"
-              variant="default"
-              className="gap-2 rounded-full px-5"
-              onClick={() => setLearningCurveOpen(true)}
-            >
-              <TrendingUp className="h-4 w-4" />
-              打开学习曲线
-            </Button>
+          <div className="mb-4 flex items-center gap-2 md:hidden">
+            {notebookActionButtons('h-9 flex-1 px-3')}
           </div>
 
           {/* Mobile: Tabbed interface - only render on mobile to avoid double-mounting */}

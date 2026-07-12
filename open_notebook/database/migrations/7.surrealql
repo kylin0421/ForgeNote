@@ -57,9 +57,9 @@ insert into episode_profile
                 description: "Technical discussion between 2 experts",
                 speaker_config: "tech_experts",
                 outline_provider: "openai",
-                outline_model: "deepseek-v4-flash",
+                outline_model: "kimi-k2.7-code",
                 transcript_provider: "openai",
-                transcript_model: "deepseek-v4-flash",
+                transcript_model: "kimi-k2.7-code",
                 default_briefing: "Create an engaging technical discussion about the provided content. Focus on practical insights, real-world applications, and detailed explanations that would interest developers and technical professionals.",
                 num_segments: 5
             },
@@ -68,9 +68,9 @@ insert into episode_profile
                 description: "Single expert explaining complex topics",
                 speaker_config: "solo_expert",
                 outline_provider: "openai",
-                outline_model: "deepseek-v4-flash",
+                outline_model: "kimi-k2.7-code",
                 transcript_provider: "openai",
-                transcript_model: "deepseek-v4-flash",
+                transcript_model: "kimi-k2.7-code",
                 default_briefing: "Create an educational explanation of the provided content. Break down complex concepts into digestible segments, use analogies and examples, and maintain an engaging teaching style.",
                 "num_segments":4            },
             {
@@ -78,9 +78,9 @@ insert into episode_profile
                 description: "Business-focused analysis and discussion",
                 speaker_config: "business_panel",
                 outline_provider: "openai",
-                outline_model: "deepseek-v4-flash",
+                outline_model: "kimi-k2.7-code",
                 transcript_provider: "openai",
-                transcript_model: "deepseek-v4-flash",
+                transcript_model: "kimi-k2.7-code",
                 default_briefing: "Analyze the provided content from a business perspective. Discuss market implications, strategic insights, competitive advantages, and actionable business intelligence.",
                 "num_segments":6            }
         ];

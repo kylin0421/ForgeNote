@@ -29,6 +29,7 @@ DEFAULT_MODEL_FIELDS = [
     "default_reading_model",
     "default_code_lab_model",
     "default_podcast_model",
+    "default_image_model",
 ]
 
 

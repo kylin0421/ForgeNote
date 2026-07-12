@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils'
 interface AppShellProps {
   children: React.ReactNode
   title?: React.ReactNode
+  titleActions?: React.ReactNode
 }
 
 const NAV_ITEMS = [
@@ -43,7 +44,7 @@ const NAV_ITEMS = [
   { href: '/advanced', label: '高级', icon: Wrench },
 ]
 
-export function AppShell({ children, title }: AppShellProps) {
+export function AppShell({ children, title, titleActions }: AppShellProps) {
   const pathname = usePathname()
   const { t } = useTranslation()
   const { openNotebookDialog, openSourceDialog } = useCreateDialogs()
@@ -66,6 +67,12 @@ export function AppShell({ children, title }: AppShellProps) {
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          {titleActions ? (
+            <div className="hidden shrink-0 items-center gap-2 md:flex">
+              {titleActions}
+            </div>
+          ) : null}
+
           <nav className="hidden items-center gap-1 lg:flex">
             {NAV_ITEMS.map((item) => {
               const active =

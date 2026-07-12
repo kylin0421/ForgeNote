@@ -1,6 +1,8 @@
 import asyncio
 import json
+import os
 import re
+import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -22,6 +24,8 @@ from api.models import (
     LearningSafetyReport,
 )
 from api.web_search import WebSearchResult, search_web
+from open_notebook.ai.image_generation import generate_image, resolve_image_model_config
+from open_notebook.ai.models import Model
 from open_notebook.ai.provision import provision_langchain_model
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
@@ -32,6 +36,14 @@ from open_notebook.utils.text_utils import extract_text_content
 
 MAX_GENERATION_CONTEXT_CHARS = 24000
 MAX_SOURCE_CHARS = 7000
+GENERATED_ASSETS_DIR = os.getenv(
+    "GENERATED_ASSETS_DIR",
+    "/app/frontend/public/generated-assets",
+)
+GENERATED_ASSETS_URL_PREFIX = os.getenv(
+    "GENERATED_ASSETS_URL_PREFIX",
+    "/generated-assets",
+).rstrip("/")
 LEARNING_PROFILE_SOURCE_TITLE = "学习画像"
 LEARNING_PROFILE_TOPIC = "learning_profile"
 MAX_PROFILE_CHARS = 18000
@@ -403,6 +415,7 @@ OUTPUT_LABELS: dict[LearningOutputKind, str] = {
     "mind_map": "知识点思维导图",
     "reading": "拓展阅读材料",
     "code_lab": "代码实操案例",
+    "visual_aid": "辅助理解图片",
 }
 
 
@@ -435,6 +448,7 @@ def _normalized_request(request: LearningOrchestrationRequest) -> dict[str, str]
     major = request.major or "计算机相关专业"
     goal = request.goal or "建立可迁移的课程知识体系"
     history = "；".join(request.learning_history or []) or "暂无明确历史记录"
+    target_language = (request.target_language or "中文").strip() or "中文"
     message = request.message.strip()
     if not message and request.mode == "generate":
         message = DEFAULT_GENERATION_MESSAGE
@@ -446,6 +460,7 @@ def _normalized_request(request: LearningOrchestrationRequest) -> dict[str, str]
         "major": major.strip(),
         "goal": goal.strip(),
         "history": history,
+        "target_language": target_language,
     }
 
 
@@ -730,6 +745,28 @@ def _build_resources(
             ),
             tags=["代码", "实操", "Python"],
         ),
+        LearningResource(
+            kind="visual_aid",
+            type="辅助理解图片",
+            title=f"{course} 辅助理解图片提示词",
+            agent="视觉辅助智能体",
+            format="Image prompt",
+            summary="用于生成学习辅助图片的提示词。",
+            content=(
+                f"Create a clean educational visual aid for {course}. "
+                "Use a clear diagram-like layout, short labels, and a study-notebook style. "
+                f"Focus on: {context['message']}. Output language: {context['target_language']}."
+            ),
+            tags=["图片", "可视化", "提示词"],
+            payload={
+                "status": "fallback_prompt",
+                "prompt": (
+                    f"Create a clean educational visual aid for {course}. "
+                    "Use a clear diagram-like layout, short labels, and a study-notebook style. "
+                    f"Focus on: {context['message']}. Output language: {context['target_language']}."
+                ),
+            },
+        ),
     ]
 
     if not requested_outputs:
@@ -893,7 +930,7 @@ def _strip_learning_profile_source_blocks(source_context: str) -> str:
     return "\n\n".join(kept)
 
 
-def _mind_map_node_text(value: str, limit: int = 42) -> str:
+def _mind_map_node_text(value: str, limit: int = 72) -> str:
     text = re.sub(r"[\r\n]+", " ", value).strip()
     text = re.sub(r"[(){}\[\]<>|]", " ", text)
     text = re.sub(r"\s+", " ", text).strip(" -:：")
@@ -902,7 +939,7 @@ def _mind_map_node_text(value: str, limit: int = 42) -> str:
     return text or "来源要点"
 
 
-def _mermaid_label(value: str, limit: int = 28) -> str:
+def _mermaid_label(value: str, limit: int = 48) -> str:
     return _mind_map_node_text(value, limit).replace('"', '\\"')
 
 
@@ -994,26 +1031,34 @@ def _source_grounded_fallback_resources(
                 )
             )
         elif kind == "mind_map":
-            source_nodes = sentences[:8] or [context["message"], context["goal"]]
+            source_nodes = sentences[:12] or [context["message"], context["goal"]]
             mermaid_lines = [
                 "```mermaid",
-                "%% 切换逻辑：平台按钮在树状图、表格、大纲间切换；内容保持一致。",
-                "%% 视觉设计：根节点大圆角，一级模块浅色，二级知识点短句。",
                 "mindmap",
                 "  direction right",
                 f"  root(({_mermaid_label(course)}))",
                 "    来源要点",
             ]
-            mermaid_lines.extend(
-                f"      {_mermaid_label(sentence)}"
-                for sentence in source_nodes[:6]
-            )
+            for index, sentence in enumerate(source_nodes[:10], start=1):
+                mermaid_lines.extend(
+                    [
+                        f"      要点 {index}: {_mermaid_label(sentence, 54)}",
+                        "        先定位它回答的问题",
+                        "        再核对原文证据和适用条件",
+                    ]
+                )
             mermaid_lines.extend(
                 [
                     "    学习动作",
                     "      概念边界",
+                    "        找出相近概念的区别",
+                    "        标注容易混淆的条件",
                     "      方法脉络",
+                    "        按步骤复述材料中的推理",
+                    "        用一个例子检查是否能迁移",
                     "      练习自检",
+                    "        生成测验定位薄弱点",
+                    "        把错题回跳到来源复盘",
                 ]
             )
             mermaid_lines.append("```")
@@ -1021,11 +1066,14 @@ def _source_grounded_fallback_resources(
                 "## 树状分层文本",
                 f"- {course}",
                 "  - 来源要点",
-                *[f"    - {sentence}" for sentence in source_nodes[:6]],
+                *[
+                    f"    - 要点 {index}: {sentence}\n      - 先定位它回答的问题\n      - 再核对原文证据和适用条件"
+                    for index, sentence in enumerate(source_nodes[:10], start=1)
+                ],
                 "  - 学习动作",
-                "    - 先梳理概念边界",
-                "    - 再核对方法脉络",
-                "    - 最后用练习自检",
+                "    - 概念边界：找出相近概念的区别和条件",
+                "    - 方法脉络：按步骤复述材料中的推理",
+                "    - 练习自检：用测验和错题回跳来源",
             ]
             table_lines = [
                 "## 对比表格",
@@ -1033,13 +1081,16 @@ def _source_grounded_fallback_resources(
                 "| --- | --- |",
             ]
             actions = ["先梳理概念边界", "再核对方法脉络", "最后用练习自检"]
-            for index, sentence in enumerate(source_nodes[:6]):
+            for index, sentence in enumerate(source_nodes[:10]):
                 table_lines.append(f"| {sentence} | {actions[index % len(actions)]} |")
             outline_lines = [
                 "## 分级分点列表",
                 f"1. {course}",
                 "   - 来源要点",
-                *[f"     - {sentence}" for sentence in source_nodes[:6]],
+                *[
+                    f"     - 要点 {index}: {sentence}\n       - 证据定位\n       - 条件核对"
+                    for index, sentence in enumerate(source_nodes[:10], start=1)
+                ],
                 "   - 学习动作",
                 "     - 先梳理概念边界",
                 "     - 再核对方法脉络",
@@ -1098,17 +1149,21 @@ Markdown table rule: use ASCII "|" separators, include a delimiter row like "| -
 课程/主题：
 {context["course"]}
 
+目标输出语言：
+{context["target_language"]}
+
 要求：
 1. 只生成 requested_outputs 中列出的资产：{requested}
-2. 所有 quiz、闪卡、讲解文档和 mind_map 都必须围绕来源里的具体概念、方法、公式、实验、结论或术语。
-3. 如果来源证据不足，明确写“来源不足以支持”，不要编造。
-4. study_guide 必须是长 Markdown 文档，至少包含：核心问题、来源要点、概念解释、方法/实验脉络、易混点、自检清单。
-5. study_guide.content 必须是纯 Markdown 正文：不要包裹 ```markdown 代码块，不要把整篇 Markdown 做二次 JSON 字符串化，不要输出字面量 "\\n"；标题必须单独成行，使用 "#"/"##"/"###"，列表使用 "- " 或 "1. " 标准 Markdown。
-6. quiz 必须可互动：payload.questions 里生成 4-8 道题，每题 4 个选项，answer_index 为 0-3，解析必须引用来源依据；每题尽量补充 source_title、source_ref 或 evidence，便于错题回跳来源。
-7. flashcards 必须可互动：payload.cards 里生成 6-12 张卡，每张有 front/back/hint，内容必须来自来源。
-8. mind_map.content 必须按以下顺序输出同一套知识内容：第一部分是可直接渲染的 fenced Mermaid 代码块，第一行必须单独是 ```mermaid，第二行必须是 mindmap，第三行必须是两个空格缩进的 direction right，末尾必须用单独一行 ``` 关闭；根节点靠左，所有分支水平向右展开；不要只写很短的点子，一级节点用于模块，下面应按来源证据继续展开关键定义、条件、步骤、例子、易混边界或结论，必要时允许 4-6 层嵌套，但每个节点仍保持可读短句，避免整段长文；禁止 flowchart/graph 语法；第二部分依次输出 "## 树状分层文本"、"## 对比表格"、"## 分级分点列表"，三种格式内容必须一一对应，不要输出无关说明。
-9. reading 必须根据来源主题给出拓展阅读候选，覆盖“相关论文/必读经典/教学视频”三类；优先输出 payload.items，每项包含 title、url、reason，并在 reason 中说明相关性、推荐度、经典度依据。content 中也要用 Markdown 列出候选，按总分从高到低排序。
-10. 输出只允许 JSON，不要 Markdown 代码块。
+2. 无论 <sources> 或用户输入是什么语言，所有面向用户展示的 title、summary、content、quiz、闪卡、reading reason、tutor_answer 等都必须使用“目标输出语言”。必要时先在内部翻译来源，再生成结果；不要沿用英文或来源原文语种输出。
+3. 所有 quiz、闪卡、讲解文档和 mind_map 都必须围绕来源里的具体概念、方法、公式、实验、结论或术语。
+4. 如果来源证据不足，明确写“来源不足以支持”，不要编造。
+5. study_guide 必须是长 Markdown 文档，至少包含：核心问题、来源要点、概念解释、方法/实验脉络、易混点、自检清单。
+6. study_guide.content 必须是纯 Markdown 正文：不要包裹 ```markdown 代码块，不要把整篇 Markdown 做二次 JSON 字符串化，不要输出字面量 "\\n"；标题必须单独成行，使用 "#"/"##"/"###"，列表使用 "- " 或 "1. " 标准 Markdown。
+7. quiz 必须可互动：payload.questions 里生成 4-8 道题，每题 4 个选项，answer_index 为 0-3，解析必须引用来源依据；每题尽量补充 source_title、source_ref 或 evidence，便于错题回跳来源。
+8. flashcards 必须可互动：payload.cards 里生成 6-12 张卡，每张有 front/back/hint，内容必须来自来源。
+9. mind_map.content 必须按以下顺序输出同一套知识内容：第一部分是可直接渲染的 fenced Mermaid 代码块，第一行必须单独是 ```mermaid，第二行必须是 mindmap，第三行必须是两个空格缩进的 direction right，末尾必须用单独一行 ``` 关闭；根节点靠左，所有分支水平向右展开；禁止只生成“根节点 + 一级模块”的两层图，也不要只写很短的点子或空泛三级骨架；一级节点用于模块，每个一级模块下面都必须继续展开具体概念、来源证据、条件/步骤、例子、易混边界、公式含义、实验结论或学习动作，让结构既详细又清楚；层级深度和分支数量由材料复杂度决定，不设固定上限，复杂材料可以继续向下嵌套，只要每个节点仍是可读短句而不是整段长文；禁止 flowchart/graph 语法；第二部分依次输出 "## 树状分层文本"、"## 对比表格"、"## 分级分点列表"，三种格式内容必须一一对应，不要输出无关说明。
+10. reading 必须根据来源主题给出更深入的拓展阅读候选，覆盖“相关论文/综述、必读经典/教材章节、大学课程讲义、官方文档、教学视频、实践项目或练习”至少 5 类；优先输出 payload.items，建议 8-12 项，每项包含 title、url、reason、category、difficulty、read_order，并在 reason 中说明相关性、推荐度、经典度或权威性依据。content 中也要用 Markdown 列出候选，按建议阅读顺序或总分排序，不要只给泛泛链接。
+11. 输出只允许 JSON，不要 Markdown 代码块。
 
 JSON 结构：
 {{
@@ -1279,6 +1334,119 @@ def _normalize_mind_map_content(value: Any) -> str:
         text,
         flags=re.I,
     )
+
+
+async def _resolve_image_model_selection(image_model: str | None) -> tuple[str, str]:
+    selected = (image_model or "gpt-image-1").strip() or "gpt-image-1"
+    provider = "openai"
+    model_name = selected
+    try:
+        if ":" in selected:
+            model = await Model.get(selected)
+            provider = model.provider or provider
+            model_name = model.name or model_name
+    except Exception:
+        provider = "openai"
+        model_name = selected
+    return provider, model_name
+
+
+async def _generate_visual_aid_resource(
+    context: dict[str, str],
+    source_context: str,
+    image_model: str | None = None,
+) -> LearningResource:
+    title = f"{context['course']} 辅助理解图片"
+    provider, model_name = await _resolve_image_model_selection(image_model)
+    prompt = f"""
+Create one educational visual aid for a study notebook.
+
+Goal:
+- Help the learner understand the topic visually.
+- Use a clean textbook/NotebookLM style: diagram-like, clear hierarchy, minimal decoration.
+- Prefer conceptual infographic, process diagram, comparison chart, or annotated visual metaphor.
+- Avoid tiny unreadable text. Use short labels only.
+- Output should be useful for studying, not a marketing poster.
+
+Language for visible labels: {context["target_language"]}
+Course: {context["course"]}
+Student background: {context["major"]}
+Learning goal: {context["goal"]}
+Topic/request: {context["message"]}
+
+Source-grounded context:
+{source_context[:5000]}
+Image model selected by user: {model_name}
+""".strip()
+
+    model = None
+    base_url = None
+    try:
+        if image_model and ":" in image_model:
+            model = await Model.get(image_model)
+            provider, model_name, api_key, base_url = await resolve_image_model_config(model)
+        else:
+            api_key = None
+    except Exception as error:
+        logger.warning(f"Unable to read image credential for visual aid: {error}")
+        api_key = None
+
+    if not api_key:
+        return LearningResource(
+            kind="visual_aid",
+            type=OUTPUT_LABELS["visual_aid"],
+            title=title,
+            agent="视觉辅助智能体",
+            format="Image prompt",
+            summary=f"未检测到 {provider} 图片生成 API key，已生成可复制的图片提示词。",
+            content=prompt,
+            tags=["图片", "可视化", "提示词"],
+            payload={"prompt": prompt, "status": "missing_api_key", "image_model": model_name, "provider": provider},
+        )
+
+    def persist_image_bytes(image_bytes: bytes, mime_type: str = "image/png") -> str:
+        extension = "jpg" if mime_type in {"image/jpeg", "image/jpg"} else "png"
+        output_dir = os.getenv("GENERATED_ASSETS_DIR", GENERATED_ASSETS_DIR)
+        os.makedirs(output_dir, exist_ok=True)
+        filename = f"visual-aid-{uuid.uuid4().hex}.{extension}"
+        output_path = os.path.join(output_dir, filename)
+        with open(output_path, "wb") as image_file:
+            image_file.write(image_bytes)
+        return f"{GENERATED_ASSETS_URL_PREFIX}/{filename}"
+
+    try:
+        image_src, mime_type = await generate_image(
+            provider=provider,
+            model_name=model_name,
+            api_key=api_key,
+            prompt=prompt,
+            base_url=base_url,
+            persist_image_bytes=persist_image_bytes,
+        )
+        return LearningResource(
+            kind="visual_aid",
+            type=OUTPUT_LABELS["visual_aid"],
+            title=title,
+            agent="视觉辅助智能体",
+            format="PNG image",
+            summary="基于当前学习资料生成的可视化辅助理解图片。",
+            content="这是一张基于当前学习资料生成的辅助理解图片，可放大查看或导出。",
+            tags=["图片", "可视化", "辅助理解"],
+            payload={"image_src": image_src, "prompt": prompt, "mime_type": mime_type, "image_model": model_name, "provider": provider},
+        )
+    except Exception as error:
+        logger.warning(f"Visual aid image generation failed: {error}")
+        return LearningResource(
+            kind="visual_aid",
+            type=OUTPUT_LABELS["visual_aid"],
+            title=title,
+            agent="视觉辅助智能体",
+            format="Image prompt",
+            summary="图片生成失败，已保留可复制的图片提示词。",
+            content=prompt,
+            tags=["图片", "可视化", "提示词"],
+            payload={"prompt": prompt, "status": "generation_failed", "image_model": model_name, "provider": provider},
+        )
     fence_start = re.search(r"```(?:mermaid|mindmap)\s*\n", text, flags=re.I)
     if fence_start:
         after_fence = text[fence_start.end() :]
@@ -1463,10 +1631,23 @@ async def _generate_resources_from_sources(
     if not request.requested_outputs:
         return []
 
-    prompt = _learning_generation_prompt(context, request.requested_outputs, source_context)
+    visual_resources: list[LearningResource] = []
+    text_outputs = [kind for kind in request.requested_outputs if kind != "visual_aid"]
+    if "visual_aid" in request.requested_outputs:
+        visual_resources.append(
+            await _generate_visual_aid_resource(
+                context,
+                source_context,
+                request.image_model,
+            )
+        )
+    if not text_outputs:
+        return visual_resources
+
+    prompt = _learning_generation_prompt(context, text_outputs, source_context)
     default_model_type = (
-        f"asset_{request.requested_outputs[0]}"
-        if len(request.requested_outputs) == 1
+        f"asset_{text_outputs[0]}"
+        if len(text_outputs) == 1
         else "learning_asset"
     )
     try:
@@ -1479,22 +1660,28 @@ async def _generate_resources_from_sources(
         )
         ai_message = await model.ainvoke(prompt)
         payload = _extract_json_payload(extract_text_content(ai_message.content))
-        return _normalize_generated_resources(
-            payload,
-            context,
-            request.requested_outputs,
-            source_context,
-        )
+        return [
+            *visual_resources,
+            *_normalize_generated_resources(
+                payload,
+                context,
+                text_outputs,
+                source_context,
+            ),
+        ]
     except ConfigurationError as error:
         logger.warning(f"No LLM configured for source-grounded asset generation: {error}")
     except Exception as error:
         logger.warning(f"LLM source-grounded asset generation failed: {error}")
 
-    return _source_grounded_fallback_resources(
-        context,
-        request.requested_outputs,
-        source_context,
-    )
+    return [
+        *visual_resources,
+        *_source_grounded_fallback_resources(
+            context,
+            text_outputs,
+            source_context,
+        ),
+    ]
 
 
 def _build_fallback_collected_resources(
@@ -1601,6 +1788,26 @@ def _fallback_agentic_search_plan(context: dict[str, str]) -> list[SearchQueryPl
             intent="learner_context",
             rationale="Find resources aligned with the learner profile.",
         ),
+        SearchQueryPlan(
+            query=f"{expanded_topic} recommended reading textbook chapters",
+            intent="textbook_or_classic_reading",
+            rationale="Find classic textbook-style reading and durable references.",
+        ),
+        SearchQueryPlan(
+            query=f"{expanded_topic} course syllabus reading list",
+            intent="course_reading_list",
+            rationale="Find curated course reading lists and prerequisite sequence.",
+        ),
+        SearchQueryPlan(
+            query=f"{expanded_topic} video lecture playlist university",
+            intent="video_lecture",
+            rationale="Find high-quality lecture videos that can complement reading.",
+        ),
+        SearchQueryPlan(
+            query=f"{expanded_topic} common misconceptions pitfalls examples",
+            intent="misconceptions_and_pitfalls",
+            rationale="Find materials that clarify difficult boundaries and mistakes.",
+        ),
     ]
 
 
@@ -1611,17 +1818,23 @@ async def _llm_agentic_search_plan(
     prompt = f"""
 You are an agentic learning-resource search planner.
 
-Create 5-8 web search queries that will find high-quality, information-dense
-learning sources for the student. Cover diverse intents:
+Create 8-12 web search queries that will find high-quality, information-dense
+learning sources for the student. Search deeper than generic tutorials. Cover diverse intents:
 - conceptual foundation
 - primary or survey papers
 - official references
 - practice / assessment material
 - implementation examples
 - background material for the learner profile
+- classic textbooks or durable readings
+- university course reading lists / syllabi
+- high-quality lecture videos
+- common misconceptions, pitfalls, and boundary cases
 
 Prefer precise English academic/technical terms when the user writes Chinese or
-uses abbreviations. Do not require paid APIs or gated resources.
+uses abbreviations. Mix broad survey queries with narrow subtopic queries. Include
+queries that reveal prerequisites, canonical papers, modern updates, and applied
+examples. Do not require paid APIs or gated resources.
 
 Student topic: {context["message"]}
 Course: {context["course"]}
@@ -1656,7 +1869,7 @@ Return only JSON:
 
     plans: list[SearchQueryPlan] = []
     seen_queries: set[str] = set()
-    for item in payload[:8]:
+    for item in payload[:12]:
         if not isinstance(item, dict):
             continue
         query = _as_text(item.get("query"))
@@ -1847,7 +2060,7 @@ async def _llm_rerank_search_results(
             "heuristic_score": item["score"],
             "resource_kind": item["resource_kind"],
         }
-        for item in candidates[:24]
+        for item in candidates[:40]
     ]
     prompt = f"""
 You are a strict learning-resource reranker.
@@ -1856,7 +2069,8 @@ Rank web search candidates for usefulness in a learning notebook. Prefer:
 1. authoritative sources: university notes, papers, official docs, respected libraries
 2. information-dense pages that can be imported as sources
 3. resources that help generate study guides, quizzes, flashcards, and practice
-4. diversity across theory, implementation, and assessment
+4. diversity across theory, implementation, assessment, classic readings, and lecture videos
+5. complementary resources that create a real reading path from prerequisite review to advanced follow-up
 
 Penalize SEO pages, answer dumps, thin summaries, paywalled homework sites, and
 generic pages without enough educational signal.
@@ -2077,7 +2291,7 @@ async def collect_learning_resources(
     plans = await _llm_agentic_search_plan(context)
     await raise_if_command_canceled(command_id)
     search_batches = await asyncio.gather(
-        *(search_web(plan.query, limit=6) for plan in plans),
+        *(search_web(plan.query, limit=8) for plan in plans),
         return_exceptions=True,
     )
     await raise_if_command_canceled(command_id)
@@ -2098,7 +2312,7 @@ async def collect_learning_resources(
     ranked_candidates = await _llm_rerank_search_results(context, ranked_candidates)
     await raise_if_command_canceled(command_id)
     resources = _resources_from_ranked_candidates(
-        _select_diverse_search_results(ranked_candidates, limit=6)
+        _select_diverse_search_results(ranked_candidates, limit=10)
     )
     if resources:
         resources.append(

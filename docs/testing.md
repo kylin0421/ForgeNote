@@ -53,6 +53,7 @@ npm run build
 - 学习工作台页面可渲染。
 - Studio 资产入口可见。
 - 模型设置页可配置 API key 和默认模型。
+- 模型设置页基础默认项包含通用文本、Embedding、图片、TTS、STT，高级设置可单独覆盖具体功能。
 - 任务浮窗可展示后台任务状态。
 - 学习资产预览组件有单元测试。
 
@@ -78,9 +79,13 @@ git grep --cached -n "<token-prefix>"
 docker compose build zhixue
 ```
 
-当前环境中 Docker 构建失败在 Debian apt 包下载阶段，错误为上游 `deb.debian.org` 返回 `502 Bad Gateway`。Dockerfile 已加入 `Acquire::Retries=5`，但外部包源在测试时仍不稳定。
+也可只重建应用容器：
 
-该失败发生在系统依赖下载阶段，尚未进入应用代码构建，不代表前后端代码编译失败。前端 production build 和 Python 测试均已通过。
+```bash
+docker compose up -d --build --no-deps zhixue
+```
+
+当前版本已完成应用容器重建。Dockerfile 已加入 `Acquire::Retries=5`；如果外部 Debian apt 源偶发返回 `502 Bad Gateway`，可稍后重试或切换镜像源。
 
 ## 手工验证
 
@@ -94,6 +99,10 @@ docker compose build zhixue
 6. 在右侧 Studio 查看课程讲解、测验、闪卡、思维导图、拓展阅读、代码实验和播客入口。
 7. 访问模型/API 配置页，确认模型用途化设置可见。
 8. 访问问询与搜索页，确认问答和搜索入口可见。
+9. 在对话区框选助手回答片段，确认可以引用选中内容继续追问，并显示推荐下一句问题。
+10. 打开学习记录顶部入口，确认学习曲线和错题本都不占用左侧来源栏。
+11. 测试导出规则：课程讲解、错题本、思维导图、代码实验室、播客有对应导出；拓展阅读和闪卡不显示导出。
+12. 如果配置了 DashScope/Qwen `qwen-image`，在模型设置页测试图片模型连接。
 
 截图见 `docs/assets/`。
 
@@ -102,6 +111,7 @@ docker compose build zhixue
 - 多模态视频/动画暂未接入昂贵的视频生成模型，当前以讲解文档、导图、题库、代码实验和播客音频为主要多模态资源。
 - Docker 构建依赖外部 apt 与 npm 源，弱网络环境可能需要镜像源。
 - 语音模型市场中部分模型名称相近，系统已增加 TTS protocol spec 与 warning，但仍建议在演示前确认默认 TTS 模型。
+- 图片模型必须登记为 `image` 类型；OpenAI-compatible 文本测试不能代表 DashScope 图片接口可用。
 
 ## 补充：近期交互验证点
 
@@ -113,3 +123,12 @@ docker compose build zhixue
 4. 学习画像弹窗展示的是用户友好的摘要，而不是后台 Prompt、错题日志或最近学习信号原文。
 5. 测验完成后只显示正确率总结，全对为绿色，有错为红色，并可生成相似题练习。
 6. 播客播放器支持播放队列、倍速、快进/后退和字幕同步。
+7. 播客生成成功后能在所属学习记录的 Studio 区显示；新环境依赖迁移 `17.surrealql` 创建 `episode.notebook_id`。
+
+## 补充：最近定向验证
+
+近期围绕模型配置、播客解析和 Studio 交互补充验证：
+
+- `uv run pytest tests/test_podcast_path.py tests/test_utils.py -q`：33 passed。
+- 针对对话引用追问、学习资产导出和模型设置页执行过 ESLint 定向检查。
+- DashScope/Qwen `qwen-image` 图片模型连接测试已通过，实际请求走 DashScope 原生多模态生成接口。

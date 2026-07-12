@@ -70,6 +70,9 @@ class ExecuteChatRequest(BaseModel):
     model_override: Optional[str] = Field(
         None, description="Optional model override for this message"
     )
+    target_language: Optional[str] = Field(
+        None, description="Language the UI is currently using; AI replies must use it"
+    )
     auto_update_profile: bool = Field(
         True, description="Whether this chat message should update the learning profile"
     )
@@ -377,6 +380,7 @@ async def execute_chat(request: ExecuteChatRequest):
         state_values["context"] = request.context
         state_values["notebook"] = notebook
         state_values["model_override"] = model_override
+        state_values["target_language"] = request.target_language
 
         # Add user message to state
         from langchain_core.messages import HumanMessage

@@ -8,6 +8,7 @@
 - SurrealDB v2
 - 至少一个可用大模型 API key
 - 可选：DashScope TTS key，用于播客/音频讲解
+- 可选：DashScope/Qwen 图片模型额度，用于 `qwen-image` 图片生成测试
 
 ## 环境变量
 
@@ -23,6 +24,16 @@ SURREAL_DATABASE=open_notebook
 ```
 
 模型 key 可通过前端“模型/API 配置”页面录入，也可通过环境变量提供。
+
+模型/API 配置页建议先设置基础默认项：
+
+- 通用文本模型
+- Embedding 模型
+- 图片模型，例如 DashScope/Qwen `qwen-image`
+- TTS 模型
+- STT 模型
+
+只有某个功能需要独立模型时，再进入高级设置覆盖对应 Studio 功能。
 
 ## 本地运行
 
@@ -51,12 +62,20 @@ npm run dev
 docker compose up -d --build
 ```
 
+只重建应用容器时可使用：
+
+```bash
+docker compose up -d --build --no-deps zhixue
+```
+
 服务：
 
 - `surrealdb`：数据库
 - `zhixue`：前端 + API
 
 注意：当前 Dockerfile 已加入 apt retry，但如果遇到 Debian 源 502，可稍后重试或替换为更稳定的软件源。
+
+新环境会通过数据库迁移创建播客 episode 的 `notebook_id` 字段，使生成成功的播客能在所属学习记录的 Studio 区显示。
 
 ## 演示数据建议
 
@@ -126,6 +145,12 @@ docker compose up -d --build
 
 说明不同资产由不同角色智能体协作完成，并受画像、课程资料和安全检查约束。
 
+补充说明编辑和导出边界：
+
+- 可编辑：思维导图、代码实验室中的 notebook 代码。
+- 可导出：课程学习讲解、测验错题本、思维导图 Markdown/图片、代码实验室 Jupyter Notebook、播客 WAV。
+- 不导出：拓展阅读、闪卡。
+
 ### 5. 智能辅导
 
 在中间对话区提问，展示：
@@ -133,7 +158,8 @@ docker compose up -d --build
 - 来源感知回答
 - 引用
 - 上下文 token 信息
-- 可继续追问
+- 可框选回答片段并引用继续追问
+- 推荐下一句可问的问题
 
 ### 6. 进度追踪
 
@@ -149,9 +175,10 @@ docker compose up -d --build
 
 进入模型/API 配置页，说明：
 
-- 模型按学习用途配置
+- 基础默认模型覆盖通用文本、Embedding、图片、TTS、STT
+- 高级设置按学习用途覆盖
 - 支持多 API 协议
-- TTS/ASR/Embedding/文本模型分离
+- TTS/ASR/Embedding/图片/文本模型分离
 - 安全智能体和来源约束降低幻觉
 
 ## 截图清单
@@ -169,3 +196,5 @@ docker compose up -d --build
 - 面板汇总近 7 天学习量、活跃天数、学习质量和测验正确率。
 - 系统会根据最近学习状态给出下一步建议，例如补弱、恢复学习节奏或进入综合应用。
 - 该功能与学习画像共享学习事件，但以更直观的图形和建议面板呈现，适合面向学生展示学习进展。
+
+错题本同样位于学习记录顶部入口。演示测验后可打开错题本查看错题、答案和解析，并导出错题本用于复盘。
