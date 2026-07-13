@@ -38,7 +38,9 @@ SURREAL_DATABASE=open_notebook
 
 ## Windows 安装包（推荐）
 
-运行 `ZhiXue-Setup-0.1.0.exe` 后，通过桌面或开始菜单的“智学工坊”快捷方式启动。安装包会在后台依次启动本地数据库、API、任务 worker 和网页界面，并打开 `http://127.0.0.1:8502`。
+运行 `ZhiXue-Setup-0.1.1.exe` 后，通过桌面或开始菜单的“智学工坊”快捷方式启动。安装包会在后台依次启动本地数据库、API、任务 worker 和界面服务，并把现有 Next.js 前端加载到独立的 Windows WebView2 应用窗口中，不再启动外部浏览器。
+
+桌面窗口使用系统的 Microsoft Edge WebView2 Runtime。Windows 11 和安装了新版 Edge 的 Windows 10 通常已自带；极少数精简系统如果缺失，启动器会给出明确提示。
 
 运行数据不会放进安装目录：
 

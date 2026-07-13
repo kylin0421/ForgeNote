@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.0",
+    [string]$Version = "0.1.1",
     [switch]$SkipInstaller,
     [switch]$SkipDependencyInstall,
     [switch]$PortableZip,
@@ -100,11 +100,11 @@ if (-not $ResumeAfterFreeze) {
 
     New-Item -ItemType Directory -Path $TiktokenCache -Force | Out-Null
     $env:TIKTOKEN_CACHE_DIR = $TiktokenCache
-    uv run python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
+    uv run --locked python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
     if ($LASTEXITCODE -ne 0) { throw "Failed to prepare the tiktoken cache" }
 
     Write-Host "Freezing the Python launcher and services..."
-    uv run --with pyinstaller==6.21.0 pyinstaller `
+    uv run --locked --with pyinstaller==6.21.0 pyinstaller `
         --noconfirm `
         --clean `
         --distpath $DistRoot `

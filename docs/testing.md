@@ -22,7 +22,7 @@ uv run pytest -q
 最近一次结果：
 
 ```text
-239 passed, 2 warnings
+241 passed, 2 warnings
 ```
 
 覆盖范围：
@@ -79,7 +79,9 @@ git grep --cached -n "<token-prefix>"
 powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1 -SkipDependencyInstall
 ```
 
-构建后使用临时数据目录执行 `ZhiXue.exe --smoke-test`。最近一次结果为退出码 `0`，并确认 SurrealDB、17 个数据库迁移、FastAPI、任务 worker 与 Next.js 前端均通过健康检查，停止后未遗留服务进程。
+构建后使用临时数据目录执行 `ZhiXue.exe --smoke-test`。最近一次结果为退出码 `0`，并确认 SurrealDB、17 个数据库迁移、FastAPI、任务 worker 与 Next.js 前端均通过健康检查。worker 日志包含正常的 `✅ Imported: commands` 和 LIVE query 就绪标记，不再触发中文 Windows 的 GBK 编码异常。
+
+默认桌面模式已实际启动验证：Next.js 工作台在无地址栏、无标签页的独立 WebView2 窗口内完整加载；关闭窗口后 `8000`、`5055`、`8502` 均无监听进程。
 
 ## Docker 构建说明
 

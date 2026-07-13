@@ -1,6 +1,13 @@
 from pathlib import Path
+from unittest.mock import Mock
 
-from desktop.windows.launcher import ensure_config, read_env_file
+from desktop.windows.launcher import (
+    ManagedProcess,
+    ZhiXueStack,
+    desktop_page,
+    ensure_config,
+    read_env_file,
+)
 
 
 def test_ensure_config_creates_and_preserves_encryption_key(tmp_path: Path):
@@ -20,3 +27,39 @@ def test_read_env_file_ignores_comments_and_supports_quoted_values(tmp_path: Pat
     path.write_text('# note\nA=one\nB="two words"\n', encoding="utf-8")
 
     assert read_env_file(path) == {"A": "one", "B": "two words"}
+
+
+def test_stack_forces_utf8_for_windows_child_processes(tmp_path: Path):
+    stack = ZhiXueStack(tmp_path / "app", tmp_path / "profile")
+
+    assert stack.env["PYTHONUTF8"] == "1"
+    assert stack.env["PYTHONIOENCODING"] == "utf-8"
+
+
+def test_desktop_page_is_utf8_and_escapes_error_details():
+    page = desktop_page("正在启动", "<script>bad()</script>", error=True)
+
+    assert '<meta charset="utf-8">' in page
+    assert "<script>bad()</script>" not in page
+    assert "&lt;script&gt;bad()&lt;/script&gt;" in page
+    assert "pywebview.api.open_logs()" in page
+
+
+def test_worker_readiness_waits_for_live_query_marker(tmp_path: Path):
+    log_path = tmp_path / "worker.log"
+    log_path.write_text(
+        "  ✅ Imported: commands\nStarting LIVE query listener for new commands...\n",
+        encoding="utf-8",
+    )
+    process = Mock()
+    process.poll.return_value = None
+    managed = ManagedProcess(
+        name="worker",
+        process=process,
+        log_handle=Mock(),
+        log_path=log_path,
+    )
+
+    ZhiXueStack._wait_for_log_text(
+        managed, "Starting LIVE query listener for new commands", timeout=0.1
+    )

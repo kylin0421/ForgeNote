@@ -3,6 +3,7 @@
 该目录用于生成无需 Docker、Python 或 Node.js 的 Windows x64 发行版。最终安装包中包含：
 
 - `ZhiXue.exe`：图形启动器、FastAPI 和任务 worker
+- pywebview 桌面壳，通过系统 Edge WebView2 显示现有 Next.js 界面
 - Next.js standalone 前端和 Node.js 22
 - SurrealDB 2.6.5
 - FFmpeg 8.1.2
@@ -10,7 +11,9 @@
 
 ## 用户启动流程
 
-双击“智学工坊”后，启动器依次检查端口并启动数据库、API、worker 和前端。全部健康后会自动打开 `http://127.0.0.1:8502`。关闭启动器窗口会同时关闭这些本地子进程。
+双击“智学工坊”后会直接出现独立应用窗口。窗口先显示启动状态，依次检查端口并启动数据库、API、worker 和前端；全部健康后在同一个 WebView2 窗口内加载界面，不会打开外部浏览器。关闭应用窗口会同时关闭这些本地子进程。
+
+WebView2 Runtime 是 Windows 11 和新版 Edge 的系统组件，未重复打入安装包。极少数精简版 Windows 如果缺失，需要先安装 Microsoft Edge WebView2 Runtime；启动器会显示明确错误，而不是抛出 Python 异常窗口。
 
 配置和用户数据保存在 `%LOCALAPPDATA%\ZhiXue`，不写入安装目录：
 
@@ -29,14 +32,14 @@ logs/            各组件启动与运行日志
 
 ```powershell
 winget install JRSoftware.InnoSetup
-powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1 -Version 0.1.0
+powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1 -Version 0.1.1
 ```
 
 构建脚本会按锁文件构建前端、冻结 Python 运行时、下载并校验固定版本的外部二进制，然后生成：
 
 ```text
 dist/windows/ZhiXue/                 可直接运行的目录版
-dist/windows/ZhiXue-Setup-0.1.0.exe  Windows 安装包
+dist/windows/ZhiXue-Setup-0.1.1.exe  Windows 安装包
 ```
 
 开发时已有 `node_modules` 可使用 `-SkipDependencyInstall`。如需额外生成便携 ZIP，可传入 `-PortableZip`；Windows 自带压缩器处理大量小文件时会比较慢。

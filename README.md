@@ -107,7 +107,7 @@ tests/                       后端和学习系统单元测试
 
 ### Windows 一键安装（推荐）
 
-Windows 安装包内置 Python 后端、任务服务、Next.js、Node.js、SurrealDB v2 和 FFmpeg。安装后双击“智学工坊”即可启动，无需安装 Docker、Python 或 Node.js；启动器会完成健康检查并自动打开浏览器。
+Windows 安装包内置 Python 后端、任务服务、Next.js、Node.js、SurrealDB v2 和 FFmpeg。安装后双击“智学工坊”即可启动，无需安装 Docker、Python 或 Node.js；启动器会完成健康检查，并在独立的 Windows WebView2 应用窗口中显示现有界面，不再打开外部浏览器。
 
 构建安装包：
 
@@ -115,7 +115,7 @@ Windows 安装包内置 Python 后端、任务服务、Next.js、Node.js、Surre
 powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1
 ```
 
-输出位于 `dist/windows/ZhiXue-Setup-0.1.0.exe`。用户数据、密钥配置和日志分别持久化在 `%LOCALAPPDATA%\ZhiXue` 下，卸载或升级应用不会覆盖这些数据。详细说明见 [Windows 打包说明](desktop/windows/README.md)。
+输出位于 `dist/windows/ZhiXue-Setup-0.1.1.exe`。用户数据、密钥配置和日志分别持久化在 `%LOCALAPPDATA%\ZhiXue` 下，卸载或升级应用不会覆盖这些数据。详细说明见 [Windows 打包说明](desktop/windows/README.md)。
 
 ### 源码运行
 
@@ -168,11 +168,12 @@ docker compose up -d --build
 
 最近一次本地验证（2026-07-13）：
 
-- `uv run pytest -q`：239 passed，2 warnings
+- `uv run pytest -q`：241 passed，2 warnings
 - `cd frontend && npm test -- --run`：53 passed
 - `cd frontend && npm run lint`：0 errors，6 warnings
 - `cd frontend && npm run build`：通过
 - `desktop/windows/build.ps1 -SkipDependencyInstall`：正式 Windows 安装包构建通过
-- 正式目录版执行 `--smoke-test`：SurrealDB、数据库迁移、API、任务 worker 和 Next.js 前端均通过健康检查并正常退出
+- 正式目录版执行 `--smoke-test`：SurrealDB、数据库迁移、API、任务 worker 和 Next.js 前端均通过健康检查；worker 的 `✅` Unicode 日志在中文 Windows 上正常写入
+- 正式目录版默认启动：已验证 Next.js 工作台在独立 WebView2 窗口内加载，关闭窗口后所有本地服务正常退出
 
 Docker 仍作为可选部署方式保留。若 Docker Hub、Debian apt 或 npm 外部源连接超时，可改用 Windows 安装包，或配置可用的镜像/代理后再构建。

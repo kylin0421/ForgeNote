@@ -16,3 +16,9 @@ ZhiXue. They run as separate processes and retain their own licenses.
 Python packages and frontend npm packages retain the license files and metadata
 included in their bundled distributions. ZhiXue's own source is covered by the
 LICENSE file shipped with the application.
+
+The embedded desktop window uses pywebview 6.2.1 (BSD 3-Clause License) and
+pythonnet 3.1.0 (MIT License):
+
+- https://github.com/r0x0r/pywebview
+- https://github.com/pythonnet/pythonnet

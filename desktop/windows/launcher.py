@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import secrets
 import shutil
@@ -15,6 +16,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 from dataclasses import dataclass
+from html import escape
 from pathlib import Path
 from typing import Callable
 
@@ -114,7 +116,18 @@ def component_command(component: str) -> list[str]:
     return [sys.executable, str(Path(__file__).resolve()), "--component", component]
 
 
+def configure_utf8_stdio() -> None:
+    """Keep Rich and other CLI libraries from writing child logs as GBK."""
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def run_component(component: str) -> int:
+    configure_utf8_stdio()
+
     if component == "api":
         import uvicorn
 
@@ -140,6 +153,7 @@ class ManagedProcess:
     name: str
     process: subprocess.Popen
     log_handle: object
+    log_path: Path
 
 
 class ZhiXueStack:
@@ -174,6 +188,10 @@ class ZhiXueStack:
         env["PORT"] = "8502"
         env["HOSTNAME"] = "127.0.0.1"
         env["NODE_ENV"] = "production"
+        # The worker uses Rich and prints Unicode status symbols. A redirected
+        # Windows child otherwise inherits the local GBK code page and crashes.
+        env["PYTHONUTF8"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
 
         bundled_cache = self.app_root / "runtime" / "tiktoken-cache"
         if bundled_cache.exists():
@@ -219,7 +237,12 @@ class ZhiXueStack:
             stderr=subprocess.STDOUT,
             creationflags=creation_flags,
         )
-        managed = ManagedProcess(name=name, process=process, log_handle=log_handle)
+        managed = ManagedProcess(
+            name=name,
+            process=process,
+            log_handle=log_handle,
+            log_path=log_path,
+        )
         self.processes.append(managed)
         return managed
 
@@ -228,6 +251,24 @@ class ZhiXueStack:
         return_code = managed.process.poll()
         if return_code is not None:
             raise RuntimeError(f"{managed.name} exited with code {return_code}")
+
+    @staticmethod
+    def _wait_for_log_text(
+        managed: ManagedProcess, expected: str, timeout: float
+    ) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            ZhiXueStack._ensure_running(managed)
+            try:
+                content = managed.log_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                content = ""
+            if expected in content:
+                return
+            time.sleep(0.25)
+        raise TimeoutError(
+            f"Timed out waiting for {managed.name} readiness marker: {expected}"
+        )
 
     def start(self) -> None:
         occupied = [port for port in (8000, 5055, 8502) if not port_is_available(port)]
@@ -276,10 +317,14 @@ class ZhiXueStack:
             worker = self._spawn(
                 "worker", component_command("worker"), self.app_root
             )
-            time.sleep(2)
+            self._wait_for_log_text(
+                worker,
+                "Starting LIVE query listener for new commands",
+                timeout=60,
+            )
             self._ensure_running(worker)
 
-            self._status("正在启动网页界面…")
+            self._status("正在启动应用界面…")
             frontend = self._spawn(
                 "frontend", [str(node), str(frontend_server)], frontend_server.parent
             )
@@ -332,72 +377,156 @@ def run_smoke_test(stack: ZhiXueStack) -> int:
         stack.stop()
 
 
-def run_gui(stack: ZhiXueStack, open_browser: bool) -> int:
-    import tkinter as tk
-    from tkinter import messagebox
-
-    root = tk.Tk()
-    root.title(APP_TITLE)
-    root.geometry("430x210")
-    root.resizable(False, False)
-
-    title = tk.Label(root, text=APP_TITLE, font=("Microsoft YaHei UI", 20, "bold"))
-    title.pack(pady=(28, 12))
-    status_var = tk.StringVar(value="正在准备启动…")
-    status = tk.Label(root, textvariable=status_var, font=("Microsoft YaHei UI", 10))
-    status.pack(pady=8)
-
-    button_frame = tk.Frame(root)
-    button_frame.pack(pady=18)
-    open_button = tk.Button(
-        button_frame,
-        text="打开智学工坊",
-        width=16,
-        state=tk.DISABLED,
-        command=lambda: webbrowser.open(FRONTEND_URL),
+def desktop_page(status: str, detail: str | None = None, error: bool = False) -> str:
+    accent = "#dc2626" if error else "#2563eb"
+    symbol = "!" if error else "智"
+    spinner = "" if error else '<div class="spinner" aria-hidden="true"></div>'
+    detail_html = f'<div class="detail">{escape(detail)}</div>' if detail else ""
+    action = (
+        '<button onclick="pywebview.api.open_logs()">打开日志目录</button>'
+        if error
+        else ""
     )
-    open_button.pack(side=tk.LEFT, padx=6)
-    logs_button = tk.Button(
-        button_frame,
-        text="打开日志目录",
-        width=14,
-        command=lambda: os.startfile(stack.logs_dir),
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{APP_TITLE}</title>
+  <style>
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; min-height: 100vh; display: grid; place-items: center;
+      color: #172033; background: linear-gradient(145deg, #f7faff, #eef3fb);
+      font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif; }}
+    main {{ width: min(520px, calc(100vw - 48px)); padding: 52px 44px;
+      text-align: center; background: rgba(255,255,255,.92); border: 1px solid #dbe4f2;
+      border-radius: 22px; box-shadow: 0 24px 70px rgba(35,58,100,.12); }}
+    .mark {{ width: 64px; height: 64px; margin: 0 auto 20px; display: grid;
+      place-items: center; border-radius: 18px; color: white; background: {accent};
+      font-size: 29px; font-weight: 700; }}
+    h1 {{ margin: 0; font-size: 28px; }}
+    #status {{ margin: 18px 0 0; color: #526078; font-size: 15px; }}
+    .detail {{ margin-top: 18px; padding: 14px; color: #7f1d1d; background: #fef2f2;
+      border-radius: 10px; font-size: 13px; line-height: 1.65; white-space: pre-wrap;
+      overflow-wrap: anywhere; text-align: left; }}
+    .spinner {{ width: 28px; height: 28px; margin: 26px auto 0; border: 3px solid #dbe7fb;
+      border-top-color: {accent}; border-radius: 50%; animation: spin .8s linear infinite; }}
+    button {{ margin-top: 20px; padding: 10px 18px; border: 0; border-radius: 9px;
+      color: white; background: {accent}; font-size: 14px; cursor: pointer; }}
+    @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+  </style>
+</head>
+<body>
+  <main><div class="mark">{symbol}</div><h1>{APP_TITLE}</h1>
+    <p id="status">{escape(status)}</p>{spinner}{detail_html}{action}</main>
+  <script>
+    window.setStatus = message => {{ document.getElementById('status').textContent = message; }};
+  </script>
+</body>
+</html>"""
+
+
+class DesktopBridge:
+    def __init__(self, logs_dir: Path) -> None:
+        self.logs_dir = logs_dir
+
+    def open_logs(self) -> bool:
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        if sys.platform == "win32":
+            os.startfile(self.logs_dir)  # type: ignore[attr-defined]
+        else:
+            webbrowser.open(self.logs_dir.as_uri())
+        return True
+
+
+def show_native_error(message: str) -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(None, message, APP_TITLE, 0x10)
+    except Exception:
+        pass
+
+
+def run_desktop(stack: ZhiXueStack) -> int:
+    import webview
+
+    bridge = DesktopBridge(stack.logs_dir)
+    window = webview.create_window(
+        APP_TITLE,
+        html=desktop_page("正在准备本地服务…"),
+        js_api=bridge,
+        width=1360,
+        height=860,
+        min_size=(1024, 680),
+        maximized=True,
+        background_color="#f7faff",
+        text_select=True,
+        zoomable=True,
     )
-    logs_button.pack(side=tk.LEFT, padx=6)
+    if window is None:
+        raise RuntimeError("Could not create the desktop application window")
 
     closing = threading.Event()
+    state = {"failed": False}
 
     def update_status(message: str) -> None:
-        root.after(0, status_var.set, message)
-
-    stack.status_callback = update_status
-
-    def start_services() -> None:
-        try:
-            stack.start()
-            root.after(0, lambda: open_button.config(state=tk.NORMAL))
-            if open_browser and not closing.is_set():
-                webbrowser.open(FRONTEND_URL)
-        except Exception as exc:
-            update_status("启动失败，请查看日志")
-            error_message = f"{exc}\n\n日志目录：{stack.logs_dir}"
-            root.after(
-                0,
-                lambda: messagebox.showerror("智学工坊启动失败", error_message),
-            )
-
-    def close() -> None:
         if closing.is_set():
             return
-        closing.set()
-        status_var.set("正在停止服务…")
-        stack.stop()
-        root.destroy()
+        try:
+            encoded = json.dumps(message, ensure_ascii=False)
+            window.evaluate_js(f"window.setStatus?.({encoded})")
+        except Exception:
+            pass
 
-    root.protocol("WM_DELETE_WINDOW", close)
-    threading.Thread(target=start_services, name="zhixue-startup", daemon=True).start()
-    root.mainloop()
-    return 0
+    def show_startup_error(exc: Exception) -> None:
+        state["failed"] = True
+        detail = f"{exc}\n\n日志目录：{stack.logs_dir}"
+        try:
+            window.load_html(desktop_page("启动失败，请查看日志", detail, error=True))
+        except Exception:
+            show_native_error(detail)
+
+    def start_services_and_monitor() -> None:
+        try:
+            stack.start()
+            if not closing.is_set():
+                window.load_url(FRONTEND_URL)
+        except Exception as exc:
+            show_startup_error(exc)
+            return
+
+        while not closing.wait(1):
+            stopped = [
+                item.name for item in stack.processes if item.process.poll() is not None
+            ]
+            if stopped:
+                show_startup_error(
+                    RuntimeError(f"后台服务意外停止：{', '.join(stopped)}")
+                )
+                stack.stop()
+                return
+
+    stack.status_callback = update_status
+    try:
+        webview.start(
+            start_services_and_monitor,
+            gui="edgechromium",
+            private_mode=False,
+            storage_path=str(stack.data_root / "webview"),
+        )
+    except Exception as exc:
+        state["failed"] = True
+        show_native_error(
+            f"无法启动智学工坊桌面窗口：{exc}\n\n"
+            "请确认 Microsoft Edge WebView2 Runtime 已安装。"
+        )
+    finally:
+        closing.set()
+        stack.stop()
+    return 1 if state["failed"] else 0
 
 
 def parse_args() -> argparse.Namespace:
@@ -422,7 +551,7 @@ def main() -> int:
         return run_smoke_test(stack)
     if args.headless:
         return run_headless(stack, open_browser=not args.no_browser)
-    return run_gui(stack, open_browser=not args.no_browser)
+    return run_desktop(stack)
 
 
 if __name__ == "__main__":

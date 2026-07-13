@@ -1,6 +1,6 @@
 [project]
 name = "zhixue-workbench"
-version = "0.1.0"
+version = "0.1.1"
 description = "A personalized multi-agent learning resource generation system"
 authors = [
     {name = "ZhiXue Team"}
@@ -41,6 +41,7 @@ dependencies = [
     "numpy>=2.4.1",
     "pycountry>=26.2.16",
     "babel>=2.18.0",
+    "pywebview>=5.4,<7",
 ]
 
 [tool.setuptools]
