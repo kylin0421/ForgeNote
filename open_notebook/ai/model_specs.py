@@ -12,6 +12,8 @@ from typing import Any, Dict, List, Optional
 
 DASHSCOPE_TTS_PROVIDER = "dashscope"
 DASHSCOPE_TTS_CLASS = "open_notebook.ai.dashscope_tts:DashScopeTextToSpeechModel"
+DASHSCOPE_ASR_PROVIDER = "dashscope-asr"
+DASHSCOPE_ASR_CLASS = "open_notebook.ai.dashscope_asr:DashScopeSpeechToTextModel"
 MIMO_TTS_PROVIDER = "mimo"
 MIMO_TTS_CLASS = "open_notebook.ai.mimo_tts:MiMoTextToSpeechModel"
 
@@ -81,6 +83,15 @@ def looks_like_dashscope_image(model_name: str, config: Optional[Dict[str, Any]]
     return "dashscope.aliyuncs.com" in base_url or "maas.aliyuncs.com" in base_url
 
 
+def looks_like_dashscope_asr(model_name: str, config: Optional[Dict[str, Any]] = None) -> bool:
+    """Return True when an ASR model should use a DashScope-compatible endpoint."""
+    name = _name(model_name)
+    if name.startswith(QWEN_ASR_PREFIXES):
+        return True
+    base_url = _base_url(config)
+    return "dashscope.aliyuncs.com" in base_url or "maas.aliyuncs.com" in base_url
+
+
 def looks_like_mimo_tts(model_name: str, config: Optional[Dict[str, Any]] = None) -> bool:
     """Return True when a TTS model should use the Xiaomi MiMo adapter."""
     name = _name(model_name)
@@ -136,6 +147,19 @@ def _dashscope_tts_protocol(model_name: str) -> tuple[str, bool, List[str]]:
     return "dashscope-http-tts", True, warnings
 
 
+def _dashscope_asr_protocol(model_name: str) -> tuple[str, List[str]]:
+    name = _name(model_name)
+    warnings: List[str] = []
+
+    if "realtime" in name:
+        warnings.append(
+            "This looks like a DashScope realtime ASR model; model testing and file imports expect a file transcription model."
+        )
+        return "dashscope-realtime-asr", warnings
+
+    return "dashscope-compatible-asr", warnings
+
+
 def build_model_runtime_spec(
     provider: str,
     model_type: str,
@@ -155,6 +179,9 @@ def build_model_runtime_spec(
     elif model_type == "text_to_speech" and looks_like_dashscope_tts(model_name, config):
         runtime_provider = DASHSCOPE_TTS_PROVIDER
         api_protocol, batch_tts_supported, warnings = _dashscope_tts_protocol(model_name)
+    elif model_type == "speech_to_text" and looks_like_dashscope_asr(model_name, config):
+        runtime_provider = DASHSCOPE_ASR_PROVIDER
+        api_protocol, warnings = _dashscope_asr_protocol(model_name)
     elif model_type == "image" and looks_like_dashscope_image(model_name, config):
         runtime_provider = "dashscope"
         api_protocol = "dashscope-image"

@@ -127,6 +127,45 @@ def test_normalize_generated_resources_derives_type_from_kind():
     assert resources[0].type == "小测验"
 
 
+def test_normalize_generated_resources_preserves_flashcard_evidence():
+    resources = _normalize_generated_resources(
+        {
+            "resources": [
+                {
+                    "kind": "flashcards",
+                    "title": "SSL cards",
+                    "summary": "Check recall.",
+                    "content": "Use the cards.",
+                    "payload": {
+                        "cards": [
+                            {
+                                "front": "What condition makes consistency regularization meaningful?",
+                                "back": "It needs perturbations that preserve the label.",
+                                "hint": "Think about what stays invariant.",
+                                "evidence": "Consistency regularization trains stable predictions under perturbations.",
+                                "source_ref": "Classic SSL paper",
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+        {
+            "message": "generate flashcards",
+            "course": "SSL",
+            "major": "CS",
+            "goal": "review",
+            "history": "none",
+        },
+        ["flashcards"],
+        "source context",
+    )
+
+    card = resources[0].payload["cards"][0]
+    assert card["evidence"].startswith("Consistency regularization")
+    assert card["source_ref"] == "Classic SSL paper"
+
+
 def test_learning_orchestration_meets_competition_requirements():
     result = build_learning_orchestration(
         LearningOrchestrationRequest(
@@ -200,6 +239,11 @@ Entropy minimization encourages decision boundaries to avoid high-density region
 
     assert "Consistency regularization" in combined
     assert "Pseudo-labeling" in combined
+    cards = resources[1].payload["cards"]
+    assert cards
+    assert all("评分标准" in card["back"] for card in cards)
+    assert not any("要点" in card["front"] and "是什么" in card["front"] for card in cards)
+    assert any(card.get("evidence") for card in cards)
     assert "学习画像" not in combined
     assert "先 Quiz 再长文档" not in combined
 

@@ -306,6 +306,78 @@ class TestModelRuntimeSpecs:
         assert spec.batch_tts_supported is True
         assert spec.warnings == []
 
+    def test_qwen_batch_asr_routes_to_openai_compatible_protocol(self):
+        from open_notebook.ai.model_specs import build_model_runtime_spec
+
+        spec = build_model_runtime_spec(
+            "openai",
+            "speech_to_text",
+            "qwen3-asr-flash-2026-02-10",
+            {"base_url": "https://example.maas.aliyuncs.com/compatible-mode/v1"},
+        )
+
+        assert spec.runtime_provider == "dashscope-asr"
+        assert spec.api_protocol == "dashscope-compatible-asr"
+        assert spec.warnings == []
+
+    def test_qwen_realtime_asr_reports_file_transcription_warning(self):
+        from open_notebook.ai.model_specs import build_model_runtime_spec
+
+        spec = build_model_runtime_spec(
+            "openai",
+            "speech_to_text",
+            "qwen3-asr-flash-realtime-2026-02-10",
+            {"base_url": "https://example.maas.aliyuncs.com/compatible-mode/v1"},
+        )
+
+        assert spec.runtime_provider == "dashscope-asr"
+        assert spec.api_protocol == "dashscope-realtime-asr"
+        assert spec.warnings
+
+    def test_dashscope_asr_adapter_uses_chat_completions(self):
+        import io
+
+        import httpx
+
+        from open_notebook.ai.dashscope_asr import DashScopeSpeechToTextModel
+
+        class FakeClient:
+            def __init__(self):
+                self.last_url = None
+                self.last_payload = None
+
+            def post(self, url, headers=None, json=None):
+                self.last_url = url
+                self.last_payload = json
+                return httpx.Response(
+                    200,
+                    json={"choices": [{"message": {"content": "hello there"}}]},
+                    request=httpx.Request("POST", url),
+                )
+
+        model = DashScopeSpeechToTextModel(
+            model_name="qwen3-asr-flash",
+            config={
+                "api_key": "sk-test",
+                "base_url": "https://example.maas.aliyuncs.com/compatible-mode/v1",
+            },
+        )
+        fake_client = FakeClient()
+        model.client = fake_client
+        audio = io.BytesIO(b"fake audio")
+        audio.name = "test.mp3"
+
+        result = model.transcribe(audio, language="en")
+
+        assert fake_client.last_url.endswith("/chat/completions")
+        assert fake_client.last_payload["model"] == "qwen3-asr-flash"
+        assert fake_client.last_payload["messages"][0]["content"][0]["type"] == "input_audio"
+        input_audio = fake_client.last_payload["messages"][0]["content"][0]["input_audio"]
+        assert input_audio["data"].startswith("data:audio/mpeg;base64,")
+        assert fake_client.last_payload["asr_options"]["language"] == "en"
+        assert fake_client.last_payload["stream"] is False
+        assert result.text == "hello there"
+
     def test_qwen_vc_realtime_tts_reports_pipeline_warning(self):
         from open_notebook.ai.model_specs import build_model_runtime_spec
 

@@ -943,6 +943,30 @@ def _mermaid_label(value: str, limit: int = 48) -> str:
     return _mind_map_node_text(value, limit).replace('"', '\\"')
 
 
+def _flashcard_question_for_sentence(sentence: str, index: int) -> str:
+    compact = re.sub(r"\s+", " ", sentence).strip(" -:;,.。；：")
+    lead = _compact_learning_topic(compact, 42)
+    patterns = [
+        f"不看答案，复述来源中“{lead}”这一点的核心含义，并说出它解决什么问题。",
+        f"“{lead}”在来源中的适用条件或前提是什么？至少说出 1 个边界。",
+        f"如果有人把“{lead}”过度泛化，最容易错在哪里？",
+        f"用一句话区分“{lead}”和相邻概念、背景描述或表面现象。",
+    ]
+    return patterns[(index - 1) % len(patterns)]
+
+
+def _flashcard_answer_for_sentence(sentence: str) -> str:
+    return (
+        "评分标准：答案必须覆盖来源中的关键限定、适用范围或结论，不能只背标题。"
+        f"\n来源依据：{sentence}"
+    )
+
+
+def _flashcard_hint_for_sentence(sentence: str) -> str:
+    keyword = _compact_learning_topic(sentence, 28)
+    return f"先想：它回答了什么问题、依赖什么条件、不能被用到哪里。关键词：{keyword}"
+
+
 def _source_grounded_fallback_resources(
     context: dict[str, str],
     requested_outputs: list[LearningOutputKind],
@@ -1014,6 +1038,16 @@ def _source_grounded_fallback_resources(
                     "front": f"来源要点 {index} 是什么？",
                     "back": sentence,
                     "hint": "先回忆原文语境，再翻面核对。",
+                }
+                for index, sentence in enumerate(sentences[:8], start=1)
+            ]
+            cards = [
+                {
+                    "front": _flashcard_question_for_sentence(sentence, index),
+                    "back": _flashcard_answer_for_sentence(sentence),
+                    "hint": _flashcard_hint_for_sentence(sentence),
+                    "evidence": sentence,
+                    "source_ref": f"来源摘录 {index}",
                 }
                 for index, sentence in enumerate(sentences[:8], start=1)
             ]
@@ -1202,6 +1236,15 @@ flashcards payload 示例：
   ]
 }}
 
+Flashcard quality rules:
+- Flashcards are for checking knowledge, not summarizing notes.
+- Each front must be a closed-book recall question that asks the learner to define, compare, apply, identify a boundary condition, explain a cause/effect, or correct a misconception from the sources.
+- Do not use weak prompts such as "What is source point 1?", "Remember this", or a title-only term unless the learner must recall a precise definition and boundary.
+- Each back must include a grading checklist or acceptance criteria plus source-grounded evidence. It should let the learner judge whether their answer is correct.
+- Each hint must nudge the reasoning path without revealing the answer.
+- Prefer cards that expose misconceptions, prerequisites, limitations, formulas, experimental conclusions, and concept boundaries.
+- Each card may include optional evidence, source_title, source_ref, citation, or location fields for source tracing.
+
 <sources>
 {source_context}
 </sources>
@@ -1282,6 +1325,17 @@ def _normalize_flashcard_payload(payload: Any) -> dict[str, Any]:
                 "hint": _as_text(card.get("hint"), "回到来源中的定义、方法或实验语境核对。"),
             }
         )
+        for field in (
+            "source_id",
+            "source_title",
+            "source_ref",
+            "evidence",
+            "citation",
+            "location",
+        ):
+            value = _as_text(card.get(field))
+            if value:
+                normalized[-1][field] = value
     return {"cards": normalized}
 
 

@@ -55,6 +55,11 @@ type Flashcard = {
   front: string
   back: string
   hint?: string
+  evidence?: string
+  source_ref?: string
+  source_title?: string
+  citation?: string
+  location?: string
 }
 
 type MindMapNode = {
@@ -1206,6 +1211,11 @@ function FlashcardAsset({ resource, compact = false }: { resource: LearningResou
     currentCard?.hint &&
     (hintsEnabled || showHint || activeFeedback === 'vague' || activeFeedback === 'forgotten')
   )
+  const currentEvidence = [
+    currentCard?.source_title,
+    currentCard?.source_ref || currentCard?.location,
+    currentCard?.evidence || currentCard?.citation,
+  ].filter(Boolean).join('\n')
 
   if (cards.length === 0 || !currentCard) {
     return <MarkdownLikeAsset content={resource.content} compact={compact} compactHeight="max-h-80" />
@@ -1329,6 +1339,16 @@ function FlashcardAsset({ resource, compact = false }: { resource: LearningResou
         <div className="mt-3 min-h-28 rounded-md bg-muted/30 px-3 py-2">
           <MarkdownSnippet content={isFlipped ? currentCard.back : currentCard.front} />
         </div>
+
+        {isFlipped && currentEvidence && (
+          <div className="mt-2 rounded-md border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+            <p className="font-medium text-foreground">来源依据</p>
+            <MarkdownSnippet
+              content={currentEvidence}
+              className="text-xs leading-5 text-muted-foreground [&_p]:my-1"
+            />
+          </div>
+        )}
 
         {shouldShowHint && (
           <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">

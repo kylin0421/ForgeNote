@@ -62,6 +62,7 @@ import {
   Database,
   AlertCircle,
   MessageSquare,
+  X,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
@@ -431,22 +432,22 @@ export function SourceDetailContent({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="pb-4 px-2">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
+      <div className="px-3 pb-4 pt-3 sm:px-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
             <InlineEdit
               value={source.title || ''}
               onSave={handleUpdateTitle}
-              className="text-2xl font-bold"
+              className="break-words text-2xl font-bold"
               inputClassName="text-2xl font-bold"
               placeholder={t('sources.titlePlaceholder')}
               emptyText={t('sources.untitledSource')}
             />
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 break-all text-sm text-muted-foreground">
               {t('sources.id')}: {source.id}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             {getSourceIcon()}
             <Badge variant="secondary" className="text-sm">
               {getSourceType()}
@@ -500,12 +501,24 @@ export function SourceDetailContent({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {onClose && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                aria-label={t('common.close')}
+                title={t('common.close')}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
       {/* Tabs Content */}
-      <div className="flex-1 overflow-y-auto px-2">
+      <div className="flex-1 overflow-y-auto px-3 sm:px-4">
         <Tabs defaultValue="content" className="w-full">
           <TabsList className="grid w-full grid-cols-3 sticky top-0 z-10">
             <TabsTrigger value="content">{t('sources.content')}</TabsTrigger>
