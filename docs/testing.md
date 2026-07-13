@@ -7,31 +7,29 @@
 - 凭据与模型配置不会破坏原 notebook 能力。
 - 学习画像、资源编排、资产生成接口能够正常返回。
 - 语义索引和命令任务对新学习系统可用。
-- 前端能够通过 lint 和 production build。
+- 前端能够通过单元测试、lint 和 production build。
+- Windows 发行版能从空数据目录启动完整服务栈并正常退出。
 - 清理后的项目仍可运行，不依赖已删除的旧文档、旧 logo 和旧 CI 文件。
 
 ## 后端测试
 
 执行命令：
 
-```bash
-.venv\Scripts\python.exe -m pytest tests/test_credentials_api.py tests/test_models_api.py tests/test_learning_api.py tests/test_learning_service.py tests/test_semantic_index.py tests/test_command_service.py -q
+```powershell
+uv run pytest -q
 ```
 
 最近一次结果：
 
 ```text
-55 passed, 2 warnings
+239 passed, 2 warnings
 ```
 
 覆盖范围：
 
-- `tests/test_credentials_api.py`：API key/凭据配置。
-- `tests/test_models_api.py`：模型列表、默认模型与 model spec。
-- `tests/test_learning_api.py`：学习系统 API。
-- `tests/test_learning_service.py`：多智能体学习编排服务。
-- `tests/test_semantic_index.py`：语义索引与检索辅助。
-- `tests/test_command_service.py`：后台命令与任务状态。
+- API key、模型列表、默认模型与 model spec。
+- 学习系统 API、多智能体学习编排、语义索引与后台命令。
+- 数据迁移、音视频路径、文本处理和 Windows 启动器辅助逻辑。
 
 ## 前端测试
 
@@ -39,13 +37,15 @@
 
 ```bash
 cd frontend
+npm test -- --run
 npm run lint
 npm run build
 ```
 
 最近一次结果：
 
-- `npm run lint`：0 errors，保留少量既有 warning。
+- `npm test -- --run`：53 passed。
+- `npm run lint`：0 errors，6 个既有 warning。
 - `npm run build`：通过。
 
 前端重点检查：
@@ -71,6 +71,16 @@ git grep --cached -n "<token-prefix>"
 - staged diff 无 trailing whitespace 或 EOF 格式错误。
 - 提交内容未包含 GitHub token。
 
+## Windows 发行版验证
+
+正式构建命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1 -SkipDependencyInstall
+```
+
+构建后使用临时数据目录执行 `ZhiXue.exe --smoke-test`。最近一次结果为退出码 `0`，并确认 SurrealDB、17 个数据库迁移、FastAPI、任务 worker 与 Next.js 前端均通过健康检查，停止后未遗留服务进程。
+
 ## Docker 构建说明
 
 执行命令：
@@ -85,7 +95,7 @@ docker compose build zhixue
 docker compose up -d --build --no-deps zhixue
 ```
 
-当前版本已完成应用容器重建。Dockerfile 已加入 `Acquire::Retries=5`；如果外部 Debian apt 源偶发返回 `502 Bad Gateway`，可稍后重试或切换镜像源。
+Dockerfile 已加入 `Acquire::Retries=5`；如果 Docker Hub、Debian apt 或 npm 外部源超时，可稍后重试、配置代理或切换镜像源。普通 Windows 用户无需依赖 Docker。
 
 ## 手工验证
 

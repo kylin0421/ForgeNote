@@ -139,14 +139,16 @@ class TestCredentialModelDiscovery:
             },
         )
 
-        assert models == [
-            {
-                "name": "custom-openai-model",
-                "provider": "openai",
-                "model_type": "language",
-                "description": None,
-            }
-        ]
+        assert models[0] == {
+            "name": "custom-openai-model",
+            "provider": "openai",
+            "model_type": "language",
+            "description": None,
+        }
+        assert {model["name"] for model in models[1:]} == {
+            "gpt-image-1",
+            "dall-e-3",
+        }
         assert requests == [
             {
                 "url": "https://llm-gateway.example.com/v1/models",

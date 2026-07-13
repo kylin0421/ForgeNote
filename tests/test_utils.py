@@ -9,8 +9,6 @@ import pytest
 
 from open_notebook.utils import (
     clean_thinking_content,
-    compare_versions,
-    get_installed_version,
     parse_thinking_content,
     remove_non_ascii,
     remove_non_printable,
@@ -174,78 +172,7 @@ class TestTokenUtilities:
             assert count > 0
 
 
-# ============================================================================
-# TEST SUITE 3: Version Utilities
-# ============================================================================
-
-
-class TestVersionUtilities:
-    """Test suite for version management functions."""
-
-    def test_compare_versions_equal(self):
-        """Test comparing equal versions."""
-        result = compare_versions("1.0.0", "1.0.0")
-        assert result == 0
-
-    def test_compare_versions_less_than(self):
-        """Test comparing when first version is less."""
-        result = compare_versions("1.0.0", "2.0.0")
-        assert result == -1
-
-        result = compare_versions("1.0.0", "1.1.0")
-        assert result == -1
-
-        result = compare_versions("1.0.0", "1.0.1")
-        assert result == -1
-
-    def test_compare_versions_greater_than(self):
-        """Test comparing when first version is greater."""
-        result = compare_versions("2.0.0", "1.0.0")
-        assert result == 1
-
-        result = compare_versions("1.1.0", "1.0.0")
-        assert result == 1
-
-        result = compare_versions("1.0.1", "1.0.0")
-        assert result == 1
-
-    def test_compare_versions_prerelease(self):
-        """Test comparing versions with pre-release tags."""
-        result = compare_versions("1.0.0", "1.0.0-alpha")
-        assert result == 1  # Release > pre-release
-
-        result = compare_versions("1.0.0-beta", "1.0.0-alpha")
-        assert result == 1  # beta > alpha
-
-    def test_get_installed_version_success(self):
-        """Test getting installed package version."""
-        # Test with a known installed package
-        version = get_installed_version("pytest")
-        assert isinstance(version, str)
-        assert len(version) > 0
-        # Should look like a version (has dots)
-        assert "." in version
-
-    def test_get_installed_version_not_found(self):
-        """Test getting version of non-existent package."""
-        from importlib.metadata import PackageNotFoundError
-
-        with pytest.raises(PackageNotFoundError):
-            get_installed_version("this-package-does-not-exist-12345")
-
-    def test_get_version_from_github_invalid_url(self):
-        """Test GitHub version fetch with invalid URL."""
-        from open_notebook.utils.version_utils import get_version_from_github
-
-        with pytest.raises(ValueError, match="Not a GitHub URL"):
-            get_version_from_github("https://example.com/repo")
-
-        with pytest.raises(ValueError, match="Invalid GitHub repository URL"):
-            get_version_from_github("https://github.com/")
-
-
-# ============================================================================
-# TEST SUITE 4: Context Builder Configuration
+# TEST SUITE 3: Context Builder Configuration
 # ============================================================================
 
 

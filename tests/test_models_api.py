@@ -148,14 +148,15 @@ class TestModelsProviderAvailability:
         # openai-compatible should be available
         assert "openai_compatible" in data["available"]
 
-        # Should support all 4 types
+        # Language-capable OpenAI-compatible endpoints also expose image models.
         assert "openai_compatible" in data["supported_types"]
         supported = data["supported_types"]["openai_compatible"]
         assert "language" in supported
         assert "embedding" in supported
         assert "speech_to_text" in supported
         assert "text_to_speech" in supported
-        assert len(supported) == 4
+        assert "image" in supported
+        assert len(supported) == 5
 
     @patch("api.routers.models.os.environ.get")
     @patch("api.routers.models.AIFactory.get_available_providers")
@@ -190,14 +191,15 @@ class TestModelsProviderAvailability:
         # openai-compatible should be available
         assert "openai_compatible" in data["available"]
 
-        # Should support only language and embedding
+        # Image generation uses the configured LLM-compatible endpoint.
         assert "openai_compatible" in data["supported_types"]
         supported = data["supported_types"]["openai_compatible"]
         assert "language" in supported
         assert "embedding" in supported
         assert "speech_to_text" not in supported
         assert "text_to_speech" not in supported
-        assert len(supported) == 2
+        assert "image" in supported
+        assert len(supported) == 3
 
     @patch("api.routers.models.os.environ.get")
     @patch("api.routers.models.AIFactory.get_available_providers")
@@ -261,14 +263,15 @@ class TestModelsProviderAvailability:
         # openai-compatible should be available
         assert "openai_compatible" in data["available"]
 
-        # Generic var enables all, so all 4 should be supported
+        # Generic configuration enables all language, media, and image modes.
         assert "openai_compatible" in data["supported_types"]
         supported = data["supported_types"]["openai_compatible"]
         assert "language" in supported
         assert "embedding" in supported
         assert "speech_to_text" in supported
         assert "text_to_speech" in supported
-        assert len(supported) == 4
+        assert "image" in supported
+        assert len(supported) == 5
 
     @patch("api.routers.models.os.environ.get")
     @patch("api.routers.models.AIFactory.get_available_providers")
@@ -296,9 +299,9 @@ class TestModelsProviderAvailability:
         assert response.status_code == 200
         data = response.json()
 
-        # Should support only language
+        # Image generation shares the language endpoint configuration.
         supported = data["supported_types"]["openai_compatible"]
-        assert supported == ["language"]
+        assert supported == ["language", "image"]
 
     @patch("api.routers.models.os.environ.get")
     @patch("api.routers.models.AIFactory.get_available_providers")

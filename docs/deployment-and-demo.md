@@ -2,10 +2,11 @@
 
 ## 环境要求
 
-- Python 3.12
-- Node.js 22+
-- Docker Desktop（可选）
-- SurrealDB v2
+- 普通 Windows 用户：只需要安装智学工坊安装包
+- 从源码开发或构建安装包时：
+  - Python 3.12
+  - Node.js 22+
+  - SurrealDB v2 或 Docker Desktop
 - 至少一个可用大模型 API key
 - 可选：DashScope TTS key，用于播客/音频讲解
 - 可选：DashScope/Qwen 图片模型额度，用于 `qwen-image` 图片生成测试
@@ -34,6 +35,19 @@ SURREAL_DATABASE=open_notebook
 - STT 模型
 
 只有某个功能需要独立模型时，再进入高级设置覆盖对应 Studio 功能。
+
+## Windows 安装包（推荐）
+
+运行 `ZhiXue-Setup-0.1.0.exe` 后，通过桌面或开始菜单的“智学工坊”快捷方式启动。安装包会在后台依次启动本地数据库、API、任务 worker 和网页界面，并打开 `http://127.0.0.1:8502`。
+
+运行数据不会放进安装目录：
+
+- 配置：`%LOCALAPPDATA%\ZhiXue\config.env`
+- 上传内容与应用数据：`%LOCALAPPDATA%\ZhiXue\data`
+- 数据库：`%LOCALAPPDATA%\ZhiXue\surrealdb`
+- 日志：`%LOCALAPPDATA%\ZhiXue\logs`
+
+因此应用升级和卸载不会自动删除用户数据。构建方法与故障排查见 [`desktop/windows/README.md`](../desktop/windows/README.md)。
 
 ## 本地运行
 

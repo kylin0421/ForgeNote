@@ -3,7 +3,7 @@ Utils package for ZhiXue.
 
 To avoid circular imports, import functions directly:
 - from open_notebook.utils.context_builder import ContextBuilder
-- from open_notebook.utils import token_count, compare_versions
+- from open_notebook.utils import token_count
 - from open_notebook.utils.chunking import chunk_text, detect_content_type, ContentType
 - from open_notebook.utils.embedding import generate_embedding, generate_embeddings
 - from open_notebook.utils.encryption import encrypt_value, decrypt_value
@@ -33,11 +33,6 @@ from .text_utils import (
     remove_non_printable,
 )
 from .token_utils import token_cost, token_count
-from .version_utils import (
-    compare_versions,
-    get_installed_version,
-    get_version_from_github,
-)
 
 __all__ = [
     # Chunking
@@ -59,10 +54,6 @@ __all__ = [
     # Token utils
     "token_count",
     "token_cost",
-    # Version utils
-    "compare_versions",
-    "get_installed_version",
-    "get_version_from_github",
     # Encryption utils
     "decrypt_value",
     "encrypt_value",

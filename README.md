@@ -105,6 +105,20 @@ tests/                       后端和学习系统单元测试
 
 详细配置步骤见 [配置指南](docs/configuration-guide.md)。如果只是快速启动，可以先按下面命令运行；如果要完整演示资源搜索、学习资产生成、播客和多模型默认项，请先完成配置指南中的模型/API key 设置。
 
+### Windows 一键安装（推荐）
+
+Windows 安装包内置 Python 后端、任务服务、Next.js、Node.js、SurrealDB v2 和 FFmpeg。安装后双击“智学工坊”即可启动，无需安装 Docker、Python 或 Node.js；启动器会完成健康检查并自动打开浏览器。
+
+构建安装包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1
+```
+
+输出位于 `dist/windows/ZhiXue-Setup-0.1.0.exe`。用户数据、密钥配置和日志分别持久化在 `%LOCALAPPDATA%\ZhiXue` 下，卸载或升级应用不会覆盖这些数据。详细说明见 [Windows 打包说明](desktop/windows/README.md)。
+
+### 源码运行
+
 后端：
 
 ```bash
@@ -152,11 +166,13 @@ docker compose up -d --build
 
 ## 验证状态
 
-最近一次本地验证：
+最近一次本地验证（2026-07-13）：
 
-- `pytest tests/test_credentials_api.py tests/test_models_api.py tests/test_learning_api.py tests/test_learning_service.py tests/test_semantic_index.py tests/test_command_service.py -q`：55 passed
-- `npm run lint`：0 errors，存在少量既有 warning
-- `npm run build`：通过
-- `uv run pytest tests/test_podcast_path.py tests/test_utils.py -q`：33 passed
-- 针对 ChatPanel、NotesColumn、模型设置页执行过 ESLint 定向检查。
-- `docker compose up -d --build --no-deps zhixue`：已完成应用容器重建；如遇 Debian apt 源 502，可稍后重试或切换镜像源。
+- `uv run pytest -q`：239 passed，2 warnings
+- `cd frontend && npm test -- --run`：53 passed
+- `cd frontend && npm run lint`：0 errors，6 warnings
+- `cd frontend && npm run build`：通过
+- `desktop/windows/build.ps1 -SkipDependencyInstall`：正式 Windows 安装包构建通过
+- 正式目录版执行 `--smoke-test`：SurrealDB、数据库迁移、API、任务 worker 和 Next.js 前端均通过健康检查并正常退出
+
+Docker 仍作为可选部署方式保留。若 Docker Hub、Debian apt 或 npm 外部源连接超时，可改用 Windows 安装包，或配置可用的镜像/代理后再构建。

@@ -1,8 +1,18 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const nextConfig: NextConfig = {
   // Enable standalone output for optimized Docker deployment
   output: "standalone",
+
+  // Keep standalone output rooted in this frontend directory. Without this,
+  // unrelated lockfiles higher in a developer's home directory can make Next.js
+  // reproduce the whole absolute path inside `.next/standalone`.
+  outputFileTracingRoot: path.join(__dirname),
+
+  turbopack: {
+    root: path.join(__dirname),
+  },
 
   // Experimental features
   // Type assertion needed: proxyClientMaxBodySize is valid in Next.js 15 but types lag behind

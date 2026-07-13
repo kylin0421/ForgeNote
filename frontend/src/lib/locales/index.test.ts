@@ -37,7 +37,7 @@ describe('Unused Key Detection', () => {
   it(
     'all en-US leaf keys should be referenced in source files',
     () => {
-      const srcDir = path.resolve(__dirname, '../../..')
+      const srcDir = path.resolve(__dirname, '../..')
       const localesDir = path.resolve(__dirname)
 
       const files = fs.readdirSync(srcDir, { recursive: true }) as string[]
@@ -56,7 +56,12 @@ describe('Unused Key Detection', () => {
         .replace(/\?\./g, '.')
 
       const leafKeys = getKeys(enUS)
-      const unused = leafKeys.filter(key => !corpus.includes(key))
+      const dynamicKeyPrefixes = ['learningAssets.kinds.']
+      const unused = leafKeys.filter(
+        key =>
+          !corpus.includes(key) &&
+          !dynamicKeyPrefixes.some(prefix => key.startsWith(prefix)),
+      )
 
       expect(
         unused,

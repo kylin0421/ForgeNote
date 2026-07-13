@@ -39,7 +39,7 @@ router = APIRouter()
 
 
 def generate_unique_filename(original_filename: str, upload_folder: str) -> str:
-    """Generate unique filename like Streamlit app (append counter if file exists)."""
+    """Generate a unique filename by appending a counter when needed."""
     file_path = Path(upload_folder)
     file_path.mkdir(parents=True, exist_ok=True)
 

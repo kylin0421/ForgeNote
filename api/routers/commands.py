@@ -11,9 +11,7 @@ router = APIRouter()
 
 
 class CommandExecutionRequest(BaseModel):
-    command: str = Field(
-        ..., description="Command function name (e.g., 'process_text')"
-    )
+    command: str = Field(..., description="Registered background command name")
     app: str = Field(..., description="Application name (e.g., 'open_notebook')")
     input: Dict[str, Any] = Field(..., description="Arguments to pass to the command")
 
@@ -58,15 +56,6 @@ async def execute_command(request: CommandExecutionRequest):
     Submit a command for background processing.
     Returns immediately with job ID for status tracking.
 
-    Example request:
-    {
-        "command": "process_text",
-        "app": "open_notebook",
-        "input": {
-            "text": "Hello world",
-            "operation": "uppercase"
-        }
-    }
     """
     try:
         # Submit command using app name (not module name)
