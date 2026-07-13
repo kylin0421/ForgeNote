@@ -17,7 +17,11 @@ datas = [
 ]
 datas += copy_metadata("imageio")
 binaries = []
-hiddenimports = collect_submodules("api") + collect_submodules("commands")
+hiddenimports = (
+    collect_submodules("api")
+    + collect_submodules("commands")
+    + collect_submodules("tiktoken_ext")
+)
 
 # charset-normalizer's mypyc extension links to a hash-named companion module
 # at the site-packages root. Its name changes between releases, so discover it

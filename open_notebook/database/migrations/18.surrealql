@@ -1,0 +1,4 @@
+-- Parsing a source should make its text available immediately. Optional AI
+-- transformations remain available, but are no longer selected for every
+-- upload by default.
+UPDATE transformation SET apply_default = false WHERE apply_default = true;

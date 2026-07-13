@@ -1,6 +1,6 @@
 [project]
 name = "zhixue-workbench"
-version = "0.1.1"
+version = "0.1.2"
 description = "A personalized multi-agent learning resource generation system"
 authors = [
     {name = "ZhiXue Team"}

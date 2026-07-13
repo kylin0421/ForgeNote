@@ -18,6 +18,7 @@ import numpy as np
 from loguru import logger
 
 from .chunking import CHUNK_SIZE, ContentType, chunk_text
+from .error_classifier import raise_if_provider_access_error
 from .token_utils import token_count
 
 
@@ -244,6 +245,10 @@ async def generate_embeddings(
                     await raise_if_command_canceled(command_id)
                 break
             except Exception as e:
+                # Quota and authentication failures are not transient. Surface
+                # them immediately so the command becomes failed and the task
+                # floating panel can display the provider error.
+                raise_if_provider_access_error(e)
                 cmd_context = f" (command: {command_id})" if command_id else ""
                 if attempt < EMBEDDING_MAX_RETRIES:
                     logger.debug(

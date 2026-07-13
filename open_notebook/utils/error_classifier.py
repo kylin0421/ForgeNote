@@ -26,9 +26,19 @@ _CLASSIFICATION_RULES: list[tuple[list[str], type[OpenNotebookError], str | None
     ),
     # Rate limit errors
     (
-        ["rate limit", "rate_limit", "429", "too many requests", "quota exceeded"],
+        [
+            "rate limit",
+            "rate_limit",
+            "429",
+            "too many requests",
+            "quota exceeded",
+            "insufficient_quota",
+            "insufficient quota",
+            "credit balance",
+            "billing quota",
+        ],
         RateLimitError,
-        "Rate limit exceeded. Please wait a moment and try again.",
+        "API 额度不足或已达到限流上限。请检查服务商余额与额度，或稍后重试。",
     ),
     # Model not found (pass through original message)
     (
@@ -101,3 +111,17 @@ def _truncate(text: str, max_length: int = 200) -> str:
     if len(text) <= max_length:
         return text
     return text[:max_length] + "..."
+
+
+def raise_if_provider_access_error(exception: BaseException) -> None:
+    """Surface quota/auth failures instead of allowing a silent fallback."""
+    if isinstance(exception, (AuthenticationError, RateLimitError)):
+        raise exception
+
+    error_text = str(exception).lower()
+    if "database" in error_text or "surreal" in error_text:
+        return
+
+    error_class, user_message = classify_error(exception)
+    if error_class in (AuthenticationError, RateLimitError):
+        raise error_class(user_message) from exception

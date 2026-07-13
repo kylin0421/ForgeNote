@@ -295,10 +295,13 @@ describe('LearningAssetPreview flashcards', () => {
 
     expect(screen.getByText('Term')).toBeInTheDocument()
     expect(screen.getByText('one')).toBeInTheDocument()
+    const rememberedButton = screen.getByRole('button', { name: /记得/ })
+    expect(rememberedButton).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: /模糊/ }))
     expect(screen.getByText('Look')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '翻面' }))
     expect(screen.getByText('code')).toBeInTheDocument()
+    expect(rememberedButton).toBeEnabled()
   })
 })

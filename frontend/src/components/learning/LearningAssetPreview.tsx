@@ -1385,7 +1385,13 @@ function FlashcardAsset({ resource, compact = false }: { resource: LearningResou
           >
             {isFlipped ? '返回正面' : '翻面'}
           </Button>
-          <Button type="button" size="sm" onClick={() => handleRating('remembered')}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!isFlipped}
+            title={!isFlipped ? '请先翻面核对答案，再标记为记得' : undefined}
+            onClick={() => handleRating('remembered')}
+          >
             <CheckCircle2 className="mr-2 h-4 w-4" />
             记得
           </Button>

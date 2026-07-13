@@ -3,12 +3,16 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 from pydantic import BaseModel
-from surreal_commands import CommandInput, CommandOutput, command
+from surreal_commands import CommandInput, CommandOutput, command, submit_command
 
 from open_notebook.database.repository import ensure_record_id
 from open_notebook.domain.notebook import Source
 from open_notebook.domain.transformation import Transformation
-from open_notebook.exceptions import ConfigurationError
+from open_notebook.exceptions import (
+    AuthenticationError,
+    ConfigurationError,
+    RateLimitError,
+)
 from open_notebook.utils.command_cancellation import raise_if_command_canceled
 
 try:
@@ -55,7 +59,12 @@ class SourceProcessingOutput(CommandOutput):
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 120,  # Allow queue to drain
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
+        "stop_on": [
+            ValueError,
+            ConfigurationError,
+            AuthenticationError,
+            RateLimitError,
+        ],
         "retry_log_level": "debug",  # Avoid log noise during transaction conflicts
     },
 )
@@ -109,19 +118,47 @@ async def process_source_command(
         logger.info(f"Processing source with {len(input_data.notebook_ids)} notebooks")
         await raise_if_command_canceled(command_id)
 
-        # Execute source_graph with all notebooks
-        result = await source_graph.ainvoke(
-            {  # type: ignore[arg-type]
-                "content_state": input_data.content_state,
-                "notebook_ids": input_data.notebook_ids,  # Use notebook_ids (plural) as expected by SourceState
-                "apply_transformations": transformations,
-                "embed": input_data.embed,
-                "source_id": input_data.source_id,  # Add the source_id to the state
-            }
-        )
-        await raise_if_command_canceled(command_id)
+        # Text extraction is the user-visible source-processing milestone. Keep
+        # optional LLM transformations out of this command so a slow provider,
+        # exhausted quota, or malformed model response cannot cause the entire
+        # PDF to be extracted again on every retry.
+        if source.full_text and source.full_text.strip():
+            processed_source = source
+            logger.info(
+                f"Source {source.id} already has extracted text; skipping extraction"
+            )
+            if input_data.embed:
+                await processed_source.vectorize()
+        else:
+            result = await source_graph.ainvoke(
+                {  # type: ignore[arg-type]
+                    "content_state": input_data.content_state,
+                    "notebook_ids": input_data.notebook_ids,
+                    "apply_transformations": [],
+                    "embed": input_data.embed,
+                    "source_id": input_data.source_id,
+                }
+            )
+            await raise_if_command_canceled(command_id)
+            processed_source = result["source"]
 
-        processed_source = result["source"]
+        transformation_jobs = []
+        for transformation in transformations:
+            await raise_if_command_canceled(command_id)
+            transformation_job_id = submit_command(
+                "open_notebook",
+                "run_transformation",
+                {
+                    "source_id": str(processed_source.id),
+                    "transformation_id": str(transformation.id),
+                },
+            )
+            transformation_jobs.append(str(transformation_job_id))
+        if transformation_jobs:
+            logger.info(
+                f"Submitted {len(transformation_jobs)} optional transformation job(s): "
+                f"{transformation_jobs}"
+            )
 
         # 4. Gather processing results (notebook associations handled by source_graph)
         # Note: embedding is fire-and-forget (async job), so we can't query the
@@ -136,7 +173,8 @@ async def process_source_command(
             f"Successfully processed source: {processed_source.id} in {processing_time:.2f}s"
         )
         logger.info(
-            f"Created {insights_created} insights, embedding {embed_status}"
+            f"Found {insights_created} existing insights, embedding {embed_status}, "
+            f"transformations submitted={len(transformation_jobs)}"
         )
 
         return SourceProcessingOutput(
@@ -194,7 +232,12 @@ class RunTransformationOutput(CommandOutput):
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
+        "stop_on": [
+            ValueError,
+            ConfigurationError,
+            AuthenticationError,
+            RateLimitError,
+        ],
         "retry_log_level": "debug",
     },
 )
@@ -263,19 +306,14 @@ async def run_transformation_command(
         )
 
     except ValueError as e:
-        # Validation errors are permanent failures - don't retry
-        processing_time = time.time() - start_time
+        # Returning success=False would mark the queue item completed and hide
+        # the problem from the task panel. Re-raise permanent failures so the
+        # floating task panel can show the error immediately.
         logger.error(
             f"Failed to run transformation {input_data.transformation_id} "
             f"on source {input_data.source_id}: {e}"
         )
-        return RunTransformationOutput(
-            success=False,
-            source_id=input_data.source_id,
-            transformation_id=input_data.transformation_id,
-            processing_time=processing_time,
-            error_message=str(e),
-        )
+        raise
     except Exception as e:
         # Transient failure - will be retried (surreal-commands logs final failure)
         logger.debug(

@@ -352,6 +352,28 @@ class TestGenerateEmbedding:
                 await generate_embeddings(texts)
             assert mock_model.aembed.call_count == EMBEDDING_MAX_RETRIES
 
+    @pytest.mark.asyncio
+    async def test_quota_error_is_not_retried_or_silently_hidden(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from open_notebook.exceptions import RateLimitError
+
+        mock_model = MagicMock()
+        mock_model.model_name = "quota-limited-model"
+        mock_model.aembed = AsyncMock(
+            side_effect=RuntimeError("insufficient_quota: billing quota exceeded")
+        )
+
+        with patch(
+            "open_notebook.ai.models.model_manager.get_embedding_model",
+            new_callable=AsyncMock,
+            return_value=mock_model,
+        ):
+            with pytest.raises(RateLimitError, match="API 额度不足"):
+                await generate_embeddings(["text"])
+
+        assert mock_model.aembed.call_count == 1
+
 
 # ============================================================================
 # TEST SUITE 4: Error Classification for 413

@@ -1,0 +1,1 @@
+UPDATE transformation SET apply_default = true WHERE name = "Dense Summary";

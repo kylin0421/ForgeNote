@@ -2,6 +2,7 @@ import json
 import time
 from typing import List, Literal, Optional
 
+from loguru import logger
 from surreal_commands import CommandInput, CommandOutput, command
 
 from api.learning_service import build_learning_orchestration_with_search
@@ -175,13 +176,8 @@ async def collect_learning_resources_command(
             processing_time=time.time() - start_time,
         )
     except ValueError as e:
-        return LearningResourceSearchOutput(
-            success=False,
-            collected_resources=[],
-            resources_found=0,
-            processing_time=time.time() - start_time,
-            error_message=str(e),
-        )
+        logger.error(f"Learning resource search failed: {e}")
+        raise
 
 
 @command("generate_learning_asset", app="open_notebook", retry={"max_attempts": 1})
@@ -225,9 +221,7 @@ async def generate_learning_asset_command(
             processing_time=time.time() - start_time,
         )
     except ValueError as e:
-        return LearningAssetGenerationOutput(
-            success=False,
-            output_kind=input_data.output_kind,
-            processing_time=time.time() - start_time,
-            error_message=str(e),
+        logger.error(
+            f"Learning asset generation failed for {input_data.output_kind}: {e}"
         )
+        raise

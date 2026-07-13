@@ -9,6 +9,7 @@ from open_notebook.ai.provision import provision_langchain_model
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.content_settings import ContentSettings
 from open_notebook.exceptions import ConfigurationError, InvalidInputError
+from open_notebook.utils.error_classifier import raise_if_provider_access_error
 from open_notebook.utils.text_utils import clean_thinking_content, extract_text_content
 
 LLM_BM25_BACKEND = "llm_bm25"
@@ -163,6 +164,7 @@ Chunk:
     except ConfigurationError:
         raise
     except Exception as e:
+        raise_if_provider_access_error(e)
         logger.warning(
             "Failed to generate LLM-BM25 metadata for chunk "
             f"(command={command_id or 'unknown'}): {e}"
@@ -286,6 +288,7 @@ Return only a JSON list of strings.
     except ConfigurationError:
         raise
     except Exception as e:
+        raise_if_provider_access_error(e)
         logger.warning(f"Failed to rewrite LLM-BM25 query, using raw query: {e}")
         rewrites = []
 
@@ -468,6 +471,7 @@ Return only JSON:
     except ConfigurationError:
         raise
     except Exception as e:
+        raise_if_provider_access_error(e)
         logger.warning(f"LLM rerank failed, using RRF ordering: {e}")
         score_map = {}
 

@@ -8,7 +8,11 @@ from surreal_commands import CommandInput, CommandOutput, command, submit_comman
 from open_notebook.ai.models import model_manager
 from open_notebook.database.repository import ensure_record_id, repo_insert, repo_query
 from open_notebook.domain.notebook import Note, Source, SourceInsight
-from open_notebook.exceptions import ConfigurationError
+from open_notebook.exceptions import (
+    AuthenticationError,
+    ConfigurationError,
+    RateLimitError,
+)
 from open_notebook.utils.chunking import ContentType, chunk_text, detect_content_type
 from open_notebook.utils.command_cancellation import raise_if_command_canceled
 from open_notebook.utils.embedding import generate_embedding, generate_embeddings
@@ -16,6 +20,13 @@ from open_notebook.utils.semantic_index import (
     build_llm_bm25_source_records,
     is_llm_bm25_backend,
 )
+
+NON_RETRYABLE_COMMAND_ERRORS = [
+    ValueError,
+    ConfigurationError,
+    AuthenticationError,
+    RateLimitError,
+]
 
 
 def full_model_dump(model):
@@ -183,10 +194,7 @@ class LegacyVectorizeSourceOutput(CommandOutput):
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 60,
-        "stop_on": [
-            ValueError,
-            ConfigurationError,
-        ],  # Don't retry validation/config errors
+        "stop_on": NON_RETRYABLE_COMMAND_ERRORS,
         "retry_log_level": "debug",
     },
 )
@@ -262,18 +270,11 @@ async def embed_note_command(input_data: EmbedNoteInput) -> EmbedNoteOutput:
         )
 
     except ValueError as e:
-        # Permanent failure - don't retry
-        processing_time = time.time() - start_time
         cmd_id = get_command_id(input_data)
         logger.error(
             f"Failed to embed note {input_data.note_id} (command: {cmd_id}): {e}"
         )
-        return EmbedNoteOutput(
-            success=False,
-            note_id=input_data.note_id,
-            processing_time=processing_time,
-            error_message=str(e),
-        )
+        raise
     except Exception as e:
         # Transient failure - will be retried (surreal-commands logs final failure)
         cmd_id = get_command_id(input_data)
@@ -292,10 +293,7 @@ async def embed_note_command(input_data: EmbedNoteInput) -> EmbedNoteOutput:
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 60,
-        "stop_on": [
-            ValueError,
-            ConfigurationError,
-        ],  # Don't retry validation/config errors
+        "stop_on": NON_RETRYABLE_COMMAND_ERRORS,
         "retry_log_level": "debug",
     },
 )
@@ -373,18 +371,11 @@ async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOu
         )
 
     except ValueError as e:
-        # Permanent failure - don't retry
-        processing_time = time.time() - start_time
         cmd_id = get_command_id(input_data)
         logger.error(
             f"Failed to embed insight {input_data.insight_id} (command: {cmd_id}): {e}"
         )
-        return EmbedInsightOutput(
-            success=False,
-            insight_id=input_data.insight_id,
-            processing_time=processing_time,
-            error_message=str(e),
-        )
+        raise
     except Exception as e:
         # Transient failure - will be retried (surreal-commands logs final failure)
         cmd_id = get_command_id(input_data)
@@ -403,10 +394,7 @@ async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOu
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 60,
-        "stop_on": [
-            ValueError,
-            ConfigurationError,
-        ],  # Don't retry validation/config errors
+        "stop_on": NON_RETRYABLE_COMMAND_ERRORS,
         "retry_log_level": "debug",
     },
 )
@@ -541,19 +529,11 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
         )
 
     except ValueError as e:
-        # Permanent failure - don't retry
-        processing_time = time.time() - start_time
         cmd_id = get_command_id(input_data)
         logger.error(
             f"Failed to embed source {input_data.source_id} (command: {cmd_id}): {e}"
         )
-        return EmbedSourceOutput(
-            success=False,
-            source_id=input_data.source_id,
-            chunks_created=0,
-            processing_time=processing_time,
-            error_message=str(e),
-        )
+        raise
     except Exception as e:
         # Transient failure - will be retried (surreal-commands logs final failure)
         cmd_id = get_command_id(input_data)
@@ -572,7 +552,7 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],
+        "stop_on": NON_RETRYABLE_COMMAND_ERRORS,
         "retry_log_level": "debug",
     },
 )
@@ -659,7 +639,7 @@ async def legacy_embed_single_item_command(
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],
+        "stop_on": NON_RETRYABLE_COMMAND_ERRORS,
         "retry_log_level": "debug",
     },
 )
@@ -812,10 +792,7 @@ async def legacy_vectorize_source_command(
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 60,
-        "stop_on": [
-            ValueError,
-            ConfigurationError,
-        ],  # Don't retry validation/config errors
+        "stop_on": NON_RETRYABLE_COMMAND_ERRORS,
         "retry_log_level": "debug",
     },
 )

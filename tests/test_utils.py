@@ -149,6 +149,18 @@ class TestTokenUtilities:
             assert isinstance(count, int)
             assert count > 0
 
+    def test_token_count_falls_back_when_packaged_plugin_is_missing(self):
+        """A missing tiktoken_ext plugin must not break Chinese PDFs."""
+        from unittest.mock import patch
+
+        with patch(
+            "tiktoken.get_encoding",
+            side_effect=ValueError("Unknown encoding o200k_base. Plugins found: []"),
+        ):
+            count = token_count("这是一个没有空格的中文段落，用于验证桌面安装包兜底。")
+
+        assert count >= 20
+
     def test_token_count_network_error_fallback(self):
         """Test fallback when tiktoken raises a network error (issue #264).
 

@@ -11,7 +11,7 @@ from loguru import logger
 from .repository import db_connection, repo_query
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-LATEST_MIGRATION_VERSION = 17
+LATEST_MIGRATION_VERSION = 18
 
 
 class AsyncMigration:

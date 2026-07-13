@@ -2,10 +2,13 @@ import pytest
 
 from api.learning_service import (
     _append_profile_event,
-    _normalize_generated_resources,
+    _generate_resources_from_sources,
     _normalize_generated_markdown,
+    _normalize_generated_resources,
+    _normalize_mind_map_content,
     _source_grounded_fallback_resources,
     build_learning_orchestration,
+    build_learning_orchestration_with_search,
     collect_learning_resources,
     stream_learning_orchestration,
 )
@@ -44,6 +47,24 @@ def test_normalize_generated_markdown_repairs_table_rows():
         "Uses pretext labels instead of direct human labels. |"
     ) in normalized
     assert "*\n* |" not in normalized
+
+
+def test_normalize_mind_map_closes_mermaid_before_text_sections():
+    content = "\n".join(
+        [
+            "```mermaid",
+            "mindmap",
+            "  root((Topic))",
+            "    Branch",
+            "## 树状分层文本",
+            "- Topic",
+        ]
+    )
+
+    normalized = _normalize_mind_map_content(content)
+
+    assert normalized is not None
+    assert "    Branch\n```\n## 树状分层文本" in normalized
 
 
 def test_normalize_generated_markdown_keeps_table_cell_minus_inline():
@@ -139,12 +160,13 @@ def test_normalize_generated_resources_preserves_flashcard_evidence():
                     "payload": {
                         "cards": [
                             {
-                                "front": "What condition makes consistency regularization meaningful?",
-                                "back": "It needs perturbations that preserve the label.",
+                                "front": f"What condition {index} makes consistency regularization meaningful?",
+                                "back": "Required points: perturbations must preserve the label.",
                                 "hint": "Think about what stays invariant.",
                                 "evidence": "Consistency regularization trains stable predictions under perturbations.",
-                                "source_ref": "Classic SSL paper",
+                                "source_ref": f"Classic SSL paper, section {index}",
                             }
+                            for index in range(1, 7)
                         ]
                     },
                 }
@@ -163,7 +185,77 @@ def test_normalize_generated_resources_preserves_flashcard_evidence():
 
     card = resources[0].payload["cards"][0]
     assert card["evidence"].startswith("Consistency regularization")
-    assert card["source_ref"] == "Classic SSL paper"
+    assert card["source_ref"] == "Classic SSL paper, section 1"
+
+
+@pytest.mark.asyncio
+async def test_learning_asset_quota_error_surfaces_instead_of_fallback(monkeypatch):
+    class QuotaModel:
+        async def ainvoke(self, _messages):
+            raise RuntimeError("insufficient_quota: billing quota exceeded")
+
+    async def fake_provision(*_args, **_kwargs):
+        return QuotaModel()
+
+    monkeypatch.setattr("api.learning_service.provision_langchain_model", fake_provision)
+
+    from open_notebook.exceptions import RateLimitError
+
+    request = LearningOrchestrationRequest(
+        message="生成知识闪卡",
+        course="机器学习",
+        mode="generate",
+        requested_outputs=["flashcards"],
+    )
+    context = {
+        "message": "生成知识闪卡",
+        "course": "机器学习",
+        "major": "计算机科学",
+        "goal": "复习",
+        "history": "暂无",
+        "target_language": "简体中文",
+    }
+
+    with pytest.raises(RateLimitError, match="API 额度不足"):
+        await _generate_resources_from_sources(
+            context,
+            request,
+            "## Source 1: Notes\nConsistency regularization requires label-preserving perturbations.",
+        )
+
+
+@pytest.mark.asyncio
+async def test_learning_asset_with_selected_sources_skips_web_collection(monkeypatch):
+    async def fail_if_collecting(*_args, **_kwargs):
+        raise AssertionError("selected-source asset generation must not search the web")
+
+    async def fake_source_context(_request):
+        return "## Source 1: Notes\nGrounded source text.", 1
+
+    async def fake_generation(_context, _request, _source_context):
+        return []
+
+    monkeypatch.setattr(
+        "api.learning_service.collect_learning_resources", fail_if_collecting
+    )
+    monkeypatch.setattr(
+        "api.learning_service._collect_generation_source_context", fake_source_context
+    )
+    monkeypatch.setattr(
+        "api.learning_service._generate_resources_from_sources", fake_generation
+    )
+
+    result = await build_learning_orchestration_with_search(
+        LearningOrchestrationRequest(
+            message="generate grounded flashcards",
+            course="Vision Transformers",
+            mode="generate",
+            requested_outputs=["flashcards"],
+            accepted_resource_ids=["source:paper"],
+        )
+    )
+
+    assert result.collected_resources == []
 
 
 def test_learning_orchestration_meets_competition_requirements():
