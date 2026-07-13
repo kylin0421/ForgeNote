@@ -101,15 +101,17 @@ tests/                       后端和学习系统单元测试
 
 底层 Python 包名仍保留 `open_notebook`，部分环境变量仍沿用 `OPEN_NOTEBOOK_*`。这是为了兼容原底座的数据模型、迁移和运行时配置，不代表产品仍是原通用 notebook。
 
-## 本地运行
+## 启动与部署
 
-详细配置步骤见 [配置指南](docs/configuration-guide.md)。如果只是快速启动，可以先按下面命令运行；如果要完整演示资源搜索、学习资产生成、播客和多模型默认项，请先完成配置指南中的模型/API key 设置。
+普通 Windows 用户请优先使用桌面安装包。这是当前默认推荐、验证最完整的部署方式，无需安装 Docker、Python 或 Node.js，也不会打开外部浏览器。源码运行主要用于开发，Docker 作为可选部署方式保留。
 
-### Windows 一键安装（推荐）
+### Windows 桌面安装包（首选）
 
 Windows 安装包内置 Python 后端、任务服务、Next.js、Node.js、SurrealDB v2 和 FFmpeg。安装后双击“智学工坊”即可启动，无需安装 Docker、Python 或 Node.js；启动器会完成健康检查，并在独立的 Windows WebView2 应用窗口中显示现有界面，不再打开外部浏览器。
 
-构建安装包：
+获得 `ZhiXue-Setup-0.1.1.exe` 后直接双击安装，再从桌面或开始菜单启动“智学工坊”。已安装旧版本时，可以直接运行新版安装包覆盖升级。
+
+需要自行构建安装包时：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1
@@ -117,7 +119,9 @@ powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1
 
 输出位于 `dist/windows/ZhiXue-Setup-0.1.1.exe`。用户数据、密钥配置和日志分别持久化在 `%LOCALAPPDATA%\ZhiXue` 下，卸载或升级应用不会覆盖这些数据。详细说明见 [Windows 打包说明](desktop/windows/README.md)。
 
-### 源码运行
+完整的模型与 API key 配置见 [配置指南](docs/configuration-guide.md)。
+
+### 源码运行（开发）
 
 后端：
 
@@ -133,7 +137,7 @@ npm install
 npm run dev
 ```
 
-Docker：
+### Docker（可选）
 
 ```bash
 docker compose up -d --build

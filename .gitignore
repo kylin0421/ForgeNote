@@ -144,3 +144,5 @@ specs/
 .harness/
 
 .mcp.json
+
+AGENTS.md
