@@ -32,14 +32,14 @@ logs/            各组件启动与运行日志
 
 ```powershell
 winget install JRSoftware.InnoSetup
-powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1 -Version 0.1.2
+powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1 -Version 0.1.3
 ```
 
 构建脚本会按锁文件构建前端、冻结 Python 运行时、下载并校验固定版本的外部二进制，然后生成：
 
 ```text
 dist/windows/ZhiXue/                 可直接运行的目录版
-dist/windows/ZhiXue-Setup-0.1.2.exe  Windows 安装包
+dist/windows/ZhiXue-Setup-0.1.3.exe  Windows 安装包
 ```
 
 开发时已有 `node_modules` 可使用 `-SkipDependencyInstall`。如需额外生成便携 ZIP，可传入 `-PortableZip`；Windows 自带压缩器处理大量小文件时会比较慢。

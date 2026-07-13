@@ -109,7 +109,7 @@ tests/                       后端和学习系统单元测试
 
 Windows 安装包内置 Python 后端、任务服务、Next.js、Node.js、SurrealDB v2 和 FFmpeg。安装后双击“智学工坊”即可启动，无需安装 Docker、Python 或 Node.js；启动器会完成健康检查，并在独立的 Windows WebView2 应用窗口中显示现有界面，不再打开外部浏览器。
 
-获得 `ZhiXue-Setup-0.1.2.exe` 后直接双击安装，再从桌面或开始菜单启动“智学工坊”。已安装旧版本时，可以直接运行新版安装包覆盖升级。
+获得 `ZhiXue-Setup-0.1.3.exe` 后直接双击安装，再从桌面或开始菜单启动“智学工坊”。已安装旧版本时，可以直接运行新版安装包覆盖升级。
 
 需要自行构建安装包时：
 
@@ -117,7 +117,7 @@ Windows 安装包内置 Python 后端、任务服务、Next.js、Node.js、Surre
 powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1
 ```
 
-输出位于 `dist/windows/ZhiXue-Setup-0.1.2.exe`。用户数据、密钥配置和日志分别持久化在 `%LOCALAPPDATA%\ZhiXue` 下，卸载或升级应用不会覆盖这些数据。详细说明见 [Windows 打包说明](desktop/windows/README.md)。
+输出位于 `dist/windows/ZhiXue-Setup-0.1.3.exe`。用户数据、密钥配置和日志分别持久化在 `%LOCALAPPDATA%\ZhiXue` 下，卸载或升级应用不会覆盖这些数据。详细说明见 [Windows 打包说明](desktop/windows/README.md)。
 
 完整的模型与 API key 配置见 [配置指南](docs/configuration-guide.md)。
 

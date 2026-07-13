@@ -292,11 +292,12 @@ class PodcastEpisode(ObjectModel):
         return value
 
     def _prepare_save_data(self) -> dict:
-        """Override to ensure command field is always RecordID format for database"""
+        """Convert record-link fields to RecordID values before persistence."""
         data = super()._prepare_save_data()
 
-        # Ensure command field is RecordID format if not None
         if data.get("command") is not None:
             data["command"] = ensure_record_id(data["command"])
+        if data.get("notebook_id") is not None:
+            data["notebook_id"] = ensure_record_id(data["notebook_id"])
 
         return data

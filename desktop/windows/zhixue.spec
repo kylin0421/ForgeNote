@@ -20,6 +20,7 @@ binaries = []
 hiddenimports = (
     collect_submodules("api")
     + collect_submodules("commands")
+    + collect_submodules("open_notebook.ai")
     + collect_submodules("tiktoken_ext")
 )
 

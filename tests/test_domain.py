@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import ValidationError
+from surrealdb import RecordID
 
 from api.podcast_service import PodcastService
 from open_notebook.ai.models import ModelManager
@@ -21,7 +22,11 @@ from open_notebook.domain.content_settings import ContentSettings
 from open_notebook.domain.notebook import Asset, Note, Notebook, Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import InvalidInputError
-from open_notebook.podcasts.models import EpisodeProfile, SpeakerProfile
+from open_notebook.podcasts.models import (
+    EpisodeProfile,
+    PodcastEpisode,
+    SpeakerProfile,
+)
 
 # ============================================================================
 # TEST SUITE 1: RecordModel Singleton Pattern
@@ -519,6 +524,25 @@ class TestPodcastService:
         assert "First source full text for submitted podcast content." in content
         assert "Second source full text for submitted podcast content." in content
         assert "Notebook(id=" not in content
+
+
+class TestPodcastEpisode:
+    """Test podcast episode database record links."""
+
+    def test_prepare_save_data_converts_notebook_id_to_record_id(self):
+        episode = PodcastEpisode(
+            name="Test episode",
+            episode_profile={},
+            speaker_profile={},
+            briefing="Test briefing",
+            content="Test content",
+            notebook_id="notebook:test",
+        )
+
+        prepared = episode._prepare_save_data()
+
+        assert isinstance(prepared["notebook_id"], RecordID)
+        assert str(prepared["notebook_id"]) == "notebook:test"
 
 
 # ============================================================================
