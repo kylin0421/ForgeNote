@@ -16,7 +16,7 @@ describe('AppSidebar', () => {
   it('renders correctly when expanded', () => {
     render(<AppSidebar />)
 
-    expect(screen.getByText('智学工坊')).toBeDefined()
+    expect(screen.getByText('ForgeNote')).toBeDefined()
     expect(screen.getByText('navigation.sources')).toBeDefined()
     expect(screen.getByText('navigation.notebooks')).toBeDefined()
   })

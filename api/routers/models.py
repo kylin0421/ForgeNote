@@ -17,19 +17,19 @@ from api.model_sync_service import (
     sync_episode_profiles_to_podcast_model,
     sync_speaker_profiles_to_tts,
 )
-from open_notebook.ai.connection_tester import test_individual_model
-from open_notebook.ai.key_provider import provision_provider_keys
-from open_notebook.ai.model_specs import build_model_runtime_spec
-from open_notebook.ai.provider_registration import register_runtime_ai_providers
-from open_notebook.ai.model_discovery import (
+from forgenote.ai.connection_tester import test_individual_model
+from forgenote.ai.key_provider import provision_provider_keys
+from forgenote.ai.model_specs import build_model_runtime_spec
+from forgenote.ai.provider_registration import register_runtime_ai_providers
+from forgenote.ai.model_discovery import (
     discover_provider_models,
     get_provider_model_count,
     sync_all_providers,
     sync_provider_models,
 )
-from open_notebook.ai.models import DefaultModels, Model
-from open_notebook.domain.credential import Credential
-from open_notebook.exceptions import InvalidInputError, NotFoundError
+from forgenote.ai.models import DefaultModels, Model
+from forgenote.domain.credential import Credential
+from forgenote.exceptions import InvalidInputError, NotFoundError
 
 router = APIRouter()
 
@@ -240,7 +240,7 @@ async def create_model(model_data: ModelCreate):
             )
 
         # Check for duplicate model name under the same provider and type (case-insensitive)
-        from open_notebook.database.repository import repo_query
+        from forgenote.database.repository import repo_query
 
         existing = await repo_query(
             "SELECT * FROM model WHERE string::lowercase(provider) = $provider AND string::lowercase(name) = $name AND string::lowercase(type) = $type LIMIT 1",
@@ -707,7 +707,7 @@ async def get_models_by_provider(provider: str):
     Returns models from the database that belong to the specified provider.
     """
     try:
-        from open_notebook.database.repository import repo_query
+        from forgenote.database.repository import repo_query
 
         models = await repo_query(
             "SELECT * FROM model WHERE provider = $provider ORDER BY type, name",
@@ -793,7 +793,7 @@ async def auto_assign_defaults():
         - missing: List of slots with no available models
     """
     try:
-        from open_notebook.database.repository import repo_query
+        from forgenote.database.repository import repo_query
 
         # Get current defaults
         defaults = await DefaultModels.get_instance()

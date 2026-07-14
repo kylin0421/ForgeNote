@@ -49,7 +49,7 @@ async def test_source_processing_queues_transformations_after_extraction(monkeyp
     assert graph_state["embed"] is True
     assert submitted == [
         (
-            "open_notebook",
+            "forgenote",
             "run_transformation",
             {
                 "source_id": "source:test",

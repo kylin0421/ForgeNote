@@ -13,8 +13,8 @@ from api.models import (
     LearningResource,
     LearningSupplementalMaterial,
 )
-from open_notebook.domain.notebook import Note, Notebook
-from open_notebook.utils.command_cancellation import raise_if_command_canceled
+from forgenote.domain.notebook import Note, Notebook
+from forgenote.utils.command_cancellation import raise_if_command_canceled
 
 
 class LearningResourceSearchInput(CommandInput):
@@ -147,7 +147,7 @@ async def create_learning_asset_note(
     return note.id or ""
 
 
-@command("collect_learning_resources", app="open_notebook", retry={"max_attempts": 1})
+@command("collect_learning_resources", app="forgenote", retry={"max_attempts": 1})
 async def collect_learning_resources_command(
     input_data: LearningResourceSearchInput,
 ) -> LearningResourceSearchOutput:
@@ -180,7 +180,7 @@ async def collect_learning_resources_command(
         raise
 
 
-@command("generate_learning_asset", app="open_notebook", retry={"max_attempts": 1})
+@command("generate_learning_asset", app="forgenote", retry={"max_attempts": 1})
 async def generate_learning_asset_command(
     input_data: LearningAssetGenerationInput,
 ) -> LearningAssetGenerationOutput:

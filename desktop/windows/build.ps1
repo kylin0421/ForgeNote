@@ -12,7 +12,7 @@ $BuildRoot = Join-Path $ProjectRoot ".build\windows"
 $DownloadCache = Join-Path $BuildRoot "downloads"
 $PyInstallerWork = Join-Path $BuildRoot "pyinstaller"
 $DistRoot = Join-Path $ProjectRoot "dist\windows"
-$BundleDir = Join-Path $DistRoot "ZhiXue"
+$BundleDir = Join-Path $DistRoot "ForgeNote"
 
 $NodeVersion = "22.23.1"
 $NodeSha256 = "f8d162c0641dcee512132f3bcf8a68169c7ecb852efd8e1a46c9fec5a0f469ed"
@@ -109,15 +109,15 @@ if (-not $ResumeAfterFreeze) {
         --clean `
         --distpath $DistRoot `
         --workpath $PyInstallerWork `
-        (Join-Path $ProjectRoot "desktop\windows\zhixue.spec")
+        (Join-Path $ProjectRoot "desktop\windows\forgenote.spec")
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
 }
 
 if (-not (Test-Path (Join-Path $StandaloneDir "server.js"))) {
     throw "Next.js standalone server was not produced at $StandaloneDir"
 }
-if (-not (Test-Path (Join-Path $BundleDir "ZhiXue.exe"))) {
-    throw "Frozen ZhiXue application was not found at $BundleDir"
+if (-not (Test-Path (Join-Path $BundleDir "ForgeNote.exe"))) {
+    throw "Frozen ForgeNote application was not found at $BundleDir"
 }
 if (-not (Test-Path $TiktokenCache)) {
     throw "Tiktoken cache was not found at $TiktokenCache"
@@ -169,7 +169,7 @@ Copy-Item -LiteralPath (Join-Path $ProjectRoot "LICENSE") -Destination $BundleDi
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "THIRD_PARTY_NOTICES.md") -Destination $BundleDir
 
 if ($PortableZip) {
-    $PortableZipPath = Join-Path $DistRoot "ZhiXue-Portable-$Version.zip"
+    $PortableZipPath = Join-Path $DistRoot "ForgeNote-Portable-$Version.zip"
     Compress-Archive -Path (Join-Path $BundleDir "*") -DestinationPath $PortableZipPath -CompressionLevel Optimal
     Write-Host "Portable bundle: $PortableZipPath"
 }

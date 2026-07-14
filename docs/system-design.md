@@ -2,7 +2,7 @@
 
 ## 总体架构
 
-智学工坊采用前后端分离架构：
+ForgeNote采用前后端分离架构：
 
 ```text
 Next.js 前端
@@ -20,7 +20,7 @@ FastAPI 后端
   └─ credential / settings API
 
 核心能力层
-  ├─ open_notebook domain models
+  ├─ forgenote domain models
   ├─ RAG / semantic index
   ├─ model manager / runtime spec
   ├─ image generation adapter
@@ -41,10 +41,10 @@ SurrealDB + surreal-commands
 - `frontend/src/components/learning/`
 - `frontend/src/app/(dashboard)/notebooks/components/LearningAssetGenerateDialog.tsx`
 - `frontend/src/app/(dashboard)/notebooks/components/MistakeBookDialog.tsx`
-- `open_notebook/ai/image_generation.py`
-- `open_notebook/ai/model_specs.py`
-- `open_notebook/utils/semantic_index.py`
-- `open_notebook/podcasts/robust_creator.py`
+- `forgenote/ai/image_generation.py`
+- `forgenote/ai/model_specs.py`
+- `forgenote/utils/semantic_index.py`
+- `forgenote/podcasts/robust_creator.py`
 
 ## 多智能体协作流程
 
@@ -154,10 +154,10 @@ Studio 区域将生成能力按学习目标组织：
 - text_to_speech
 - speech_to_text
 
-`open_notebook/ai/model_specs.py` 负责把数据库中保存的 provider、model type、model name 解析为运行时 spec：
+`forgenote/ai/model_specs.py` 负责把数据库中保存的 provider、model type、model name 解析为运行时 spec：
 
 - 规范化 OpenAI-compatible、Azure、DashScope 等协议。
-- 根据模型名识别 DashScope/Qwen 图片模型，并通过 `open_notebook/ai/image_generation.py` 调用图片生成接口。
+- 根据模型名识别 DashScope/Qwen 图片模型，并通过 `forgenote/ai/image_generation.py` 调用图片生成接口。
 - 根据模型名识别 Qwen/DashScope TTS、ASR。
 - 区分 DashScope HTTP TTS、realtime TTS、voice conversion、video dubbing。
 - 给不适合普通播客 TTS 的模型返回 warning，避免 quota 和协议误用。

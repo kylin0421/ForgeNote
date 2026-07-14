@@ -244,7 +244,7 @@ class TestCredentialNumCtx:
     """Tests for the Ollama num_ctx override threaded into esperanto config."""
 
     def test_num_ctx_included_when_set(self):
-        from open_notebook.domain.credential import Credential
+        from forgenote.domain.credential import Credential
 
         cred = Credential(
             name="Local Ollama",
@@ -258,7 +258,7 @@ class TestCredentialNumCtx:
         assert config["base_url"] == "http://localhost:11434"
 
     def test_num_ctx_absent_when_unset(self):
-        from open_notebook.domain.credential import Credential
+        from forgenote.domain.credential import Credential
 
         cred = Credential(
             name="Local Ollama",
@@ -272,7 +272,7 @@ class TestAudioProviderWiring:
     """Tests for the new audio providers (Mistral STT/TTS, Deepgram TTS, xAI TTS)."""
 
     def test_classify_voxtral_and_aura(self):
-        from open_notebook.ai.model_discovery import classify_model_type
+        from forgenote.ai.model_discovery import classify_model_type
 
         # Mistral Voxtral: TTS model must not be mis-detected as STT
         assert classify_model_type("voxtral-mini-tts-2603", "mistral") == "text_to_speech"
@@ -299,7 +299,7 @@ class TestAudioProviderWiring:
 
     def test_deepgram_has_env_and_test_model(self):
         from api.credentials_service import PROVIDER_ENV_CONFIG
-        from open_notebook.ai.connection_tester import TEST_MODELS
+        from forgenote.ai.connection_tester import TEST_MODELS
 
         assert PROVIDER_ENV_CONFIG["deepgram"]["required"] == ["DEEPGRAM_API_KEY"]
         assert TEST_MODELS["deepgram"][1] == "text_to_speech"
@@ -314,7 +314,7 @@ class TestModelRuntimeSpecs:
     """Tests for provider/runtime/protocol inference used by model settings."""
 
     def test_qwen_audio_models_are_classified_from_compatible_listings(self):
-        from open_notebook.ai.model_discovery import classify_model_type
+        from forgenote.ai.model_discovery import classify_model_type
 
         assert (
             classify_model_type("qwen3-tts-instruct-flash", "openai_compatible")
@@ -330,7 +330,7 @@ class TestModelRuntimeSpecs:
         )
 
     def test_qwen_batch_tts_routes_to_dashscope_protocol(self):
-        from open_notebook.ai.model_specs import build_model_runtime_spec
+        from forgenote.ai.model_specs import build_model_runtime_spec
 
         spec = build_model_runtime_spec(
             "openai",
@@ -344,7 +344,7 @@ class TestModelRuntimeSpecs:
         assert spec.warnings == []
 
     def test_qwen_realtime_tts_routes_to_dashscope_protocol(self):
-        from open_notebook.ai.model_specs import build_model_runtime_spec
+        from forgenote.ai.model_specs import build_model_runtime_spec
 
         spec = build_model_runtime_spec(
             "openai",
@@ -358,7 +358,7 @@ class TestModelRuntimeSpecs:
         assert spec.warnings == []
 
     def test_qwen_batch_asr_routes_to_openai_compatible_protocol(self):
-        from open_notebook.ai.model_specs import build_model_runtime_spec
+        from forgenote.ai.model_specs import build_model_runtime_spec
 
         spec = build_model_runtime_spec(
             "openai",
@@ -372,7 +372,7 @@ class TestModelRuntimeSpecs:
         assert spec.warnings == []
 
     def test_qwen_realtime_asr_reports_file_transcription_warning(self):
-        from open_notebook.ai.model_specs import build_model_runtime_spec
+        from forgenote.ai.model_specs import build_model_runtime_spec
 
         spec = build_model_runtime_spec(
             "openai",
@@ -390,7 +390,7 @@ class TestModelRuntimeSpecs:
 
         import httpx
 
-        from open_notebook.ai.dashscope_asr import DashScopeSpeechToTextModel
+        from forgenote.ai.dashscope_asr import DashScopeSpeechToTextModel
 
         class FakeClient:
             def __init__(self):
@@ -430,7 +430,7 @@ class TestModelRuntimeSpecs:
         assert result.text == "hello there"
 
     def test_qwen_vc_realtime_tts_reports_pipeline_warning(self):
-        from open_notebook.ai.model_specs import build_model_runtime_spec
+        from forgenote.ai.model_specs import build_model_runtime_spec
 
         spec = build_model_runtime_spec(
             "openai",
@@ -444,7 +444,7 @@ class TestModelRuntimeSpecs:
         assert spec.warnings
 
     def test_mimo_tts_routes_to_mimo_protocol(self):
-        from open_notebook.ai.model_specs import build_model_runtime_spec
+        from forgenote.ai.model_specs import build_model_runtime_spec
 
         spec = build_model_runtime_spec(
             "openai",
@@ -460,7 +460,7 @@ class TestModelRuntimeSpecs:
     def test_mimo_adapter_uses_chat_audio_protocol(self):
         import base64
 
-        from open_notebook.ai.mimo_tts import MiMoTextToSpeechModel
+        from forgenote.ai.mimo_tts import MiMoTextToSpeechModel
 
         audio = b"RIFF-test-audio"
 
@@ -519,7 +519,7 @@ class TestModelRuntimeSpecs:
         import io
         import wave
 
-        from open_notebook.ai.dashscope_tts import DashScopeTextToSpeechModel
+        from forgenote.ai.dashscope_tts import DashScopeTextToSpeechModel
 
         model = DashScopeTextToSpeechModel(
             model_name="qwen3-tts-flash-realtime",
@@ -547,7 +547,7 @@ class TestModelRuntimeSpecs:
 
         import websockets
 
-        from open_notebook.ai.dashscope_tts import DashScopeTextToSpeechModel
+        from forgenote.ai.dashscope_tts import DashScopeTextToSpeechModel
 
         pcm_audio = b"\x00\x00" * 24000
 
@@ -629,7 +629,7 @@ class TestAudioMatrixWiring:
         assert "speech_to_text" in PROVIDER_MODALITIES["elevenlabs"]
 
     def test_classify_matrix(self):
-        from open_notebook.ai.model_discovery import classify_model_type
+        from forgenote.ai.model_discovery import classify_model_type
 
         # Gemini TTS preview is classifiable; plain Gemini STT name stays language
         assert classify_model_type("gemini-3.1-flash-tts-preview", "google") == "text_to_speech"

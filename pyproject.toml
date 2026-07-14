@@ -1,9 +1,9 @@
 [project]
-name = "zhixue-workbench"
+name = "forgenote-workbench"
 version = "0.1.4"
 description = "A personalized multi-agent learning resource generation system"
 authors = [
-    {name = "ZhiXue Team"}
+    {name = "ForgeNote Team"}
 ]
 readme = "README.md"
 classifiers = [
@@ -45,10 +45,10 @@ dependencies = [
 ]
 
 [tool.setuptools]
-package-dir = {"open_notebook" = "open_notebook"}
+package-dir = {"forgenote" = "forgenote"}
 
 [tool.setuptools.package-data]
-open_notebook = ["ai/assets/*"]
+forgenote = ["ai/assets/*"]
 
 
 [project.optional-dependencies]

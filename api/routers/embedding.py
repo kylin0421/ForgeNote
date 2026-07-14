@@ -3,10 +3,10 @@ from loguru import logger
 
 from api.command_service import CommandService
 from api.models import EmbedRequest, EmbedResponse
-from open_notebook.ai.models import model_manager
-from open_notebook.domain.content_settings import ContentSettings
-from open_notebook.domain.notebook import Note, Source
-from open_notebook.exceptions import NotFoundError
+from forgenote.ai.models import model_manager
+from forgenote.domain.content_settings import ContentSettings
+from forgenote.domain.notebook import Note, Source
+from forgenote.exceptions import NotFoundError
 
 router = APIRouter()
 
@@ -72,7 +72,7 @@ async def embed_content(embed_request: EmbedRequest):
                     command_input = {"note_id": item_id}
 
                 command_id = await CommandService.submit_command_job(
-                    "open_notebook",
+                    "forgenote",
                     command_name,
                     command_input,
                 )

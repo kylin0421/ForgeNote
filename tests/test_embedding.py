@@ -1,18 +1,18 @@
 """
-Unit tests for the open_notebook.utils.embedding module.
+Unit tests for the forgenote.utils.embedding module.
 
 Tests embedding generation and mean pooling functionality.
 """
 
 import pytest
 
-from open_notebook.utils.chunking import CHUNK_SIZE
-from open_notebook.utils.embedding import (
+from forgenote.utils.chunking import CHUNK_SIZE
+from forgenote.utils.embedding import (
     generate_embedding,
     generate_embeddings,
     mean_pool_embeddings,
 )
-from open_notebook.utils.token_utils import token_count
+from forgenote.utils.token_utils import token_count
 
 
 def _build_text_exceeding_tokens(fragment: str, threshold_tokens: int) -> str:
@@ -127,7 +127,7 @@ class TestGenerateEmbeddings:
         from unittest.mock import AsyncMock, patch
 
         with patch(
-            "open_notebook.ai.models.model_manager.get_embedding_model",
+            "forgenote.ai.models.model_manager.get_embedding_model",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -143,7 +143,7 @@ class TestGenerateEmbeddings:
         mock_model.aembed = AsyncMock(return_value=[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
 
         with patch(
-            "open_notebook.ai.models.model_manager.get_embedding_model",
+            "forgenote.ai.models.model_manager.get_embedding_model",
             new_callable=AsyncMock,
             return_value=mock_model,
         ):
@@ -180,7 +180,7 @@ class TestGenerateEmbedding:
         mock_model.aembed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
 
         with patch(
-            "open_notebook.ai.models.model_manager.get_embedding_model",
+            "forgenote.ai.models.model_manager.get_embedding_model",
             new_callable=AsyncMock,
             return_value=mock_model,
         ):
@@ -206,7 +206,7 @@ class TestGenerateEmbedding:
         )
 
         with patch(
-            "open_notebook.ai.models.model_manager.get_embedding_model",
+            "forgenote.ai.models.model_manager.get_embedding_model",
             new_callable=AsyncMock,
             return_value=mock_model,
         ):
@@ -221,13 +221,13 @@ class TestGenerateEmbedding:
         """Test that content type parameter is passed through."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        from open_notebook.utils.chunking import ContentType
+        from forgenote.utils.chunking import ContentType
 
         mock_model = MagicMock()
         mock_model.aembed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
 
         with patch(
-            "open_notebook.ai.models.model_manager.get_embedding_model",
+            "forgenote.ai.models.model_manager.get_embedding_model",
             new_callable=AsyncMock,
             return_value=mock_model,
         ):
@@ -244,7 +244,7 @@ class TestGenerateEmbedding:
         from math import ceil
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        from open_notebook.utils.embedding import EMBEDDING_BATCH_SIZE
+        from forgenote.utils.embedding import EMBEDDING_BATCH_SIZE
 
         num_texts = EMBEDDING_BATCH_SIZE * 2 + 3
         texts = [f"text_{i}" for i in range(num_texts)]
@@ -258,7 +258,7 @@ class TestGenerateEmbedding:
         mock_model.aembed = AsyncMock(side_effect=lambda batch: make_embeddings(batch))
 
         with patch(
-            "open_notebook.ai.models.model_manager.get_embedding_model",
+            "forgenote.ai.models.model_manager.get_embedding_model",
             new_callable=AsyncMock,
             return_value=mock_model,
         ):
@@ -286,11 +286,11 @@ class TestGenerateEmbedding:
 
         with (
             patch(
-                "open_notebook.ai.models.model_manager.get_embedding_model",
+                "forgenote.ai.models.model_manager.get_embedding_model",
                 new_callable=AsyncMock,
                 return_value=mock_model,
             ),
-            patch("open_notebook.utils.embedding.EMBEDDING_BATCH_SIZE", 50),
+            patch("forgenote.utils.embedding.EMBEDDING_BATCH_SIZE", 50),
         ):
             result = await generate_embeddings(texts)
 
@@ -318,11 +318,11 @@ class TestGenerateEmbedding:
 
         with (
             patch(
-                "open_notebook.ai.models.model_manager.get_embedding_model",
+                "forgenote.ai.models.model_manager.get_embedding_model",
                 new_callable=AsyncMock,
                 return_value=mock_model,
             ),
-            patch("open_notebook.utils.embedding.EMBEDDING_RETRY_DELAY", 0),
+            patch("forgenote.utils.embedding.EMBEDDING_RETRY_DELAY", 0),
         ):
             result = await generate_embeddings(texts)
             assert result == [[0.1, 0.2], [0.3, 0.4]]
@@ -333,7 +333,7 @@ class TestGenerateEmbedding:
         """Test that RuntimeError is raised after all retries are exhausted."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        from open_notebook.utils.embedding import EMBEDDING_MAX_RETRIES
+        from forgenote.utils.embedding import EMBEDDING_MAX_RETRIES
 
         texts = ["text_a"]
         mock_model = MagicMock()
@@ -342,11 +342,11 @@ class TestGenerateEmbedding:
 
         with (
             patch(
-                "open_notebook.ai.models.model_manager.get_embedding_model",
+                "forgenote.ai.models.model_manager.get_embedding_model",
                 new_callable=AsyncMock,
                 return_value=mock_model,
             ),
-            patch("open_notebook.utils.embedding.EMBEDDING_RETRY_DELAY", 0),
+            patch("forgenote.utils.embedding.EMBEDDING_RETRY_DELAY", 0),
         ):
             with pytest.raises(RuntimeError, match="Failed to generate embeddings"):
                 await generate_embeddings(texts)
@@ -356,7 +356,7 @@ class TestGenerateEmbedding:
     async def test_quota_error_is_not_retried_or_silently_hidden(self):
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        from open_notebook.exceptions import RateLimitError
+        from forgenote.exceptions import RateLimitError
 
         mock_model = MagicMock()
         mock_model.model_name = "quota-limited-model"
@@ -365,7 +365,7 @@ class TestGenerateEmbedding:
         )
 
         with patch(
-            "open_notebook.ai.models.model_manager.get_embedding_model",
+            "forgenote.ai.models.model_manager.get_embedding_model",
             new_callable=AsyncMock,
             return_value=mock_model,
         ):
@@ -384,8 +384,8 @@ class TestErrorClassifier413:
     """Test that 413 payload-too-large errors are classified correctly."""
 
     def test_413_status_code(self):
-        from open_notebook.exceptions import ExternalServiceError
-        from open_notebook.utils.error_classifier import classify_error
+        from forgenote.exceptions import ExternalServiceError
+        from forgenote.utils.error_classifier import classify_error
 
         exc = Exception("HTTP 413: Payload Too Large")
         exc_class, message = classify_error(exc)
@@ -393,8 +393,8 @@ class TestErrorClassifier413:
         assert "payload is too large" in message
 
     def test_request_entity_too_large(self):
-        from open_notebook.exceptions import ExternalServiceError
-        from open_notebook.utils.error_classifier import classify_error
+        from forgenote.exceptions import ExternalServiceError
+        from forgenote.utils.error_classifier import classify_error
 
         exc = Exception("Request Entity Too Large")
         exc_class, message = classify_error(exc)

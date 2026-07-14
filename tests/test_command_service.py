@@ -17,7 +17,7 @@ async def test_submit_command_imports_only_owning_module(monkeypatch):
     )
 
     command_id = await CommandService.submit_command_job(
-        "open_notebook",
+        "forgenote",
         "process_source",
         {"source_id": "source:test"},
     )
@@ -35,7 +35,7 @@ async def test_submit_command_rejects_unknown_command(monkeypatch):
 
     with pytest.raises(ValueError, match="Unknown command"):
         await CommandService.submit_command_job(
-            "open_notebook",
+            "forgenote",
             "unknown_command",
             {},
         )
@@ -65,7 +65,7 @@ async def test_get_command_log_returns_persisted_failure_details(monkeypatch):
         return [
             {
                 "id": "command:failed",
-                "app": "open_notebook",
+                "app": "forgenote",
                 "name": "generate_podcast",
                 "status": "failed",
                 "args": {"episode_name": "demo"},
@@ -94,7 +94,7 @@ async def test_get_command_log_compacts_large_payloads(monkeypatch):
         return [
             {
                 "id": "command:failed",
-                "app": "open_notebook",
+                "app": "forgenote",
                 "name": "generate_podcast",
                 "status": "failed",
                 "args": {"content": "x" * 2000},

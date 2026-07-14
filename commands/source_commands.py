@@ -5,21 +5,21 @@ from loguru import logger
 from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command, submit_command
 
-from open_notebook.database.repository import ensure_record_id
-from open_notebook.domain.notebook import Source
-from open_notebook.domain.transformation import Transformation
-from open_notebook.exceptions import (
+from forgenote.database.repository import ensure_record_id
+from forgenote.domain.notebook import Source
+from forgenote.domain.transformation import Transformation
+from forgenote.exceptions import (
     AuthenticationError,
     ConfigurationError,
     RateLimitError,
 )
-from open_notebook.utils.command_cancellation import raise_if_command_canceled
+from forgenote.utils.command_cancellation import raise_if_command_canceled
 
 from .schemas import SourceProcessingInput
 
 try:
-    from open_notebook.graphs.source import source_graph
-    from open_notebook.graphs.transformation import graph as transform_graph
+    from forgenote.graphs.source import source_graph
+    from forgenote.graphs.transformation import graph as transform_graph
 except ImportError as e:
     logger.error(f"Failed to import graphs: {e}")
     raise ValueError("graphs not available")
@@ -47,7 +47,7 @@ class SourceProcessingOutput(CommandOutput):
 
 @command(
     "process_source",
-    app="open_notebook",
+    app="forgenote",
     retry={
         "max_attempts": 15,  # Handle deep queues (workaround for SurrealDB v2 transaction conflicts)
         "wait_strategy": "exponential_jitter",
@@ -140,7 +140,7 @@ async def process_source_command(
         for transformation in transformations:
             await raise_if_command_canceled(command_id)
             transformation_job_id = submit_command(
-                "open_notebook",
+                "forgenote",
                 "run_transformation",
                 {
                     "source_id": str(processed_source.id),
@@ -220,7 +220,7 @@ class RunTransformationOutput(CommandOutput):
 
 @command(
     "run_transformation",
-    app="open_notebook",
+    app="forgenote",
     retry={
         "max_attempts": 5,
         "wait_strategy": "exponential_jitter",

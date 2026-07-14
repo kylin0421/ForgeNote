@@ -4,8 +4,8 @@ from unittest.mock import Mock
 
 from desktop.windows.launcher import (
     DesktopBridge,
+    ForgeNoteStack,
     ManagedProcess,
-    ZhiXueStack,
     configure_desktop_webview,
     desktop_page,
     ensure_config,
@@ -17,12 +17,12 @@ def test_ensure_config_creates_and_preserves_encryption_key(tmp_path: Path):
     config_path = ensure_config(tmp_path)
     first = read_env_file(config_path)
 
-    assert first["OPEN_NOTEBOOK_ENCRYPTION_KEY"]
+    assert first["FORGENOTE_ENCRYPTION_KEY"]
     assert first["SURREAL_URL"] == "ws://127.0.0.1:8000/rpc"
 
     ensure_config(tmp_path)
     second = read_env_file(config_path)
-    assert second["OPEN_NOTEBOOK_ENCRYPTION_KEY"] == first["OPEN_NOTEBOOK_ENCRYPTION_KEY"]
+    assert second["FORGENOTE_ENCRYPTION_KEY"] == first["FORGENOTE_ENCRYPTION_KEY"]
 
 
 def test_read_env_file_ignores_comments_and_supports_quoted_values(tmp_path: Path):
@@ -33,7 +33,7 @@ def test_read_env_file_ignores_comments_and_supports_quoted_values(tmp_path: Pat
 
 
 def test_stack_forces_utf8_for_windows_child_processes(tmp_path: Path):
-    stack = ZhiXueStack(tmp_path / "app", tmp_path / "profile")
+    stack = ForgeNoteStack(tmp_path / "app", tmp_path / "profile")
 
     assert stack.env["PYTHONUTF8"] == "1"
     assert stack.env["PYTHONIOENCODING"] == "utf-8"
@@ -102,7 +102,7 @@ def test_desktop_bridge_streams_only_local_api_downloads(tmp_path: Path, monkeyp
         "private.bin",
     )
     assert rejected["ok"] is False
-    assert "local ZhiXue API" in rejected["error"]
+    assert "local ForgeNote API" in rejected["error"]
 
 
 def test_worker_readiness_waits_for_live_query_marker(tmp_path: Path):
@@ -120,14 +120,14 @@ def test_worker_readiness_waits_for_live_query_marker(tmp_path: Path):
         log_path=log_path,
     )
 
-    ZhiXueStack._wait_for_log_text(
+    ForgeNoteStack._wait_for_log_text(
         managed, "Starting LIVE query listener for new commands", timeout=0.1
     )
 
 
 def test_stack_defers_worker_until_core_services_are_ready(tmp_path: Path, monkeypatch):
     events = []
-    stack = ZhiXueStack(tmp_path / "app", tmp_path / "profile")
+    stack = ForgeNoteStack(tmp_path / "app", tmp_path / "profile")
 
     monkeypatch.setattr(
         "desktop.windows.launcher.port_is_available", lambda _port: True
@@ -174,7 +174,7 @@ def test_stack_defers_worker_until_core_services_are_ready(tmp_path: Path, monke
 
 def test_desktop_start_does_not_block_on_worker_warmup(tmp_path: Path, monkeypatch):
     events = []
-    stack = ZhiXueStack(tmp_path / "app", tmp_path / "profile")
+    stack = ForgeNoteStack(tmp_path / "app", tmp_path / "profile")
 
     monkeypatch.setattr(
         "desktop.windows.launcher.port_is_available", lambda _port: True

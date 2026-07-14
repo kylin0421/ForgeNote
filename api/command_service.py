@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 from surreal_commands import get_command_status, submit_command
 
-from open_notebook.database.repository import ensure_record_id, repo_query
+from forgenote.database.repository import ensure_record_id, repo_query
 
 DISMISSIBLE_STATUSES = {"failed", "canceled"}
 COMMAND_MODULE_BY_NAME = {
@@ -89,7 +89,7 @@ class CommandService:
 
             # surreal-commands expects: submit_command(app_name, command_name, args)
             cmd_id = submit_command(
-                module_name,  # This is actually the app name (e.g., "open_notebook")
+                module_name,  # This is actually the app name (e.g., "forgenote")
                 command_name,
                 command_args,  # Input data
             )

@@ -1,4 +1,4 @@
-"""Surreal-commands integration for ZhiXue.
+"""Surreal-commands integration for ForgeNote.
 
 Importing this package stays intentionally lightweight. The API only loads the
 command module needed for a submitted job, while the worker calls
@@ -7,7 +7,7 @@ command module needed for a submitted job, while the worker calls
 
 from importlib import import_module
 
-from open_notebook.utils.command_cancellation import install_cancellation_guard
+from forgenote.utils.command_cancellation import install_cancellation_guard
 
 COMMAND_MODULES = (
     "commands.embedding_commands",

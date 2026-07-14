@@ -12,7 +12,7 @@ router = APIRouter()
 
 class CommandExecutionRequest(BaseModel):
     command: str = Field(..., description="Registered background command name")
-    app: str = Field(..., description="Application name (e.g., 'open_notebook')")
+    app: str = Field(..., description="Application name (e.g., 'forgenote')")
     input: Dict[str, Any] = Field(..., description="Arguments to pass to the command")
 
 
@@ -60,7 +60,7 @@ async def execute_command(request: CommandExecutionRequest):
     try:
         # Submit command using app name (not module name)
         job_id = await CommandService.submit_command_job(
-            module_name=request.app,  # This should be "open_notebook"
+            module_name=request.app,  # This should be "forgenote"
             command_name=request.command,
             command_args=request.input,
         )

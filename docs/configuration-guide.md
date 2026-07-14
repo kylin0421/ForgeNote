@@ -1,6 +1,6 @@
 # 配置指南
 
-本文说明智学工坊从“能启动”到“能完整演示多智能体学习资源生成”所需的配置。推荐按顺序完成：基础环境、数据库、后端、前端、模型/API key、默认模型、TTS、学习系统验证。
+本文说明ForgeNote从“能启动”到“能完整演示多智能体学习资源生成”所需的配置。推荐按顺序完成：基础环境、数据库、后端、前端、模型/API key、默认模型、TTS、学习系统验证。
 
 ## 配置目标
 
@@ -36,15 +36,15 @@ cp .env.example .env
 至少需要确认：
 
 ```bash
-OPEN_NOTEBOOK_ENCRYPTION_KEY=change-me-to-a-secret-string
+FORGENOTE_ENCRYPTION_KEY=change-me-to-a-secret-string
 SURREAL_URL=ws://localhost:8000/rpc
 SURREAL_USER=root
 SURREAL_PASSWORD=root
-SURREAL_NAMESPACE=open_notebook
-SURREAL_DATABASE=open_notebook
+SURREAL_NAMESPACE=forgenote
+SURREAL_DATABASE=forgenote
 ```
 
-`OPEN_NOTEBOOK_ENCRYPTION_KEY` 用于加密数据库中的 API key。第一次保存凭据后不要随意修改，否则旧凭据可能无法解密。正式部署时请改成更长的随机字符串。
+`FORGENOTE_ENCRYPTION_KEY` 用于加密数据库中的 API key。第一次保存凭据后不要随意修改，否则旧凭据可能无法解密。正式部署时请改成更长的随机字符串。
 
 ## 2. 数据库配置
 
@@ -56,8 +56,8 @@ SURREAL_DATABASE=open_notebook
 SURREAL_URL=ws://localhost:8000/rpc
 SURREAL_USER=root
 SURREAL_PASSWORD=root
-SURREAL_NAMESPACE=open_notebook
-SURREAL_DATABASE=open_notebook
+SURREAL_NAMESPACE=forgenote
+SURREAL_DATABASE=forgenote
 ```
 
 启动 SurrealDB：
@@ -74,13 +74,13 @@ docker compose up -d surrealdb
 SURREAL_URL=ws://surrealdb:8000/rpc
 ```
 
-`docker-compose.yml` 已经为 `zhixue` 服务配置了这个地址。宿主机访问数据库时仍使用 `localhost:8000`。
+`docker-compose.yml` 已经为 `forgenote` 服务配置了这个地址。宿主机访问数据库时仍使用 `localhost:8000`。
 
 ### 生产或比赛演示注意
 
 - 不要使用默认 `root/root` 暴露到公网。
-- 修改 `SURREAL_USER` 和 `SURREAL_PASSWORD` 后，`surrealdb` 与 `zhixue` 服务需要使用相同值。
-- `SURREAL_NAMESPACE` 和 `SURREAL_DATABASE` 保持 `open_notebook` 是兼容层设计，不影响产品名。
+- 修改 `SURREAL_USER` 和 `SURREAL_PASSWORD` 后，`surrealdb` 与 `forgenote` 服务需要使用相同值。
+- `SURREAL_NAMESPACE` 和 `SURREAL_DATABASE` 保持 `forgenote` 是兼容层设计，不影响产品名。
 
 ## 3. 后端 API 配置
 

@@ -132,7 +132,7 @@ def test_learning_resource_search_endpoint_submits_background_job(monkeypatch):
     assert response.json()["job_id"] == "job-resource-search"
     assert submitted == [
         (
-            "open_notebook",
+            "forgenote",
             "collect_learning_resources",
             {
                 "message": "搜索强化学习入门资料",

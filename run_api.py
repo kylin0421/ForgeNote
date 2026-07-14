@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Startup script for ZhiXue API server.
+Startup script for ForgeNote API server.
 """
 
 import os
@@ -19,7 +19,7 @@ if __name__ == "__main__":
     port = int(os.getenv("API_PORT", "5055"))
     reload = os.getenv("API_RELOAD", "true").lower() == "true"
 
-    print(f"Starting ZhiXue API server on {host}:{port}")
+    print(f"Starting ForgeNote API server on {host}:{port}")
     print(f"Reload mode: {reload}")
 
     uvicorn.run(

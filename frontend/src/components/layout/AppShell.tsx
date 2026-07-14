@@ -47,21 +47,21 @@ const NAV_ITEMS = [
 export function AppShell({ children, title, titleActions }: AppShellProps) {
   const pathname = usePathname()
   const { t } = useTranslation()
-  const { openNotebookDialog, openSourceDialog } = useCreateDialogs()
+  const { showNotebookDialog, openSourceDialog } = useCreateDialogs()
   const showHeaderCreate = pathname !== '/sources'
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <header className="flex h-16 shrink-0 items-center border-b px-5">
         <Link href="/notebooks" className="flex shrink-0 items-center">
-          <Image src="/logo.svg" alt="智学工坊" width={32} height={32} />
+          <Image src="/logo.svg" alt="ForgeNote" width={32} height={32} />
         </Link>
         <div className="ml-2 min-w-0 flex-1 max-w-[min(42vw,36rem)]">
           {title ? (
             title
           ) : (
             <span className="block truncate text-xl font-semibold tracking-tight">
-              智学工坊
+              ForgeNote
             </span>
           )}
         </div>
@@ -126,7 +126,7 @@ export function AppShell({ children, title, titleActions }: AppShellProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onSelect={openNotebookDialog} className="gap-2">
+              <DropdownMenuItem onSelect={showNotebookDialog} className="gap-2">
                 <Book className="h-4 w-4" />
                 新建学习记录
               </DropdownMenuItem>

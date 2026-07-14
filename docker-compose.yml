@@ -4,7 +4,7 @@ services:
     # Credentials default to root:root for a zero-config local setup. Before
     # exposing this instance to a network, set SURREAL_USER / SURREAL_PASSWORD
     # in a .env file (see .env.example). They are applied here and to the
-    # ZhiXue service below, so the two always stay in sync.
+    # ForgeNote service below, so the two always stay in sync.
     command: start --log info --user ${SURREAL_USER:-root} --pass ${SURREAL_PASSWORD:-root} rocksdb:/mydata/mydatabase.db
     user: root  # Required for bind mounts on Linux
     ports:
@@ -16,18 +16,18 @@ services:
     restart: always
     pull_policy: always
 
-  zhixue:
+  forgenote:
     build:
       context: .
       dockerfile: Dockerfile
-    image: zhixue:local
+    image: forgenote:local
     ports:
       - "8502:8502"  # Web UI
       - "5055:5055"  # REST API
     environment:
       # REQUIRED: Change this to your own secret string
       # This encrypts your API keys in the database
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=${OPEN_NOTEBOOK_ENCRYPTION_KEY:-change-me-to-a-secret-string}
+      - FORGENOTE_ENCRYPTION_KEY=${FORGENOTE_ENCRYPTION_KEY:-change-me-to-a-secret-string}
 
       # Database connection. SURREAL_USER / SURREAL_PASSWORD default to root:root
       # for local use; override them in a .env file before exposing the instance
@@ -35,9 +35,9 @@ services:
       - SURREAL_URL=ws://surrealdb:8000/rpc
       - SURREAL_USER=${SURREAL_USER:-root}
       - SURREAL_PASSWORD=${SURREAL_PASSWORD:-root}
-      - SURREAL_NAMESPACE=open_notebook
-      - SURREAL_DATABASE=open_notebook
-      - OPEN_NOTEBOOK_EMBEDDING_BATCH_SIZE=${OPEN_NOTEBOOK_EMBEDDING_BATCH_SIZE:-10}
+      - SURREAL_NAMESPACE=forgenote
+      - SURREAL_DATABASE=forgenote
+      - FORGENOTE_EMBEDDING_BATCH_SIZE=${FORGENOTE_EMBEDDING_BATCH_SIZE:-10}
     volumes:
       - ./notebook_data:/app/data
     depends_on:

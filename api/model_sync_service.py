@@ -2,9 +2,9 @@
 
 from typing import Optional
 
-from open_notebook.ai.model_specs import build_model_runtime_spec
-from open_notebook.ai.models import Model
-from open_notebook.database.repository import ensure_record_id, repo_query
+from forgenote.ai.model_specs import build_model_runtime_spec
+from forgenote.ai.models import Model
+from forgenote.database.repository import ensure_record_id, repo_query
 
 
 BUILT_IN_SPEAKER_PROFILE_NAMES = ["business_panel", "solo_expert", "tech_experts"]

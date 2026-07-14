@@ -7,7 +7,7 @@ import { GeneratePodcastDialog } from '@/components/podcasts/GeneratePodcastDial
 
 interface CreateDialogsContextType {
   openSourceDialog: () => void
-  openNotebookDialog: () => void
+  showNotebookDialog: () => void
   openPodcastDialog: () => void
 }
 
@@ -19,14 +19,14 @@ export function CreateDialogsProvider({ children }: { children: ReactNode }) {
   const [podcastDialogOpen, setPodcastDialogOpen] = useState(false)
 
   const openSourceDialog = useCallback(() => setSourceDialogOpen(true), [])
-  const openNotebookDialog = useCallback(() => setNotebookDialogOpen(true), [])
+  const showNotebookDialog = useCallback(() => setNotebookDialogOpen(true), [])
   const openPodcastDialog = useCallback(() => setPodcastDialogOpen(true), [])
 
   return (
     <CreateDialogsContext.Provider
       value={{
         openSourceDialog,
-        openNotebookDialog,
+        showNotebookDialog,
         openPodcastDialog,
       }}
     >

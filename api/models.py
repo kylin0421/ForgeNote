@@ -748,7 +748,7 @@ class ApiKeyStatusResponse(BaseModel):
     )
     encryption_configured: bool = Field(
         ...,
-        description="Whether OPEN_NOTEBOOK_ENCRYPTION_KEY is set (required to store keys in database)",
+        description="Whether FORGENOTE_ENCRYPTION_KEY is set (required to store keys in database)",
     )
 
 

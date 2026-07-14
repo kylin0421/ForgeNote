@@ -1,66 +1,70 @@
-# 智学工坊 ZhiXue
+# ForgeNote
 
-智学工坊是一款面向高校专业课学习的本地 AI 桌面应用。它把课程讲义、论文、网页与个人笔记整理为可追溯的知识库，并据此生成讲解、测验、闪卡、思维导图、代码实验、拓展阅读和播客。
+**English** | [简体中文](README.zh-CN.md)
 
-![智学工坊课程知识库](docs/assets/demo-knowledge-base.jpg)
+ForgeNote is a local AI desktop app for university-level learning. It turns lecture notes, papers, web pages, and personal notes into a traceable knowledge base, then uses that context to create explanations, quizzes, flashcards, mind maps, coding labs, further reading, and podcasts.
 
-## 核心能力
+![A course knowledge base in ForgeNote](docs/assets/demo-knowledge-base.jpg)
 
-- **课程知识库**：导入 PDF、Word、网页、音频和文本，完成解析、分块、检索与来源管理。
-- **来源约束问答**：围绕已选资料提问，保留上下文与引用，减少脱离材料的回答。
-- **学习资产生成**：按同一课程上下文生成讲解、测验、闪卡、导图、阅读材料、代码实验和图片。
-- **个性化学习闭环**：结合学习画像、测验结果、错题和学习事件调整后续内容与学习路径。
-- **可观测长任务**：解析、生成与播客任务统一进入悬浮任务球；额度、鉴权或模型错误会明确显示，不会静默回退。
-- **本地桌面体验**：Windows 安装包内置后端、前端、数据库与 FFmpeg，在独立 WebView2 窗口中运行。
+## Core features
 
-## 真实课程演示
+- **Course knowledge bases** — Import PDFs, Word documents, web pages, audio, and text, with parsing, chunking, retrieval, and source management built in.
+- **Source-grounded Q&A** — Ask questions about selected materials while preserving context and citations.
+- **Learning asset generation** — Create explanations, quizzes, flashcards, mind maps, reading materials, coding labs, and images from the same course context.
+- **Personalized learning loop** — Adapt future content and learning paths using learner profiles, quiz results, mistakes, and learning events.
+- **Observable background jobs** — Track parsing, generation, and podcast jobs in one place, with clear quota, authentication, and model errors.
+- **Local desktop experience** — Run the backend, frontend, database, and FFmpeg in a self-contained Windows app powered by WebView2.
 
-仓库提供一套可复现的高校专业课系统测试数据，以 [人工智能&python_知识点整理.docx](docs/demo/人工智能&python_知识点整理.docx) 为主资料，在当前桌面 App 中建立“人工智能与 Python 专业课知识库”。它适合作为人工智能、计算机与电子信息相关课程的功能验证基线。
+## Course demo
 
-| 课程模块 | 覆盖内容 |
+The repository includes a reproducible university-course test set. The main source, [人工智能&python_知识点整理.docx](docs/demo/人工智能&python_知识点整理.docx), is used to build an “Artificial Intelligence and Python” course knowledge base in the desktop app. It provides a practical baseline for courses in AI, computer science, and electronic information engineering.
+
+| Course module | Topics covered |
 | --- | --- |
-| Python 与数据处理 | 语法基础、NumPy、数据表示与编程实践 |
-| 机器学习 | 线性/逻辑回归、KNN、K-means、朴素贝叶斯 |
-| 神经网络 | 全连接网络、CNN、参数计算与 Keras 实践 |
-| 知识与推理 | 谓词逻辑、语义网络、框架表示、可信度推理 |
-| 搜索与优化 | 状态空间、启发式搜索、A* 与遗传算法 |
+| Python and data processing | Language fundamentals, NumPy, data representation, and programming practice |
+| Machine learning | Linear and logistic regression, KNN, K-means, and Naive Bayes |
+| Neural networks | Fully connected networks, CNNs, parameter calculations, and Keras practice |
+| Knowledge and reasoning | Predicate logic, semantic networks, frame representation, and certainty reasoning |
+| Search and optimization | State spaces, heuristic search, A*, and genetic algorithms |
 
-测试知识库已经实际生成测验、9 张结构化闪卡、思维导图、代码实验、课程讲解、拓展阅读与中文播客。完整清单和复现建议见 [演示数据说明](docs/demo/README.md)，播客成品可直接 [试听或下载 MP3](docs/demo/人工智能与Python专业课知识库-播客.mp3)。
+The demo knowledge base has been used to generate a quiz, nine structured flashcards, a mind map, a coding lab, a course explanation, further reading, and a Chinese-language podcast. See the [demo data guide](docs/demo/README.md) for the complete list and reproduction notes, or [play the generated MP3](docs/demo/人工智能与Python专业课知识库-播客.mp3).
 
-### 闪卡复习
+### Flashcards
 
-![基于课程来源生成的闪卡](docs/assets/demo-flashcards.jpg)
+![Flashcards generated from course sources](docs/assets/demo-flashcards.jpg)
 
-### 中文播客
+### Podcast
 
-![带字幕与播放控制的课程播客](docs/assets/demo-podcast.jpg)
+![A course podcast with subtitles and playback controls](docs/assets/demo-podcast.jpg)
 
-演示播客使用 `mimo-v2.5-pro` 生成大纲与讲稿，使用 `mimo-v2.5-tts` 合成语音；这些模型可在设置页替换。仓库不包含任何 API key。
+The demo podcast uses `mimo-v2.5-pro` for its outline and script, and `mimo-v2.5-tts` for speech synthesis. You can replace both models in Settings. No API keys are included in this repository.
 
-## 快速开始
+## Quick start
 
-### Windows 桌面安装包（推荐）
+### Windows desktop installer (recommended)
 
-从 [Releases](https://github.com/kylin0421/zhixue/releases/latest) 获取 `ZhiXue-Setup-0.1.4.exe`，双击安装后从桌面或开始菜单启动“智学工坊”。安装包不要求预装 Docker、Python 或 Node.js；旧版本可以直接覆盖升级。
+Download `ForgeNote-Setup-0.1.4.exe` from [Releases](../../releases/latest), run the installer, and launch ForgeNote from the desktop or Start menu. Docker, Python, and Node.js are not required. You can install a newer version over an existing installation.
 
-首次使用时，在“模型”页面添加供应商凭据，再在“设置”页面选择通用文本、Embedding、图片、TTS、STT 及各类学习资产使用的模型。详细步骤见 [配置指南](docs/configuration-guide.md)。
+On first launch, add provider credentials under Models. Then use Settings to select the models for general text, embeddings, images, TTS, STT, and each learning asset. See the [configuration guide](docs/configuration-guide.md) for details.
 
-自行构建安装包：
+To build the installer yourself:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1
 ```
 
-输出位于 `dist/windows/ZhiXue-Setup-0.1.4.exe`，打包与数据目录说明见 [Windows 打包文档](desktop/windows/README.md)。
+The installer is written to `dist/windows/ForgeNote-Setup-0.1.4.exe`. See the [Windows packaging guide](desktop/windows/README.md) for packaging and data-directory details.
 
-### 源码运行（开发）
+### Run from source
+
+Start the API:
 
 ```powershell
 uv sync
 uv run python run_api.py
 ```
 
-另开终端启动前端：
+In another terminal, start the frontend:
 
 ```powershell
 cd frontend
@@ -68,33 +72,33 @@ npm install
 npm run dev
 ```
 
-### Docker（可选）
+### Docker (optional)
 
 ```powershell
 docker compose up -d --build
 ```
 
-Docker 构建依赖 Docker Hub、Debian 和 npm 等外部源；网络受限的 Windows 环境建议直接使用桌面安装包。
+The Docker build downloads dependencies from Docker Hub, Debian, npm, and other external sources. On network-restricted Windows systems, use the desktop installer instead.
 
-## 技术组成
+## Technology
 
-- FastAPI、Next.js、SurrealDB 与后台 command worker
-- 来源分块、Embedding、BM25/语义检索和 RAG
-- OpenAI、OpenAI-compatible、DashScope、Azure OpenAI 等模型协议适配
-- Windows WebView2 桌面壳、PyInstaller、内置 Node.js、SurrealDB 与 FFmpeg
+- FastAPI, Next.js, SurrealDB, and a background command worker
+- Source chunking, embeddings, BM25/semantic retrieval, and RAG
+- OpenAI, OpenAI-compatible, DashScope, and Azure OpenAI protocol adapters
+- A Windows WebView2 shell packaged with PyInstaller, Node.js, SurrealDB, and FFmpeg
 
-底层 Python 包名和部分环境变量仍保留 `open_notebook` / `OPEN_NOTEBOOK_*`，用于兼容既有数据模型、迁移和运行时配置。
+Runtime identifiers use the project-owned `forgenote` Python package, `FORGENOTE_*` environment variables, and the `forgenote` database namespace.
 
-## 验证
+## Verification
 
-项目包含后端单元测试、前端组件测试、Lint、生产构建、Windows 安装包构建与正式目录冒烟测试。测试范围及命令见 [测试说明](docs/testing.md)。
+The project includes backend unit tests, frontend component tests, linting, production builds, Windows installer builds, and packaged-directory smoke tests. See the [testing guide](docs/testing.md) for the full test matrix and commands.
 
-## 文档
+## Documentation
 
-- [需求分析](docs/requirements-analysis.md)
-- [系统设计](docs/system-design.md)
-- [配置指南](docs/configuration-guide.md)
-- [部署与演示](docs/deployment-and-demo.md)
-- [开源与 AI 工具说明](docs/open-source-and-ai-tools.md)
+- [Requirements analysis](docs/requirements-analysis.md)
+- [System design](docs/system-design.md)
+- [Configuration guide](docs/configuration-guide.md)
+- [Deployment and demo](docs/deployment-and-demo.md)
+- [Open-source and AI tooling notes](docs/open-source-and-ai-tools.md)
 
-本项目基于开源 AI notebook 能力持续演进；许可证、依赖与来源说明见仓库内 `LICENSE`、依赖锁定文件及上述开源说明文档。
+ForgeNote is developed from the open-source [Open Notebook](https://github.com/lfnovo/open-notebook) project.

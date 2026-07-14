@@ -79,7 +79,7 @@ git grep --cached -n "<token-prefix>"
 powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1 -SkipDependencyInstall
 ```
 
-构建后使用临时数据目录执行 `ZhiXue.exe --smoke-test`。最近一次结果为退出码 `0`，并确认 SurrealDB、17 个数据库迁移、FastAPI、任务 worker 与 Next.js 前端均通过健康检查。worker 日志包含正常的 `✅ Imported: commands` 和 LIVE query 就绪标记，不再触发中文 Windows 的 GBK 编码异常。
+构建后使用临时数据目录执行 `ForgeNote.exe --smoke-test`。最近一次结果为退出码 `0`，并确认 SurrealDB、17 个数据库迁移、FastAPI、任务 worker 与 Next.js 前端均通过健康检查。worker 日志包含正常的 `✅ Imported: commands` 和 LIVE query 就绪标记，不再触发中文 Windows 的 GBK 编码异常。
 
 默认桌面模式已实际启动验证：Next.js 工作台在无地址栏、无标签页的独立 WebView2 窗口内完整加载；关闭窗口后 `8000`、`5055`、`8502` 均无监听进程。
 
@@ -88,13 +88,13 @@ powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1 -SkipDepend
 执行命令：
 
 ```bash
-docker compose build zhixue
+docker compose build forgenote
 ```
 
 也可只重建应用容器：
 
 ```bash
-docker compose up -d --build --no-deps zhixue
+docker compose up -d --build --no-deps forgenote
 ```
 
 Dockerfile 已加入 `Acquire::Retries=5`；如果 Docker Hub、Debian apt 或 npm 外部源超时，可稍后重试、配置代理或切换镜像源。普通 Windows 用户无需依赖 Docker。

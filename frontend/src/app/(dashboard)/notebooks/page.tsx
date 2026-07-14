@@ -61,7 +61,7 @@ function NotebookTile({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const style = CARD_STYLES[index % CARD_STYLES.length]
 
-  const openNotebook = () => {
+  const navigateToNotebook = () => {
     router.push(`/notebooks/${encodeURIComponent(notebook.id)}`)
   }
 
@@ -79,11 +79,11 @@ function NotebookTile({
       <div
         role="button"
         tabIndex={0}
-        onClick={openNotebook}
+        onClick={navigateToNotebook}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault()
-            openNotebook()
+            navigateToNotebook()
           }
         }}
         className={cn(

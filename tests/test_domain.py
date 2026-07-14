@@ -1,5 +1,5 @@
 """
-Unit tests for the open_notebook.domain module.
+Unit tests for the forgenote.domain module.
 
 This test suite focuses on validation logic, business rules, and data structures
 that can be tested without database mocking.
@@ -16,13 +16,13 @@ from pydantic import ValidationError
 from surrealdb import RecordID
 
 from api.podcast_service import PodcastService
-from open_notebook.ai.models import ModelManager
-from open_notebook.domain.base import RecordModel
-from open_notebook.domain.content_settings import ContentSettings
-from open_notebook.domain.notebook import Asset, Note, Notebook, Source
-from open_notebook.domain.transformation import Transformation
-from open_notebook.exceptions import InvalidInputError
-from open_notebook.podcasts.models import (
+from forgenote.ai.models import ModelManager
+from forgenote.domain.base import RecordModel
+from forgenote.domain.content_settings import ContentSettings
+from forgenote.domain.notebook import Asset, Note, Notebook, Source
+from forgenote.domain.transformation import Transformation
+from forgenote.exceptions import InvalidInputError
+from forgenote.podcasts.models import (
     EpisodeProfile,
     PodcastEpisode,
     SpeakerProfile,
@@ -347,11 +347,11 @@ class TestSourceDomain:
         """Test that vectorize() submits embed_source command when text is valid."""
         source = Source(id="source:test_valid", title="Test", full_text="Real content")
         with patch(
-            "open_notebook.domain.notebook.submit_command", return_value="command:123"
+            "forgenote.domain.notebook.submit_command", return_value="command:123"
         ) as mock_submit:
             result = await source.vectorize()
             mock_submit.assert_called_once_with(
-                "open_notebook",
+                "forgenote",
                 "embed_source",
                 {"source_id": "source:test_valid"},
             )
@@ -579,7 +579,7 @@ class TestContentSettings:
         """Test ContentSettings has proper defaults."""
         settings = ContentSettings()
 
-        assert settings.record_id == "open_notebook:content_settings"
+        assert settings.record_id == "forgenote:content_settings"
         assert settings.default_content_processing_engine_doc == "auto"
         assert settings.default_embedding_option == "ask"
         assert settings.embedding_backend == "embedding_api"
@@ -651,7 +651,7 @@ class TestCredentialConfigBag:
     `config` object instead of a dedicated SCHEMAFULL column."""
 
     def test_prepare_save_data_packs_num_ctx_into_config(self):
-        from open_notebook.domain.credential import Credential
+        from forgenote.domain.credential import Credential
 
         cred = Credential(name="Local Ollama", provider="ollama", num_ctx=16384)
         data = cred._prepare_save_data()
@@ -660,7 +660,7 @@ class TestCredentialConfigBag:
         assert "num_ctx" not in data  # not a top-level column anymore
 
     def test_prepare_save_data_config_none_when_no_extras(self):
-        from open_notebook.domain.credential import Credential
+        from forgenote.domain.credential import Credential
 
         cred = Credential(name="OpenAI", provider="openai")
         data = cred._prepare_save_data()
@@ -669,7 +669,7 @@ class TestCredentialConfigBag:
         assert "num_ctx" not in data
 
     def test_db_row_with_config_lifts_num_ctx_to_top_level(self):
-        from open_notebook.domain.credential import Credential
+        from forgenote.domain.credential import Credential
 
         # Simulates a row read back from the DB
         cred = Credential(
@@ -681,7 +681,7 @@ class TestCredentialConfigBag:
         assert cred.num_ctx == 8192  # mirrored from config onto the convenience field
 
     def test_num_ctx_round_trips_through_save_and_load(self):
-        from open_notebook.domain.credential import Credential
+        from forgenote.domain.credential import Credential
 
         original = Credential(name="Local Ollama", provider="ollama", num_ctx=4096)
         persisted = original._prepare_save_data()
@@ -696,7 +696,7 @@ class TestCredentialConfigBag:
         assert reloaded.to_esperanto_config()["num_ctx"] == 4096
 
     def test_null_config_loads_without_extras(self):
-        from open_notebook.domain.credential import Credential
+        from forgenote.domain.credential import Credential
 
         cred = Credential(name="OpenAI", provider="openai", config=None)
 
@@ -705,7 +705,7 @@ class TestCredentialConfigBag:
         assert cred._prepare_save_data()["config"] is None
 
     def test_unmapped_config_keys_are_preserved_on_save(self):
-        from open_notebook.domain.credential import Credential
+        from forgenote.domain.credential import Credential
 
         # A newer version may have written config keys this model doesn't map.
         # They must survive a load/save round-trip rather than be clobbered
@@ -721,7 +721,7 @@ class TestCredentialConfigBag:
         assert data["config"] == {"num_ctx": 8192, "future_option": "keep-me"}
 
     def test_clearing_num_ctx_keeps_other_config_keys(self):
-        from open_notebook.domain.credential import Credential
+        from forgenote.domain.credential import Credential
 
         cred = Credential(
             name="Local Ollama",
@@ -734,7 +734,7 @@ class TestCredentialConfigBag:
         assert data["config"] == {"future_option": "keep-me"}
 
     def test_mirrored_num_ctx_is_validated_as_int(self):
-        from open_notebook.domain.credential import Credential
+        from forgenote.domain.credential import Credential
 
         # A value coming from the flexible config bag is routed through normal
         # Pydantic field validation, not set raw.

@@ -2,7 +2,7 @@
 
 ## 环境要求
 
-- 普通 Windows 用户：只需要安装智学工坊安装包
+- 普通 Windows 用户：只需要安装ForgeNote安装包
 - 从源码开发或构建安装包时：
   - Python 3.12
   - Node.js 22+
@@ -16,12 +16,12 @@
 完整配置步骤见 [配置指南](configuration-guide.md)。最小环境变量参考 `.env.example`：
 
 ```bash
-OPEN_NOTEBOOK_ENCRYPTION_KEY=change-me-to-a-secret-string
+FORGENOTE_ENCRYPTION_KEY=change-me-to-a-secret-string
 SURREAL_URL=ws://localhost:8000/rpc
 SURREAL_USER=root
 SURREAL_PASSWORD=root
-SURREAL_NAMESPACE=open_notebook
-SURREAL_DATABASE=open_notebook
+SURREAL_NAMESPACE=forgenote
+SURREAL_DATABASE=forgenote
 ```
 
 模型 key 可通过前端“模型/API 配置”页面录入，也可通过环境变量提供。
@@ -38,16 +38,16 @@ SURREAL_DATABASE=open_notebook
 
 ## Windows 安装包（推荐）
 
-运行 `ZhiXue-Setup-0.1.1.exe` 后，通过桌面或开始菜单的“智学工坊”快捷方式启动。安装包会在后台依次启动本地数据库、API、任务 worker 和界面服务，并把现有 Next.js 前端加载到独立的 Windows WebView2 应用窗口中，不再启动外部浏览器。
+运行 `ForgeNote-Setup-0.1.1.exe` 后，通过桌面或开始菜单的“ForgeNote”快捷方式启动。安装包会在后台依次启动本地数据库、API、任务 worker 和界面服务，并把现有 Next.js 前端加载到独立的 Windows WebView2 应用窗口中，不再启动外部浏览器。
 
 桌面窗口使用系统的 Microsoft Edge WebView2 Runtime。Windows 11 和安装了新版 Edge 的 Windows 10 通常已自带；极少数精简系统如果缺失，启动器会给出明确提示。
 
 运行数据不会放进安装目录：
 
-- 配置：`%LOCALAPPDATA%\ZhiXue\config.env`
-- 上传内容与应用数据：`%LOCALAPPDATA%\ZhiXue\data`
-- 数据库：`%LOCALAPPDATA%\ZhiXue\surrealdb`
-- 日志：`%LOCALAPPDATA%\ZhiXue\logs`
+- 配置：`%LOCALAPPDATA%\ForgeNote\config.env`
+- 上传内容与应用数据：`%LOCALAPPDATA%\ForgeNote\data`
+- 数据库：`%LOCALAPPDATA%\ForgeNote\surrealdb`
+- 日志：`%LOCALAPPDATA%\ForgeNote\logs`
 
 因此应用升级和卸载不会自动删除用户数据。构建方法与故障排查见 [`desktop/windows/README.md`](../desktop/windows/README.md)。
 
@@ -81,13 +81,13 @@ docker compose up -d --build
 只重建应用容器时可使用：
 
 ```bash
-docker compose up -d --build --no-deps zhixue
+docker compose up -d --build --no-deps forgenote
 ```
 
 服务：
 
 - `surrealdb`：数据库
-- `zhixue`：前端 + API
+- `forgenote`：前端 + API
 
 注意：当前 Dockerfile 已加入 apt retry，但如果遇到 Debian 源 502，可稍后重试或替换为更稳定的软件源。
 
@@ -116,7 +116,7 @@ docker compose up -d --build --no-deps zhixue
 
 ### 1. 开场：项目定位
 
-说明智学工坊是在 AI notebook 底座上改造的主动式多智能体学习系统，不是通用资料问答工具。
+说明ForgeNote是在 AI notebook 底座上改造的主动式多智能体学习系统，不是通用资料问答工具。
 
 重点展示：
 

@@ -199,7 +199,7 @@ async def test_learning_asset_quota_error_surfaces_instead_of_fallback(monkeypat
 
     monkeypatch.setattr("api.learning_service.provision_langchain_model", fake_provision)
 
-    from open_notebook.exceptions import RateLimitError
+    from forgenote.exceptions import RateLimitError
 
     request = LearningOrchestrationRequest(
         message="生成知识闪卡",

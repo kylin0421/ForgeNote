@@ -10,9 +10,9 @@ from api.models import (
     NotebookResponse,
     NotebookUpdate,
 )
-from open_notebook.database.repository import ensure_record_id, repo_query
-from open_notebook.domain.notebook import Notebook, Source
-from open_notebook.exceptions import InvalidInputError, NotFoundError
+from forgenote.database.repository import ensure_record_id, repo_query
+from forgenote.domain.notebook import Notebook, Source
+from forgenote.exceptions import InvalidInputError, NotFoundError
 
 router = APIRouter()
 

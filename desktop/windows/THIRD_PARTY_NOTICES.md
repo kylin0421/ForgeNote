@@ -1,7 +1,7 @@
 # Third-party runtime notices
 
 The Windows distribution places the following unmodified executables next to
-ZhiXue. They run as separate processes and retain their own licenses.
+ForgeNote. They run as separate processes and retain their own licenses.
 
 - Node.js 22.23.1 — Node.js license and bundled third-party notices:
   https://github.com/nodejs/node/blob/v22.23.1/LICENSE
@@ -14,7 +14,7 @@ ZhiXue. They run as separate processes and retain their own licenses.
   https://github.com/FFmpeg/FFmpeg/commit/38b88335f9
 
 Python packages and frontend npm packages retain the license files and metadata
-included in their bundled distributions. ZhiXue's own source is covered by the
+included in their bundled distributions. ForgeNote's own source is covered by the
 LICENSE file shipped with the application.
 
 The embedded desktop window uses pywebview 6.2.1 (BSD 3-Clause License) and

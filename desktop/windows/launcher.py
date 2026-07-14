@@ -1,4 +1,4 @@
-"""Windows launcher for the self-contained ZhiXue distribution."""
+"""Windows launcher for the self-contained ForgeNote distribution."""
 
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-APP_NAME = "ZhiXue"
-APP_TITLE = "智学工坊"
+APP_NAME = "ForgeNote"
+APP_TITLE = "ForgeNote"
 FRONTEND_URL = "http://127.0.0.1:8502"
 API_HEALTH_URL = "http://127.0.0.1:5055/health"
 
@@ -64,13 +64,13 @@ def ensure_config(data_root: Path) -> Path:
     config_path.write_text(
         "\n".join(
             [
-                "# ZhiXue local configuration. Keep the encryption key stable.",
-                f"OPEN_NOTEBOOK_ENCRYPTION_KEY={secrets.token_urlsafe(32)}",
+                "# ForgeNote local configuration. Keep the encryption key stable.",
+                f"FORGENOTE_ENCRYPTION_KEY={secrets.token_urlsafe(32)}",
                 "SURREAL_URL=ws://127.0.0.1:8000/rpc",
                 "SURREAL_USER=root",
                 "SURREAL_PASSWORD=root",
-                "SURREAL_NAMESPACE=open_notebook",
-                "SURREAL_DATABASE=open_notebook",
+                "SURREAL_NAMESPACE=forgenote",
+                "SURREAL_DATABASE=forgenote",
                 "",
             ]
         ),
@@ -161,7 +161,7 @@ class ManagedProcess:
     log_path: Path
 
 
-class ZhiXueStack:
+class ForgeNoteStack:
     def __init__(
         self,
         app_root: Path,
@@ -187,7 +187,7 @@ class ZhiXueStack:
 
         app_data = self.data_root / "data"
         app_data.mkdir(parents=True, exist_ok=True)
-        env["OPEN_NOTEBOOK_DATA_DIR"] = str(app_data)
+        env["FORGENOTE_DATA_DIR"] = str(app_data)
         env["SURREAL_URL"] = "ws://127.0.0.1:8000/rpc"
         env["INTERNAL_API_URL"] = "http://127.0.0.1:5055"
         env["PORT"] = "8502"
@@ -263,7 +263,7 @@ class ZhiXueStack:
     ) -> None:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            ZhiXueStack._ensure_running(managed)
+            ForgeNoteStack._ensure_running(managed)
             try:
                 content = managed.log_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
@@ -306,7 +306,7 @@ class ZhiXueStack:
                     self.env.get("SURREAL_USER", "root"),
                     "--pass",
                     self.env.get("SURREAL_PASSWORD", "root"),
-                    f"rocksdb:{database_dir / 'zhixue.db'}",
+                    f"rocksdb:{database_dir / 'forgenote.db'}",
                 ],
                 self.app_root,
             )
@@ -340,7 +340,7 @@ class ZhiXueStack:
                     timeout=60,
                 )
             self._ensure_running(worker)
-            self._status("智学工坊已启动")
+            self._status("ForgeNote已启动")
         except Exception:
             self.stop()
             raise
@@ -361,7 +361,7 @@ class ZhiXueStack:
         self.processes.clear()
 
 
-def run_headless(stack: ZhiXueStack, open_browser: bool) -> int:
+def run_headless(stack: ForgeNoteStack, open_browser: bool) -> int:
     stack.start()
     if open_browser:
         webbrowser.open(FRONTEND_URL)
@@ -377,7 +377,7 @@ def run_headless(stack: ZhiXueStack, open_browser: bool) -> int:
         stack.stop()
 
 
-def run_smoke_test(stack: ZhiXueStack) -> int:
+def run_smoke_test(stack: ForgeNoteStack) -> int:
     stack.start()
     try:
         wait_for_http(API_HEALTH_URL, 5)
@@ -506,7 +506,7 @@ class DesktopBridge:
             or parsed.port != 5055
             or not parsed.path.startswith("/api/")
         ):
-            raise ValueError("Desktop downloads are limited to the local ZhiXue API")
+            raise ValueError("Desktop downloads are limited to the local ForgeNote API")
 
     def save_download(
         self,
@@ -573,7 +573,7 @@ def configure_desktop_webview(webview_module) -> None:
     webview_module.settings["ALLOW_DOWNLOADS"] = True
 
 
-def run_desktop(stack: ZhiXueStack) -> int:
+def run_desktop(stack: ForgeNoteStack) -> int:
     import webview
 
     desktop_log_path = stack.logs_dir / "desktop.log"
@@ -663,7 +663,7 @@ def run_desktop(stack: ZhiXueStack) -> int:
         state["failed"] = True
         desktop_log(f"WebView failed: {exc!r}")
         show_native_error(
-            f"无法启动智学工坊桌面窗口：{exc}\n\n"
+            f"无法启动ForgeNote桌面窗口：{exc}\n\n"
             "请确认 Microsoft Edge WebView2 Runtime 已安装。"
         )
     finally:
@@ -674,7 +674,7 @@ def run_desktop(stack: ZhiXueStack) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Start the ZhiXue desktop stack")
+    parser = argparse.ArgumentParser(description="Start the ForgeNote desktop stack")
     parser.add_argument("--component", choices=("api", "worker"))
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--headless", action="store_true")
@@ -690,7 +690,7 @@ def main() -> int:
 
     app_root = application_root()
     data_root = (args.data_dir or default_data_root()).expanduser().resolve()
-    stack = ZhiXueStack(app_root=app_root, data_root=data_root)
+    stack = ForgeNoteStack(app_root=app_root, data_root=data_root)
     if args.smoke_test:
         return run_smoke_test(stack)
     if args.headless:

@@ -8,22 +8,22 @@ from moviepy import AudioFileClip
 from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command
 
-from open_notebook.ai.provider_registration import register_runtime_ai_providers
-from open_notebook.config import DATA_FOLDER
-from open_notebook.database.repository import ensure_record_id, repo_query
-from open_notebook.podcasts.models import (
+from forgenote.ai.provider_registration import register_runtime_ai_providers
+from forgenote.config import DATA_FOLDER
+from forgenote.database.repository import ensure_record_id, repo_query
+from forgenote.podcasts.models import (
     EpisodeProfile,
     PodcastEpisode,
     SpeakerProfile,
     _resolve_default_podcast_model_config,
     _resolve_model_config,
 )
-from open_notebook.utils.command_cancellation import raise_if_command_canceled
+from forgenote.utils.command_cancellation import raise_if_command_canceled
 
 try:
     from podcast_creator import configure
 
-    from open_notebook.podcasts.robust_creator import create_podcast_with_repair
+    from forgenote.podcasts.robust_creator import create_podcast_with_repair
 except ImportError as e:
     logger.error(f"Failed to import podcast_creator: {e}")
     raise ValueError("podcast_creator library not available")
@@ -164,7 +164,7 @@ class PodcastGenerationOutput(CommandOutput):
     error_message: Optional[str] = None
 
 
-@command("generate_podcast", app="open_notebook", retry={"max_attempts": 1})
+@command("generate_podcast", app="forgenote", retry={"max_attempts": 1})
 async def generate_podcast_command(
     input_data: PodcastGenerationInput,
 ) -> PodcastGenerationOutput:

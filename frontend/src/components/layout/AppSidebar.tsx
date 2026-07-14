@@ -78,7 +78,7 @@ export function AppSidebar() {
   const pathname = usePathname()
   const { logout } = useAuth()
   const { isCollapsed, toggleCollapse } = useSidebarStore()
-  const { openSourceDialog, openNotebookDialog } = useCreateDialogs()
+  const { openSourceDialog, showNotebookDialog } = useCreateDialogs()
 
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const [isMac, setIsMac] = useState(true) // Default to Mac for SSR
@@ -94,7 +94,7 @@ export function AppSidebar() {
     if (target === 'source') {
       openSourceDialog()
     } else {
-      openNotebookDialog()
+      showNotebookDialog()
     }
   }
 
@@ -116,7 +116,7 @@ export function AppSidebar() {
             <div className="relative flex items-center justify-center w-full">
               <Image
                 src="/logo.svg"
-                alt="智学工坊"
+                alt="ForgeNote"
                 width={32}
                 height={32}
                 className="transition-opacity group-hover:opacity-0"
@@ -133,9 +133,9 @@ export function AppSidebar() {
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <Image src="/logo.svg" alt="智学工坊" width={32} height={32} />
+                <Image src="/logo.svg" alt="ForgeNote" width={32} height={32} />
                 <span className="text-base font-medium text-sidebar-foreground">
-                  智学工坊
+                  ForgeNote
                 </span>
               </div>
               <Button

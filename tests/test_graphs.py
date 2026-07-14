@@ -1,5 +1,5 @@
 """
-Unit tests for the open_notebook.graphs module.
+Unit tests for the forgenote.graphs module.
 
 This test suite focuses on testing graph structures, tools, and validation
 without heavy mocking of the actual processing logic.
@@ -10,14 +10,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from open_notebook.domain.notebook import Source
-from open_notebook.graphs.prompt import PatternChainState, graph
-from open_notebook.graphs.tools import get_current_timestamp
-from open_notebook.graphs.transformation import (
+from forgenote.domain.notebook import Source
+from forgenote.graphs.prompt import PatternChainState, graph
+from forgenote.graphs.tools import get_current_timestamp
+from forgenote.graphs.transformation import (
     TransformationState,
     run_transformation,
 )
-from open_notebook.graphs.transformation import (
+from forgenote.graphs.transformation import (
     graph as transformation_graph,
 )
 
@@ -108,8 +108,8 @@ class TestTransformationGraph:
         """Test TransformationState structure and fields."""
         from unittest.mock import MagicMock
 
-        from open_notebook.domain.notebook import Source
-        from open_notebook.domain.transformation import Transformation
+        from forgenote.domain.notebook import Source
+        from forgenote.domain.transformation import Transformation
 
         mock_source = MagicMock(spec=Source)
         mock_transformation = MagicMock(spec=Transformation)
@@ -131,7 +131,7 @@ class TestTransformationGraph:
         """Test transformation raises assertion with no content."""
         from unittest.mock import MagicMock
 
-        from open_notebook.domain.transformation import Transformation
+        from forgenote.domain.transformation import Transformation
 
         mock_transformation = MagicMock(spec=Transformation)
 
@@ -162,10 +162,10 @@ class TestSaveSourceTitlePreservation:
     """Test save_source node preserves user-set titles (#670)."""
 
     @pytest.mark.asyncio
-    @patch("open_notebook.graphs.source.Source.get")
+    @patch("forgenote.graphs.source.Source.get")
     async def test_custom_title_preserved(self, mock_get):
         """User-set title is NOT overwritten by content_state.title."""
-        from open_notebook.graphs.source import save_source
+        from forgenote.graphs.source import save_source
 
         mock_source = MagicMock(spec=Source)
         mock_source.title = "My Custom Research Title"
@@ -191,10 +191,10 @@ class TestSaveSourceTitlePreservation:
         mock_source.save.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch("open_notebook.graphs.source.Source.get")
+    @patch("forgenote.graphs.source.Source.get")
     async def test_placeholder_title_replaced(self, mock_get):
         """Placeholder 'Processing...' title IS replaced by extracted title."""
-        from open_notebook.graphs.source import save_source
+        from forgenote.graphs.source import save_source
 
         mock_source = MagicMock(spec=Source)
         mock_source.title = "Processing..."
@@ -220,10 +220,10 @@ class TestSaveSourceTitlePreservation:
         mock_source.save.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch("open_notebook.graphs.source.Source.get")
+    @patch("forgenote.graphs.source.Source.get")
     async def test_none_title_replaced(self, mock_get):
         """None title IS replaced by extracted title."""
-        from open_notebook.graphs.source import save_source
+        from forgenote.graphs.source import save_source
 
         mock_source = MagicMock(spec=Source)
         mock_source.title = None
@@ -249,10 +249,10 @@ class TestSaveSourceTitlePreservation:
         mock_source.save.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch("open_notebook.graphs.source.Source.get")
+    @patch("forgenote.graphs.source.Source.get")
     async def test_empty_title_replaced(self, mock_get):
         """Empty string title IS replaced by extracted title."""
-        from open_notebook.graphs.source import save_source
+        from forgenote.graphs.source import save_source
 
         mock_source = MagicMock(spec=Source)
         mock_source.title = ""

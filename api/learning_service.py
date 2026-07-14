@@ -25,24 +25,24 @@ from api.models import (
     LearningSafetyReport,
 )
 from api.web_search import WebSearchResult, search_web
-from open_notebook.ai.image_generation import generate_image, resolve_image_model_config
-from open_notebook.ai.models import Model
-from open_notebook.ai.provision import provision_langchain_model
-from open_notebook.database.repository import ensure_record_id, repo_query
-from open_notebook.domain.notebook import Notebook, Source
-from open_notebook.exceptions import (
+from forgenote.ai.image_generation import generate_image, resolve_image_model_config
+from forgenote.ai.models import Model
+from forgenote.ai.provision import provision_langchain_model
+from forgenote.database.repository import ensure_record_id, repo_query
+from forgenote.domain.notebook import Notebook, Source
+from forgenote.exceptions import (
     ConfigurationError,
     ExternalServiceError,
+    ForgeNoteError,
     NotFoundError,
-    OpenNotebookError,
 )
-from open_notebook.utils.command_cancellation import raise_if_command_canceled
-from open_notebook.utils.error_classifier import (
+from forgenote.utils.command_cancellation import raise_if_command_canceled
+from forgenote.utils.error_classifier import (
     classify_error,
     raise_if_provider_access_error,
 )
-from open_notebook.utils.semantic_index import _extract_json_payload
-from open_notebook.utils.text_utils import extract_text_content
+from forgenote.utils.semantic_index import _extract_json_payload
+from forgenote.utils.text_utils import extract_text_content
 
 MAX_GENERATION_CONTEXT_CHARS = 24000
 MAX_SOURCE_CHARS = 7000
@@ -65,7 +65,7 @@ DEFAULT_GENERATION_MESSAGE = (
 
 
 def _raise_classified_service_error(error: BaseException) -> NoReturn:
-    if isinstance(error, OpenNotebookError):
+    if isinstance(error, ForgeNoteError):
         raise error
     error_class, user_message = classify_error(error)
     raise error_class(user_message) from error
@@ -1780,7 +1780,7 @@ async def _generate_resources_from_sources(
                 source_context,
             ),
         ]
-    except OpenNotebookError:
+    except ForgeNoteError:
         raise
     except Exception as error:
         logger.error(f"LLM source-grounded asset generation failed: {error}")

@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from open_notebook.utils import semantic_index
+from forgenote.utils import semantic_index
 
 
 def test_extract_json_payload_handles_fenced_json():

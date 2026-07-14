@@ -1,1 +1,1 @@
-"""Desktop distribution helpers for ZhiXue."""
+"""Desktop distribution helpers for ForgeNote."""

@@ -10,8 +10,8 @@ from api.models import (
     RebuildStats,
     RebuildStatusResponse,
 )
-from open_notebook.database.repository import repo_query
-from open_notebook.domain.content_settings import ContentSettings
+from forgenote.database.repository import repo_query
+from forgenote.domain.content_settings import ContentSettings
 
 router = APIRouter()
 
@@ -98,7 +98,7 @@ async def start_rebuild(request: RebuildRequest):
 
         # Submit command
         command_id = await CommandService.submit_command_job(
-            "open_notebook",
+            "forgenote",
             "rebuild_embeddings",
             {
                 "mode": request.mode,

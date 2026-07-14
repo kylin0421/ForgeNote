@@ -10,7 +10,7 @@ import { themeScript } from "@/lib/theme-script";
 import { I18nProvider } from "@/components/providers/I18nProvider";
 
 export const metadata: Metadata = {
-  title: "智学工坊",
+  title: "ForgeNote",
   description: "基于大模型的个性化资源生成与学习多智能体系统",
 };
 

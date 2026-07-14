@@ -1,5 +1,5 @@
 """
-Unit tests for the open_notebook.utils module.
+Unit tests for the forgenote.utils module.
 
 This test suite focuses on testing utility functions that perform actual logic
 without heavy mocking - string processing, validation, and algorithms.
@@ -7,14 +7,14 @@ without heavy mocking - string processing, validation, and algorithms.
 
 import pytest
 
-from open_notebook.utils import (
+from forgenote.utils import (
     clean_thinking_content,
     parse_thinking_content,
     remove_non_ascii,
     remove_non_printable,
     token_count,
 )
-from open_notebook.utils.context_builder import ContextBuilder, ContextConfig
+from forgenote.utils.context_builder import ContextBuilder, ContextConfig
 
 # ============================================================================
 # TEST SUITE 1: Text Utilities

@@ -58,7 +58,7 @@ async def submit_resource_search_job(request: LearningOrchestrationRequest):
         payload["requested_outputs"] = []
         payload.pop("image_model", None)
         job_id = submit_command(
-            "open_notebook",
+            "forgenote",
             "collect_learning_resources",
             payload,
         )
@@ -88,7 +88,7 @@ async def submit_learning_asset_jobs(request: LearningOrchestrationRequest):
             payload["output_kind"] = output_kind
             payload.pop("requested_outputs", None)
             job_id = submit_command(
-                "open_notebook",
+                "forgenote",
                 "generate_learning_asset",
                 payload,
             )

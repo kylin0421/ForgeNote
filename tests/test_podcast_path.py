@@ -14,7 +14,7 @@ from commands.podcast_commands import (
     build_podcast_error_message,
     build_timestamped_transcript,
 )
-from open_notebook.podcasts.robust_creator import (
+from forgenote.podcasts.robust_creator import (
     clean_transcript_json_output,
     limit_transcript_turns,
 )

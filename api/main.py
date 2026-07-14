@@ -37,18 +37,18 @@ from api.routers import (
     transformations,
 )
 from api.routers import commands as commands_router
-from open_notebook.database.async_migrate import AsyncMigrationManager
-from open_notebook.exceptions import (
+from forgenote.database.async_migrate import AsyncMigrationManager
+from forgenote.exceptions import (
     AuthenticationError,
     ConfigurationError,
     ExternalServiceError,
+    ForgeNoteError,
     InvalidInputError,
     NetworkError,
     NotFoundError,
-    OpenNotebookError,
     RateLimitError,
 )
-from open_notebook.utils.encryption import get_secret_from_env
+from forgenote.utils.encryption import get_secret_from_env
 
 
 def _parse_cors_origins(raw: str) -> list[str]:
@@ -106,11 +106,11 @@ async def lifespan(app: FastAPI):
     logger.info("Starting API initialization...")
 
     # Security check: Encryption key
-    if not get_secret_from_env("OPEN_NOTEBOOK_ENCRYPTION_KEY"):
+    if not get_secret_from_env("FORGENOTE_ENCRYPTION_KEY"):
         logger.warning(
-            "OPEN_NOTEBOOK_ENCRYPTION_KEY not set. "
+            "FORGENOTE_ENCRYPTION_KEY not set. "
             "API key encryption will fail until this is configured. "
-            "Set OPEN_NOTEBOOK_ENCRYPTION_KEY to any secret string."
+            "Set FORGENOTE_ENCRYPTION_KEY to any secret string."
         )
 
     # Run database migrations
@@ -139,7 +139,7 @@ async def lifespan(app: FastAPI):
 
     # Run podcast profile data migration (legacy strings -> Model registry)
     try:
-        from open_notebook.podcasts.migration import migrate_podcast_profiles
+        from forgenote.podcasts.migration import migrate_podcast_profiles
 
         await migrate_podcast_profiles()
     except Exception as e:
@@ -154,7 +154,7 @@ async def lifespan(app: FastAPI):
             sync_episode_profiles_to_podcast_model,
             sync_speaker_profiles_to_tts,
         )
-        from open_notebook.ai.models import DefaultModels
+        from forgenote.ai.models import DefaultModels
 
         defaults = await DefaultModels.get_instance()
         await sync_speaker_profiles_to_tts(defaults.default_text_to_speech_model)
@@ -172,7 +172,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="智学工坊 API",
+    title="ForgeNote API",
     description="API for personalized learning multi-agent orchestration",
     lifespan=lifespan,
 )
@@ -294,8 +294,8 @@ async def external_service_error_handler(request: Request, exc: ExternalServiceE
     )
 
 
-@app.exception_handler(OpenNotebookError)
-async def open_notebook_error_handler(request: Request, exc: OpenNotebookError):
+@app.exception_handler(ForgeNoteError)
+async def forgenote_error_handler(request: Request, exc: ForgeNoteError):
     return JSONResponse(
         status_code=500,
         content={"detail": str(exc)},
@@ -332,7 +332,7 @@ app.include_router(learning.router, prefix="/api", tags=["learning"])
 
 @app.get("/")
 async def root():
-    return {"message": "智学工坊 API is running"}
+    return {"message": "ForgeNote API is running"}
 
 
 @app.get("/health")

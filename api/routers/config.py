@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Request
 from loguru import logger
 
-from open_notebook.database.repository import repo_query
+from forgenote.database.repository import repo_query
 router = APIRouter()
 
 # In-memory cache for version check results
