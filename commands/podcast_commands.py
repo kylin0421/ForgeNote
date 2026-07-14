@@ -8,8 +8,8 @@ from moviepy import AudioFileClip
 from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command
 
-from open_notebook.config import DATA_FOLDER
 from open_notebook.ai.provider_registration import register_runtime_ai_providers
+from open_notebook.config import DATA_FOLDER
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.podcasts.models import (
     EpisodeProfile,
@@ -22,6 +22,7 @@ from open_notebook.utils.command_cancellation import raise_if_command_canceled
 
 try:
     from podcast_creator import configure
+
     from open_notebook.podcasts.robust_creator import create_podcast_with_repair
 except ImportError as e:
     logger.error(f"Failed to import podcast_creator: {e}")

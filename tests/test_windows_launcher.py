@@ -1,10 +1,10 @@
-from pathlib import Path
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import Mock
 
 from desktop.windows.launcher import (
-    ManagedProcess,
     DesktopBridge,
+    ManagedProcess,
     ZhiXueStack,
     configure_desktop_webview,
     desktop_page,
@@ -123,3 +123,81 @@ def test_worker_readiness_waits_for_live_query_marker(tmp_path: Path):
     ZhiXueStack._wait_for_log_text(
         managed, "Starting LIVE query listener for new commands", timeout=0.1
     )
+
+
+def test_stack_defers_worker_until_core_services_are_ready(tmp_path: Path, monkeypatch):
+    events = []
+    stack = ZhiXueStack(tmp_path / "app", tmp_path / "profile")
+
+    monkeypatch.setattr(
+        "desktop.windows.launcher.port_is_available", lambda _port: True
+    )
+    monkeypatch.setattr(
+        "desktop.windows.launcher.wait_for_port",
+        lambda _host, port, _timeout: events.append(f"wait:{port}"),
+    )
+    monkeypatch.setattr(
+        "desktop.windows.launcher.wait_for_http",
+        lambda url, _timeout: events.append(f"wait:{url}"),
+    )
+    monkeypatch.setattr(stack, "_resolve_binary", lambda *_args: tmp_path / "bin")
+    monkeypatch.setattr(stack, "_frontend_server", lambda: tmp_path / "server.js")
+    monkeypatch.setattr(
+        stack,
+        "_wait_for_log_text",
+        lambda managed, _expected, timeout: events.append(f"wait:{managed.name}"),
+    )
+
+    def fake_spawn(name, _command, _cwd):
+        events.append(f"spawn:{name}")
+        process = Mock()
+        process.poll.return_value = None
+        managed = ManagedProcess(name, process, Mock(), tmp_path / f"{name}.log")
+        stack.processes.append(managed)
+        return managed
+
+    monkeypatch.setattr(stack, "_spawn", fake_spawn)
+
+    stack.start()
+
+    assert events == [
+        "spawn:surrealdb",
+        "wait:8000",
+        "spawn:api",
+        "spawn:frontend",
+        "wait:http://127.0.0.1:5055/health",
+        "wait:http://127.0.0.1:8502",
+        "spawn:worker",
+        "wait:worker",
+    ]
+
+
+def test_desktop_start_does_not_block_on_worker_warmup(tmp_path: Path, monkeypatch):
+    events = []
+    stack = ZhiXueStack(tmp_path / "app", tmp_path / "profile")
+
+    monkeypatch.setattr(
+        "desktop.windows.launcher.port_is_available", lambda _port: True
+    )
+    monkeypatch.setattr("desktop.windows.launcher.wait_for_port", lambda *_args: None)
+    monkeypatch.setattr("desktop.windows.launcher.wait_for_http", lambda *_args: None)
+    monkeypatch.setattr(stack, "_resolve_binary", lambda *_args: tmp_path / "bin")
+    monkeypatch.setattr(stack, "_frontend_server", lambda: tmp_path / "server.js")
+    monkeypatch.setattr(
+        stack,
+        "_wait_for_log_text",
+        lambda *_args, **_kwargs: events.append("wait:worker"),
+    )
+
+    def fake_spawn(name, _command, _cwd):
+        process = Mock()
+        process.poll.return_value = None
+        managed = ManagedProcess(name, process, Mock(), tmp_path / f"{name}.log")
+        stack.processes.append(managed)
+        return managed
+
+    monkeypatch.setattr(stack, "_spawn", fake_spawn)
+
+    stack.start(wait_for_worker=False)
+
+    assert "wait:worker" not in events

@@ -10,11 +10,14 @@ import uuid
 from pathlib import PurePosixPath
 
 from commands.podcast_commands import (
-    build_timestamped_transcript,
     build_episode_output_dir,
     build_podcast_error_message,
+    build_timestamped_transcript,
 )
-from open_notebook.podcasts.robust_creator import clean_transcript_json_output
+from open_notebook.podcasts.robust_creator import (
+    clean_transcript_json_output,
+    limit_transcript_turns,
+)
 
 
 class TestBuildEpisodeOutputDir:
@@ -105,6 +108,27 @@ def test_clean_transcript_json_output_handles_thinking_wrapper_and_suffix():
     assert clean_transcript_json_output(raw) == (
         '{"transcript":[{"speaker":"Johny Bing","dialogue":"开始。"}]}'
     )
+
+
+def test_clean_transcript_json_output_extracts_outline_after_xml_preface():
+    raw = """
+<segresult>
+Segment 1: 课程回顾
+</segresult>
+<outline>
+{"segments":[{"name":"课程回顾","description":"复习核心概念","size":"short"}]}
+</outline>
+"""
+
+    assert clean_transcript_json_output(raw) == (
+        '{"segments":[{"name":"课程回顾","description":"复习核心概念","size":"short"}]}'
+    )
+
+
+def test_limit_transcript_turns_discards_compatible_model_overflow():
+    dialogue = [f"turn-{index}" for index in range(8)]
+
+    assert limit_transcript_turns(dialogue, 3) == ["turn-0", "turn-1", "turn-2"]
 
 
 def test_tts_404_error_includes_model_provider_guidance():

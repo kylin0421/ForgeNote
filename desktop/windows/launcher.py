@@ -11,9 +11,9 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
-import tempfile
 import urllib.error
 import urllib.request
 import webbrowser
@@ -142,7 +142,9 @@ def run_component(component: str) -> int:
     if component == "worker":
         from surreal_commands.cli.worker import main as worker_main
 
-        import commands  # noqa: F401 - registers commands for the worker
+        import commands
+
+        commands.register_all()
 
         sys.argv = ["surreal-commands-worker", "--import-modules", "commands"]
         worker_main()
@@ -273,7 +275,7 @@ class ZhiXueStack:
             f"Timed out waiting for {managed.name} readiness marker: {expected}"
         )
 
-    def start(self) -> None:
+    def start(self, *, wait_for_worker: bool = True) -> None:
         occupied = [port for port in (8000, 5055, 8502) if not port_is_available(port)]
         if occupied:
             raise RuntimeError(
@@ -313,26 +315,31 @@ class ZhiXueStack:
 
             self._status("正在启动 API…")
             api = self._spawn("api", component_command("api"), self.app_root)
+            frontend = self._spawn(
+                "frontend", [str(node), str(frontend_server)], frontend_server.parent
+            )
+
+            # The frontend is cheap to start and can warm while the API imports.
+            # The worker is intentionally deferred: its full AI dependency graph
+            # competes heavily with the API during a frozen-process cold start.
             wait_for_http(API_HEALTH_URL, 90)
             self._ensure_running(api)
+
+            self._status("正在启动应用界面…")
+            wait_for_http(FRONTEND_URL, 60)
+            self._ensure_running(frontend)
 
             self._status("正在启动任务服务…")
             worker = self._spawn(
                 "worker", component_command("worker"), self.app_root
             )
-            self._wait_for_log_text(
-                worker,
-                "Starting LIVE query listener for new commands",
-                timeout=60,
-            )
+            if wait_for_worker:
+                self._wait_for_log_text(
+                    worker,
+                    "Starting LIVE query listener for new commands",
+                    timeout=60,
+                )
             self._ensure_running(worker)
-
-            self._status("正在启动应用界面…")
-            frontend = self._spawn(
-                "frontend", [str(node), str(frontend_server)], frontend_server.parent
-            )
-            wait_for_http(FRONTEND_URL, 60)
-            self._ensure_running(frontend)
             self._status("智学工坊已启动")
         except Exception:
             self.stop()
@@ -621,7 +628,10 @@ def run_desktop(stack: ZhiXueStack) -> int:
     def start_services_and_monitor() -> None:
         desktop_log("Service startup callback invoked")
         try:
-            stack.start()
+            # Show the usable workspace as soon as the database, API and UI are
+            # ready. The worker continues warming in the background; commands
+            # submitted during that brief window remain queued in SurrealDB.
+            stack.start(wait_for_worker=False)
             desktop_log("Local services are ready")
             if not closing.is_set():
                 window.load_url(FRONTEND_URL)

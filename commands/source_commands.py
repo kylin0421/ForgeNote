@@ -15,6 +15,8 @@ from open_notebook.exceptions import (
 )
 from open_notebook.utils.command_cancellation import raise_if_command_canceled
 
+from .schemas import SourceProcessingInput
+
 try:
     from open_notebook.graphs.source import source_graph
     from open_notebook.graphs.transformation import graph as transform_graph
@@ -32,14 +34,6 @@ def full_model_dump(model):
         return [full_model_dump(item) for item in model]
     else:
         return model
-
-
-class SourceProcessingInput(CommandInput):
-    source_id: str
-    content_state: Dict[str, Any]
-    notebook_ids: List[str]
-    transformations: List[str]
-    embed: bool
 
 
 class SourceProcessingOutput(CommandOutput):

@@ -1,3 +1,4 @@
+from importlib import import_module
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
@@ -5,8 +6,22 @@ from surreal_commands import get_command_status, submit_command
 
 from open_notebook.database.repository import ensure_record_id, repo_query
 
-
 DISMISSIBLE_STATUSES = {"failed", "canceled"}
+COMMAND_MODULE_BY_NAME = {
+    "collect_learning_resources": "commands.learning_commands",
+    "create_insight": "commands.embedding_commands",
+    "embed_chunk": "commands.embedding_commands",
+    "embed_insight": "commands.embedding_commands",
+    "embed_note": "commands.embedding_commands",
+    "embed_single_item": "commands.embedding_commands",
+    "embed_source": "commands.embedding_commands",
+    "generate_learning_asset": "commands.learning_commands",
+    "generate_podcast": "commands.podcast_commands",
+    "process_source": "commands.source_commands",
+    "rebuild_embeddings": "commands.embedding_commands",
+    "run_transformation": "commands.source_commands",
+    "vectorize_source": "commands.embedding_commands",
+}
 MAX_LOG_STRING_LENGTH = 1200
 MAX_LOG_COLLECTION_ITEMS = 12
 MAX_LOG_DEPTH = 4
@@ -60,13 +75,17 @@ class CommandService:
     ) -> str:
         """Submit a generic command job for background processing"""
         try:
-            # Ensure command modules are imported before submitting
-            # This is needed because submit_command validates against local registry
+            # submit_command validates against the local registry. Import only
+            # the module that owns this job instead of loading every AI provider
+            # and podcast dependency during API startup.
+            module_name_to_import = COMMAND_MODULE_BY_NAME.get(command_name)
+            if module_name_to_import is None:
+                raise ValueError(f"Unknown command: {command_name}")
             try:
-                import commands.podcast_commands  # noqa: F401
+                import_module(module_name_to_import)
             except ImportError as import_err:
-                logger.error(f"Failed to import command modules: {import_err}")
-                raise ValueError("Command modules not available")
+                logger.error(f"Failed to import {module_name_to_import}: {import_err}")
+                raise ValueError("Command module not available") from import_err
 
             # surreal-commands expects: submit_command(app_name, command_name, args)
             cmd_id = submit_command(

@@ -1,137 +1,68 @@
 # 智学工坊 ZhiXue
 
-智学工坊是面向“基于大模型的个性化资源生成与学习多智能体系统开发”赛题的 Web 应用。项目在成熟的 AI notebook 开源底座上开发，保留其资料管理、笔记、RAG 问答、模型配置、数据库与前后端工程能力，同时围绕赛题主题做了大幅产品化改造：从通用、偏被动的 notebook，升级为面向高校课程学习的主动式多智能体学习系统。
+智学工坊是一款面向高校专业课学习的本地 AI 桌面应用。它把课程讲义、论文、网页与个人笔记整理为可追溯的知识库，并据此生成讲解、测验、闪卡、思维导图、代码实验、拓展阅读和播客。
 
-核心变化不是简单换名或换皮，而是把 notebook 的“资料容器”能力扩展为“学习画像 + 多智能体协作 + 个性化资源生成 + 学习路径规划 + 评估反馈”的闭环。
+![智学工坊课程知识库](docs/assets/demo-knowledge-base.jpg)
 
-## 赛题定位
+## 核心能力
 
-- 目标用户：高校学生，尤其是计算机、人工智能、电子信息等专业课程学习场景。
-- 典型痛点：课程资料分散、资源质量参差不齐、学习进度和知识基础差异大、缺少即时个性化指导。
-- 产品形态：可运行的 Web 学习工作台，支持课程资料导入、对话式学习画像、资源搜集、多模态学习资产生成、路径推荐和学习效果反馈。
-- 开发策略：基于 notebook 底座降低工程风险，把主要创新集中在赛题所需的主动学习、多智能体编排、资源个性化和安全可控生成。
+- **课程知识库**：导入 PDF、Word、网页、音频和文本，完成解析、分块、检索与来源管理。
+- **来源约束问答**：围绕已选资料提问，保留上下文与引用，减少脱离材料的回答。
+- **学习资产生成**：按同一课程上下文生成讲解、测验、闪卡、导图、阅读材料、代码实验和图片。
+- **个性化学习闭环**：结合学习画像、测验结果、错题和学习事件调整后续内容与学习路径。
+- **可观测长任务**：解析、生成与播客任务统一进入悬浮任务球；额度、鉴权或模型错误会明确显示，不会静默回退。
+- **本地桌面体验**：Windows 安装包内置后端、前端、数据库与 FFmpeg，在独立 WebView2 窗口中运行。
 
-## 赛题要求对齐
+## 真实课程演示
 
-| 赛题要求 | 智学工坊实现 |
+仓库提供一套可复现的高校专业课系统测试数据，以 [人工智能&python_知识点整理.docx](docs/demo/人工智能&python_知识点整理.docx) 为主资料，在当前桌面 App 中建立“人工智能与 Python 专业课知识库”。它适合作为人工智能、计算机与电子信息相关课程的功能验证基线。
+
+| 课程模块 | 覆盖内容 |
 | --- | --- |
-| 对话式学习画像自主构建 | 在每个学习记录中维护“学习画像”来源，支持从自然语言输入、学习行为、资源使用和练习反馈中持续更新画像。画像覆盖专业背景、学习目标、知识基础、认知风格、易错点、资源偏好、学习进度等不少于 6 个维度。 |
-| 多智能体协同资源生成 | 设计画像、课程、资源搜索、资产生成、练习、路径规划、辅导、评估、安全等角色，围绕同一学习目标协作。支持讲解文档、测验、闪卡、思维导图、拓展阅读、代码实验、播客等至少 5 类资源。 |
-| 个性化学习路径规划和资源推送 | 根据画像、课程内容、已接受来源、薄弱点和学习事件生成下一步学习顺序，并在 Studio 区域按类型展示可用资源。 |
-| 智能辅导加分项 | 保留并强化 notebook 内的来源约束问答，在学习页中结合 RAG、引用和上下文 token 预算进行即时答疑。 |
-| 学习效果评估加分项 | 通过学习事件、测验/资产使用反馈更新画像，并为后续资源推送和路径规划提供依据。 |
-| 防幻觉与内容安全 | 独立安全质检角色检查来源一致性、敏感内容和输出质量；生成内容优先绑定可追溯来源和引用。 |
-| 生成进度追踪或流式呈现 | 支持 SSE 流式编排事件和后台 command job；前端有任务浮窗，展示排队、运行、失败、日志和结果摘要。 |
-| 界面与交互 | Next.js 工作台界面，Markdown 渲染、多模态内容卡片、模型设置、资源搜索和 Studio 资产入口集中展示。 |
+| Python 与数据处理 | 语法基础、NumPy、数据表示与编程实践 |
+| 机器学习 | 线性/逻辑回归、KNN、K-means、朴素贝叶斯 |
+| 神经网络 | 全连接网络、CNN、参数计算与 Keras 实践 |
+| 知识与推理 | 谓词逻辑、语义网络、框架表示、可信度推理 |
+| 搜索与优化 | 状态空间、启发式搜索、A* 与遗传算法 |
 
-## 当前版本体验更新
+测试知识库已经实际生成测验、9 张结构化闪卡、思维导图、代码实验、课程讲解、拓展阅读与中文播客。完整清单和复现建议见 [演示数据说明](docs/demo/README.md)，播客成品可直接 [试听或下载 MP3](docs/demo/人工智能与Python专业课知识库-播客.mp3)。
 
-- 学习记录页新增独立“学习曲线”入口，展示最近 14 天学习量、学习质量、测验正确率、每日明细和近期学习建议。
-- 错题本从左侧来源区移出，作为学习记录顶部独立入口展示；测验错题可集中查看，并支持错题本导出。
-- 学习画像改为用户友好的摘要视图，自动压缩后台学习信号、题干和错题记录，突出背景、当前目标、易错点和资源偏好。
-- 来源栏将“添加来源”和“搜集资料”调整为标题下方的大按钮，便于继续导入网页、文件、音频或文本资料。
-- Studio 侧强化测验总结与相似题练习、播客播放队列、字幕同步、倍速控制，以及更清晰的学习资产入口。
-- 对话区支持鼠标框选历史回答后引用继续追问，并根据最近回答推荐下一句可问的问题。
-- 思维导图体验侧重图形化树状展示、默认折叠、全屏查看和后续编辑能力；代码实验室支持可编辑的 notebook 代码内容，其他学习资产默认不暴露编辑入口。
-- 导出能力按资产类型收敛：课程学习讲解可导出文档，测验可导出错题本，思维导图可导出 Markdown 或展开节点后的图片，代码实验室可导出 Jupyter Notebook，播客可导出 WAV，拓展阅读和闪卡不提供导出。
-- 模型设置页改为“基础默认项 + 高级覆盖”：基础区配置通用文本、Embedding、图片、TTS、STT；高级区再按 Studio 功能指定模型，避免每个功能都重复手动设置。
-- DashScope/Qwen 图片模型已接入 `qwen-image`，可作为 `default_image_model` 用于图片生成和视觉辅助测试。
-- 语音与播客配置补充 MiMo/Xiaomi TTS 适配说明，Embedding 批量请求已兼容单批不超过 10 条的模型限制，播客 episode 已绑定 notebook 以便 Studio 正确显示。
+### 闪卡复习
 
-## 实际运行截图
+![基于课程来源生成的闪卡](docs/assets/demo-flashcards.jpg)
 
-以下截图来自本地实际运行环境：前端 `http://127.0.0.1:8504`，API `http://127.0.0.1:5055`，时间为 2026-06-28。
+### 中文播客
 
-### 学习工作台
+![带字幕与播放控制的课程播客](docs/assets/demo-podcast.jpg)
 
-![学习工作台](docs/assets/screenshot-learning-workspace.png)
+演示播客使用 `mimo-v2.5-pro` 生成大纲与讲稿，使用 `mimo-v2.5-tts` 合成语音；这些模型可在设置页替换。仓库不包含任何 API key。
 
-### 学习记录列表
+## 快速开始
 
-![学习记录列表](docs/assets/screenshot-notebooks.png)
+### Windows 桌面安装包（推荐）
 
-### 模型与 API 配置
+从 [Releases](https://github.com/kylin0421/zhixue/releases/latest) 获取 `ZhiXue-Setup-0.1.4.exe`，双击安装后从桌面或开始菜单启动“智学工坊”。安装包不要求预装 Docker、Python 或 Node.js；旧版本可以直接覆盖升级。
 
-![模型与 API 配置](docs/assets/screenshot-model-settings.png)
+首次使用时，在“模型”页面添加供应商凭据，再在“设置”页面选择通用文本、Embedding、图片、TTS、STT 及各类学习资产使用的模型。详细步骤见 [配置指南](docs/configuration-guide.md)。
 
-### 问询与搜索智能体入口
-
-![问询与搜索](docs/assets/screenshot-search-agent.png)
-
-## 多智能体设计
-
-系统采用“角色分工 + 共享学习上下文 + 可观测任务状态”的多智能体协作方式。每个智能体并不是孤立聊天机器人，而是在同一个学习记录、资料库、画像和模型配置之上协同工作。
-
-| 智能体 | 职责 |
-| --- | --- |
-| 画像智能体 | 从学生对话、课程目标、历史事件中提取画像维度，并把变化写回学习画像。 |
-| 课程智能体 | 拆解课程目标、知识点、先修关系、学习难度和阶段性任务。 |
-| 资源搜索智能体 | 根据学习目标和短板规划检索，搜集候选资料，供学生确认后纳入上下文。 |
-| 资产生成智能体 | 基于画像和已接受来源生成讲解文档、导图、阅读材料等学习资产。 |
-| 练习智能体 | 生成测验、闪卡、代码实验和实践任务，并记录练习反馈。 |
-| 路径规划智能体 | 把资源、练习和学生进度组织为动态学习步骤。 |
-| 辅导智能体 | 在学习过程中提供来源感知的问答解释。 |
-| 评估智能体 | 分析学习行为、练习结果和资源反馈，调整推荐策略。 |
-| 安全智能体 | 检查幻觉风险、来源一致性、敏感内容和输出质量。 |
-
-## 技术亮点
-
-- 以 notebook 为知识底座：复用资料导入、来源管理、笔记、RAG、引用、模型和数据库能力，把通用资料库改造成课程学习空间。
-- 模型用途化管理：保留供应商/API key 管理，同时提供通用文本、Embedding、图片、TTS、STT 基础默认项；高级设置可覆盖聊天、RAG、资源搜索、学习资产、讲解、测验、闪卡、导图、阅读、代码实验、播客等具体用途。
-- 多协议模型适配：支持 OpenAI、OpenAI-compatible、DashScope、Azure/OpenAI 等协议归一；TTS 管线额外区分 DashScope HTTP TTS、realtime TTS、语音克隆/配音模型；图片生成支持 DashScope `qwen-image` 原生多模态接口。
-- 来源约束生成：学习资产优先基于已接受来源和语义索引生成，减少“看似合理但不可追溯”的内容。
-- 任务可观测：长任务走 command job，前端任务浮窗可显示状态、日志、失败原因和结果摘要，适合演示多智能体流程。
-- 多模态资源形态：文本讲解、结构化题目、闪卡、思维导图、拓展阅读、代码实验、播客音频脚本/TTS 管线共同组成资源池。
-- 安全与可控：API key 加密存储，内容生成有安全检查角色，文档中明确开源来源、协议和 AI Coding 工具使用边界。
-
-## 主要目录
-
-```text
-api/                         FastAPI 路由与学习服务
-commands/                    surreal-commands 后台任务
-frontend/                    Next.js 前端工作台
-open_notebook/               notebook 底座与 AI/数据库/播客等核心模块
-open_notebook/ai/model_specs.py
-                             多协议模型 spec 与 TTS 协议判断
-open_notebook/utils/semantic_index.py
-                             轻量语义索引与资源检索辅助
-docs/                        比赛文档与截图
-tests/                       后端和学习系统单元测试
-```
-
-底层 Python 包名仍保留 `open_notebook`，部分环境变量仍沿用 `OPEN_NOTEBOOK_*`。这是为了兼容原底座的数据模型、迁移和运行时配置，不代表产品仍是原通用 notebook。
-
-## 启动与部署
-
-普通 Windows 用户请优先使用桌面安装包。这是当前默认推荐、验证最完整的部署方式，无需安装 Docker、Python 或 Node.js，也不会打开外部浏览器。源码运行主要用于开发，Docker 作为可选部署方式保留。
-
-### Windows 桌面安装包（首选）
-
-Windows 安装包内置 Python 后端、任务服务、Next.js、Node.js、SurrealDB v2 和 FFmpeg。安装后双击“智学工坊”即可启动，无需安装 Docker、Python 或 Node.js；启动器会完成健康检查，并在独立的 Windows WebView2 应用窗口中显示现有界面，不再打开外部浏览器。
-
-获得 `ZhiXue-Setup-0.1.4.exe` 后直接双击安装，再从桌面或开始菜单启动“智学工坊”。已安装旧版本时，可以直接运行新版安装包覆盖升级。
-
-需要自行构建安装包时：
+自行构建安装包：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1
 ```
 
-输出位于 `dist/windows/ZhiXue-Setup-0.1.4.exe`。用户数据、密钥配置和日志分别持久化在 `%LOCALAPPDATA%\ZhiXue` 下，卸载或升级应用不会覆盖这些数据。详细说明见 [Windows 打包说明](desktop/windows/README.md)。
-
-完整的模型与 API key 配置见 [配置指南](docs/configuration-guide.md)。
+输出位于 `dist/windows/ZhiXue-Setup-0.1.4.exe`，打包与数据目录说明见 [Windows 打包文档](desktop/windows/README.md)。
 
 ### 源码运行（开发）
 
-后端：
-
-```bash
+```powershell
+uv sync
 uv run python run_api.py
 ```
 
-前端：
+另开终端启动前端：
 
-```bash
+```powershell
 cd frontend
 npm install
 npm run dev
@@ -139,45 +70,31 @@ npm run dev
 
 ### Docker（可选）
 
-```bash
+```powershell
 docker compose up -d --build
 ```
 
-默认访问地址：
+Docker 构建依赖 Docker Hub、Debian 和 npm 等外部源；网络受限的 Windows 环境建议直接使用桌面安装包。
 
-- 前端：`http://localhost:8502`
-- API：`http://localhost:5055`
-- 数据库：`http://localhost:8000`
+## 技术组成
 
-## 演示流程
+- FastAPI、Next.js、SurrealDB 与后台 command worker
+- 来源分块、Embedding、BM25/语义检索和 RAG
+- OpenAI、OpenAI-compatible、DashScope、Azure OpenAI 等模型协议适配
+- Windows WebView2 桌面壳、PyInstaller、内置 Node.js、SurrealDB 与 FFmpeg
 
-1. 创建一个课程学习记录，例如“人工智能导论”或“机器学习基础”。
-2. 上传课程讲义、论文、网页或笔记材料，形成初始知识库。
-3. 在学习画像区输入学生背景、目标、薄弱点和偏好。
-4. 使用“按目标搜集资料”让资源搜索智能体给出候选外部资料。
-5. 在 Studio 中生成课程学习讲解、测验、闪卡、思维导图、拓展阅读、代码实验和播客，并验证各资产的编辑/导出规则。
-6. 观察任务浮窗和生成日志，展示多智能体协作进度。
-7. 通过问答、测验反馈或资产使用事件更新画像，再生成下一阶段学习路径。
+底层 Python 包名和部分环境变量仍保留 `open_notebook` / `OPEN_NOTEBOOK_*`，用于兼容既有数据模型、迁移和运行时配置。
 
-## 配套文档
+## 验证
 
-- [需求分析说明](docs/requirements-analysis.md)
-- [系统开发说明](docs/system-design.md)
+项目包含后端单元测试、前端组件测试、Lint、生产构建、Windows 安装包构建与正式目录冒烟测试。测试范围及命令见 [测试说明](docs/testing.md)。
+
+## 文档
+
+- [需求分析](docs/requirements-analysis.md)
+- [系统设计](docs/system-design.md)
 - [配置指南](docs/configuration-guide.md)
-- [测试说明](docs/testing.md)
-- [部署与演示指南](docs/deployment-and-demo.md)
+- [部署与演示](docs/deployment-and-demo.md)
 - [开源与 AI 工具说明](docs/open-source-and-ai-tools.md)
 
-## 验证状态
-
-最近一次本地验证（2026-07-13）：
-
-- `uv run pytest -q`：241 passed，2 warnings
-- `cd frontend && npm test -- --run`：53 passed
-- `cd frontend && npm run lint`：0 errors，6 warnings
-- `cd frontend && npm run build`：通过
-- `desktop/windows/build.ps1 -SkipDependencyInstall`：正式 Windows 安装包构建通过
-- 正式目录版执行 `--smoke-test`：SurrealDB、数据库迁移、API、任务 worker 和 Next.js 前端均通过健康检查；worker 的 `✅` Unicode 日志在中文 Windows 上正常写入
-- 正式目录版默认启动：已验证 Next.js 工作台在独立 WebView2 窗口内加载，关闭窗口后所有本地服务正常退出
-
-Docker 仍作为可选部署方式保留。若 Docker Hub、Debian apt 或 npm 外部源连接超时，可改用 Windows 安装包，或配置可用的镜像/代理后再构建。
+本项目基于开源 AI notebook 能力持续演进；许可证、依赖与来源说明见仓库内 `LICENSE`、依赖锁定文件及上述开源说明文档。

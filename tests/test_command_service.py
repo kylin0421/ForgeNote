@@ -4,6 +4,44 @@ from api.command_service import CommandService
 
 
 @pytest.mark.asyncio
+async def test_submit_command_imports_only_owning_module(monkeypatch):
+    imported = []
+
+    monkeypatch.setattr(
+        "api.command_service.import_module",
+        lambda name: imported.append(name),
+    )
+    monkeypatch.setattr(
+        "api.command_service.submit_command",
+        lambda app, name, args: "command:test",
+    )
+
+    command_id = await CommandService.submit_command_job(
+        "open_notebook",
+        "process_source",
+        {"source_id": "source:test"},
+    )
+
+    assert command_id == "command:test"
+    assert imported == ["commands.source_commands"]
+
+
+@pytest.mark.asyncio
+async def test_submit_command_rejects_unknown_command(monkeypatch):
+    monkeypatch.setattr(
+        "api.command_service.submit_command",
+        lambda app, name, args: pytest.fail("submit_command should not be called"),
+    )
+
+    with pytest.raises(ValueError, match="Unknown command"):
+        await CommandService.submit_command_job(
+            "open_notebook",
+            "unknown_command",
+            {},
+        )
+
+
+@pytest.mark.asyncio
 async def test_list_command_jobs_excludes_dismissed_by_default(monkeypatch):
     captured = {}
 

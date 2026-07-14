@@ -1,31 +1,27 @@
-"""Surreal-commands integration for ZhiXue."""
+"""Surreal-commands integration for ZhiXue.
+
+Importing this package stays intentionally lightweight. The API only loads the
+command module needed for a submitted job, while the worker calls
+``register_all`` once during startup.
+"""
+
+from importlib import import_module
 
 from open_notebook.utils.command_cancellation import install_cancellation_guard
 
-install_cancellation_guard()
-
-from .embedding_commands import (
-    embed_insight_command,
-    embed_note_command,
-    embed_source_command,
-    rebuild_embeddings_command,
+COMMAND_MODULES = (
+    "commands.embedding_commands",
+    "commands.learning_commands",
+    "commands.podcast_commands",
+    "commands.source_commands",
 )
-from .learning_commands import (
-    collect_learning_resources_command,
-    generate_learning_asset_command,
-)
-from .podcast_commands import generate_podcast_command
-from .source_commands import process_source_command
 
-__all__ = [
-    # Embedding commands
-    "embed_note_command",
-    "embed_insight_command",
-    "embed_source_command",
-    "rebuild_embeddings_command",
-    "collect_learning_resources_command",
-    "generate_learning_asset_command",
-    # Other commands
-    "generate_podcast_command",
-    "process_source_command",
-]
+
+def register_all() -> None:
+    """Import every command module so the background worker can execute jobs."""
+    install_cancellation_guard()
+    for module_name in COMMAND_MODULES:
+        import_module(module_name)
+
+
+__all__ = ["COMMAND_MODULES", "register_all"]

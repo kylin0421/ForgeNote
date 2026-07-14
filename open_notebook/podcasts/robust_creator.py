@@ -15,20 +15,20 @@ from esperanto import AIFactory
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from loguru import logger
-
 from podcast_creator.core import (
     Dialogue,
     clean_thinking_content,
     create_validated_transcript_parser,
     extract_text_content,
+    get_outline_prompter,
     get_transcript_prompter,
+    outline_parser,
 )
 from podcast_creator.episodes import load_episode_config
 from podcast_creator.language import resolve_language_name
 from podcast_creator.nodes import (
     combine_audio_node,
     generate_all_audio_node,
-    generate_outline_node,
     route_audio_generation,
 )
 from podcast_creator.retry import create_retry_decorator, get_retry_config
@@ -107,6 +107,11 @@ def clean_transcript_json_output(content: str) -> str:
     return _extract_first_json_object(cleaned)
 
 
+def limit_transcript_turns(dialogue: List[Dialogue], turns: int) -> List[Dialogue]:
+    """Honor the requested segment length when compatible models over-generate."""
+    return dialogue[: max(0, turns)]
+
+
 def _build_transcript_repair_prompt(
     *,
     original_prompt: str,
@@ -135,6 +140,98 @@ Invalid output:
 {_truncate_for_repair(invalid_output)}
 </invalid_output>
 """.strip()
+
+
+def _build_outline_repair_prompt(
+    *,
+    original_prompt: str,
+    invalid_output: str,
+    num_segments: int,
+) -> str:
+    return f"""
+The previous answer failed JSON parsing. Produce a corrected replacement.
+
+Rules:
+- Return only one JSON object, with no XML tags, markdown fence, explanation, or prefix.
+- The JSON object must have exactly one top-level key: "segments".
+- "segments" must contain exactly {num_segments} objects.
+- Every segment must contain string fields "name", "description", and "size".
+- "size" must be one of: "short", "medium", "long".
+
+Original task:
+<original_task>
+{_truncate_for_repair(original_prompt, 9000)}
+</original_task>
+
+Invalid output:
+<invalid_output>
+{_truncate_for_repair(invalid_output)}
+</invalid_output>
+""".strip()
+
+
+async def generate_outline_node_with_repair(
+    state: PodcastState,
+    config: RunnableConfig,
+) -> Dict:
+    """Generate an outline while tolerating common model response wrappers."""
+    logger.info("Starting outline generation with JSON repair")
+
+    configurable = config.get("configurable", {})
+    outline_provider: str = configurable.get("outline_provider", "openai")
+    outline_model_name: str = configurable.get("outline_model", "gpt-4o-mini")
+    outline_config = configurable.get("outline_config") or {}
+    merged_config = {
+        "max_tokens": 3000,
+        "structured": {"type": "json"},
+        **outline_config,
+    }
+    outline_model = AIFactory.create_language(
+        outline_provider,
+        outline_model_name,
+        config=merged_config,
+    ).to_langchain()
+
+    retry_cfg = get_retry_config(configurable)
+    llm_retry = create_retry_decorator(**retry_cfg)
+
+    @llm_retry
+    async def _invoke_and_parse(prompt_text: str):
+        result = await outline_model.ainvoke(prompt_text)
+        content = clean_transcript_json_output(extract_text_content(result.content))
+        try:
+            return outline_parser.invoke(content)
+        except Exception as parse_error:
+            logger.warning(
+                "Outline JSON parse failed; asking model to repair output: {}",
+                parse_error,
+            )
+            repair_prompt = _build_outline_repair_prompt(
+                original_prompt=prompt_text,
+                invalid_output=content,
+                num_segments=state["num_segments"],
+            )
+            repair_result = await outline_model.ainvoke(repair_prompt)
+            repair_content = clean_transcript_json_output(
+                extract_text_content(repair_result.content)
+            )
+            return outline_parser.invoke(repair_content)
+
+    outline_prompt = get_outline_prompter()
+    outline_prompt_text = outline_prompt.render(
+        {
+            "briefing": state["briefing"],
+            "num_segments": state["num_segments"],
+            "context": state["content"],
+            "speakers": state["speaker_profile"].speakers
+            if state["speaker_profile"]
+            else [],
+            "language": state.get("language"),
+        }
+    )
+    outline_result = await _invoke_and_parse(outline_prompt_text)
+    logger.info("Generated outline with {} segments", len(outline_result.segments))
+    return {"outline": outline_result}
 
 
 async def generate_transcript_node_with_repair(
@@ -222,7 +319,15 @@ async def generate_transcript_node_with_repair(
             }
         )
         result = await _invoke_and_parse(transcript_prompt_rendered, segment.name)
-        transcript.extend(result.transcript)
+        limited_dialogue = limit_transcript_turns(result.transcript, turns)
+        if len(result.transcript) > turns:
+            logger.warning(
+                "Transcript segment '{}' returned {} turns; keeping the requested {}",
+                segment.name,
+                len(result.transcript),
+                turns,
+            )
+        transcript.extend(limited_dialogue)
 
     logger.info(f"Generated transcript with {len(transcript)} dialogue segments")
     return {"transcript": transcript}
@@ -230,7 +335,7 @@ async def generate_transcript_node_with_repair(
 
 def _build_graph():
     workflow = StateGraph(PodcastState)
-    workflow.add_node("generate_outline", generate_outline_node)
+    workflow.add_node("generate_outline", generate_outline_node_with_repair)
     workflow.add_node("generate_transcript", generate_transcript_node_with_repair)
     workflow.add_node("generate_all_audio", generate_all_audio_node)
     workflow.add_node("combine_audio", combine_audio_node)
@@ -355,12 +460,20 @@ async def create_podcast_with_repair(
 
     if result["outline"]:
         outline_path = output_path / "outline.json"
-        outline_path.write_text(result["outline"].model_dump_json())
+        outline_path.write_text(
+            result["outline"].model_dump_json(),
+            encoding="utf-8",
+        )
 
     if result["transcript"]:
         transcript_path = output_path / "transcript.json"
         transcript_path.write_text(
-            json.dumps([d.model_dump() for d in result["transcript"]], indent=2)
+            json.dumps(
+                [d.model_dump() for d in result["transcript"]],
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
         )
 
     return {
