@@ -190,6 +190,55 @@ class TestCredentialModelDiscovery:
 
         assert requests == ["https://llm-gateway.example.com/v1/models"]
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "base_url",
+        [
+            "https://api.moonshot.cn/v1",
+            "https://open.bigmodel.cn/api/paas/v4",
+            "https://api.siliconflow.cn/v1",
+            "https://api.together.ai/v1",
+            "https://api.fireworks.ai/inference/v1",
+            "https://api.cerebras.ai/v1",
+        ],
+    )
+    async def test_mainstream_compatible_endpoints_use_openai_contract(
+        self, monkeypatch, base_url
+    ):
+        requests = []
+
+        class FakeAsyncClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+            async def get(self, url, headers=None, timeout=None):
+                requests.append((url, headers, timeout))
+                return httpx.Response(
+                    200,
+                    json={"data": [{"id": "provider-model"}]},
+                    request=httpx.Request("GET", url, headers=headers or {}),
+                )
+
+        monkeypatch.setattr(credentials_service.httpx, "AsyncClient", FakeAsyncClient)
+
+        models = await credentials_service.discover_with_config(
+            "openai_compatible",
+            {"api_key": "test-key", "base_url": base_url},
+        )
+
+        assert models[0]["name"] == "provider-model"
+        assert models[0]["provider"] == "openai_compatible"
+        assert requests == [
+            (
+                f"{base_url}/models",
+                {"Authorization": "Bearer test-key"},
+                30.0,
+            )
+        ]
+
 
 class TestCredentialNumCtx:
     """Tests for the Ollama num_ctx override threaded into esperanto config."""

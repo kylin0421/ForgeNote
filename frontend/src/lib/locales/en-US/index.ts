@@ -890,6 +890,8 @@ export const enUS = {
     addCustomModel: "Add \"{name}\"",
   },
   apiKeys: {
+    compatiblePreset: "OpenAI-compatible preset",
+    compatiblePresetHint: "Choose a verified provider endpoint or use Custom for a local or private gateway.",
     title: "Configure your AI with your own API keys",
     description: "Store API keys securely in the database to enable AI providers in ZhiXue.",
     encryptionRequired: "Encryption key not configured",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import secrets
@@ -12,13 +13,15 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 import urllib.error
 import urllib.request
 import webbrowser
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
+from urllib.parse import urlparse
 
 APP_NAME = "ZhiXue"
 APP_TITLE = "智学工坊"
@@ -428,15 +431,123 @@ def desktop_page(status: str, detail: str | None = None, error: bool = False) ->
 
 class DesktopBridge:
     def __init__(self, logs_dir: Path) -> None:
-        self.logs_dir = logs_dir
+        # pywebview recursively exposes public js_api attributes. Keep native
+        # objects private so API discovery only sees the intended methods.
+        self._logs_dir = logs_dir
+        self._window: Any | None = None
+
+    def bind_window(self, window: Any) -> None:
+        self._window = window
 
     def open_logs(self) -> bool:
-        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        self._logs_dir.mkdir(parents=True, exist_ok=True)
         if sys.platform == "win32":
-            os.startfile(self.logs_dir)  # type: ignore[attr-defined]
+            os.startfile(self._logs_dir)  # type: ignore[attr-defined]
         else:
-            webbrowser.open(self.logs_dir.as_uri())
+            webbrowser.open(self._logs_dir.as_uri())
         return True
+
+    def _save_destination(self, filename: str) -> Path | None:
+        if self._window is None:
+            raise RuntimeError("Desktop window is not ready")
+
+        safe_filename = Path(filename or "export").name.strip() or "export"
+        suffix = Path(safe_filename).suffix
+        file_types = (
+            (f"{suffix[1:].upper()} files (*{suffix})", "All files (*.*)")
+            if suffix
+            else ("All files (*.*)",)
+        )
+        downloads = Path.home() / "Downloads"
+        selected = self._window.create_file_dialog(
+            dialog_type=30,
+            directory=str(downloads if downloads.exists() else Path.home()),
+            save_filename=safe_filename,
+            file_types=file_types,
+        )
+        if not selected:
+            return None
+        return Path(selected[0])
+
+    @staticmethod
+    def _write_stream(destination: Path, source: Any) -> int:
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=destination.parent,
+                prefix=f".{destination.name}.",
+                suffix=".part",
+                delete=False,
+            ) as output:
+                temp_path = Path(output.name)
+                shutil.copyfileobj(source, output, length=1024 * 1024)
+            size = temp_path.stat().st_size
+            os.replace(temp_path, destination)
+            return size
+        except Exception:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+            raise
+
+    @staticmethod
+    def _validate_local_api_url(url: str) -> None:
+        parsed = urlparse(url)
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname not in {"127.0.0.1", "localhost"}
+            or parsed.port != 5055
+            or not parsed.path.startswith("/api/")
+        ):
+            raise ValueError("Desktop downloads are limited to the local ZhiXue API")
+
+    def save_download(
+        self,
+        url: str,
+        filename: str,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Stream a local API asset to a path selected with the native dialog."""
+        try:
+            self._validate_local_api_url(url)
+            destination = self._save_destination(filename)
+            if destination is None:
+                return {"ok": False, "cancelled": True}
+
+            allowed_headers = {"authorization", "accept"}
+            request_headers = {
+                str(key): str(value)
+                for key, value in (headers or {}).items()
+                if str(key).lower() in allowed_headers
+            }
+            request = urllib.request.Request(url, headers=request_headers)
+            with urllib.request.urlopen(request, timeout=300) as response:
+                size = self._write_stream(destination, response)
+            return {"ok": True, "path": str(destination), "size": size}
+        except Exception as exc:
+            return {"ok": False, "cancelled": False, "error": str(exc)}
+
+    def save_blob(self, filename: str, data_url: str) -> dict[str, Any]:
+        """Save a small browser-generated Blob through the native dialog."""
+        try:
+            header, encoded = data_url.split(",", 1)
+            if not header.startswith("data:") or ";base64" not in header:
+                raise ValueError("Expected a base64 data URL")
+            if len(encoded) > 70 * 1024 * 1024:
+                raise ValueError("Browser-generated export exceeds the 50 MB desktop limit")
+
+            destination = self._save_destination(filename)
+            if destination is None:
+                return {"ok": False, "cancelled": True}
+
+            payload = base64.b64decode(encoded, validate=True)
+            with tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024) as source:
+                source.write(payload)
+                source.seek(0)
+                size = self._write_stream(destination, source)
+            return {"ok": True, "path": str(destination), "size": size}
+        except Exception as exc:
+            return {"ok": False, "cancelled": False, "error": str(exc)}
 
 
 def show_native_error(message: str) -> None:
@@ -450,9 +561,25 @@ def show_native_error(message: str) -> None:
         pass
 
 
+def configure_desktop_webview(webview_module) -> None:
+    """Enable native Save As handling for downloads in the desktop app."""
+    webview_module.settings["ALLOW_DOWNLOADS"] = True
+
+
 def run_desktop(stack: ZhiXueStack) -> int:
     import webview
 
+    desktop_log_path = stack.logs_dir / "desktop.log"
+
+    def desktop_log(message: str) -> None:
+        try:
+            with desktop_log_path.open("a", encoding="utf-8") as log_file:
+                log_file.write(f"[{time.ctime()}] {message}\n")
+        except OSError:
+            pass
+
+    configure_desktop_webview(webview)
+    desktop_log("Creating desktop window")
     bridge = DesktopBridge(stack.logs_dir)
     window = webview.create_window(
         APP_TITLE,
@@ -468,6 +595,7 @@ def run_desktop(stack: ZhiXueStack) -> int:
     )
     if window is None:
         raise RuntimeError("Could not create the desktop application window")
+    bridge.bind_window(window)
 
     closing = threading.Event()
     state = {"failed": False}
@@ -483,6 +611,7 @@ def run_desktop(stack: ZhiXueStack) -> int:
 
     def show_startup_error(exc: Exception) -> None:
         state["failed"] = True
+        desktop_log(f"Startup failed: {exc!r}")
         detail = f"{exc}\n\n日志目录：{stack.logs_dir}"
         try:
             window.load_html(desktop_page("启动失败，请查看日志", detail, error=True))
@@ -490,8 +619,10 @@ def run_desktop(stack: ZhiXueStack) -> int:
             show_native_error(detail)
 
     def start_services_and_monitor() -> None:
+        desktop_log("Service startup callback invoked")
         try:
             stack.start()
+            desktop_log("Local services are ready")
             if not closing.is_set():
                 window.load_url(FRONTEND_URL)
         except Exception as exc:
@@ -511,6 +642,7 @@ def run_desktop(stack: ZhiXueStack) -> int:
 
     stack.status_callback = update_status
     try:
+        desktop_log("Starting WebView event loop")
         webview.start(
             start_services_and_monitor,
             gui="edgechromium",
@@ -519,11 +651,13 @@ def run_desktop(stack: ZhiXueStack) -> int:
         )
     except Exception as exc:
         state["failed"] = True
+        desktop_log(f"WebView failed: {exc!r}")
         show_native_error(
             f"无法启动智学工坊桌面窗口：{exc}\n\n"
             "请确认 Microsoft Edge WebView2 Runtime 已安装。"
         )
     finally:
+        desktop_log("Stopping desktop stack")
         closing.set()
         stack.stop()
     return 1 if state["failed"] else 0

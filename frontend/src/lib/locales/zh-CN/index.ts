@@ -889,6 +889,8 @@ export const zhCN = {
     addCustomModel: "添加 \"{name}\"",
   },
   apiKeys: {
+    compatiblePreset: "OpenAI 兼容服务预设",
+    compatiblePresetHint: "可选择已核对的供应商端点；本地模型或私有网关请选择“自定义”。",
     title: "使用您自己的 API 密钥配置 AI",
     description: "将 API 密钥安全地存储在数据库中，以在 ZhiXue 中启用 AI 服务商。",
     encryptionRequired: "未配置加密密钥",

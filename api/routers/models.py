@@ -141,7 +141,7 @@ MODEL_PREFERENCES = {
     "groq": ["llama-3.3", "llama-3.1", "mixtral"],
     "dashscope": ["qwen-max", "qwen-plus", "qwen-turbo"],
     "mimo": ["mimo-v2.5-tts"],
-    "minimax": ["MiniMax-M2.5", "MiniMax-M2.5-highspeed"],
+    "minimax": ["MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M2.5"],
 }
 
 

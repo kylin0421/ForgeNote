@@ -1,9 +1,12 @@
 from pathlib import Path
+from io import BytesIO
 from unittest.mock import Mock
 
 from desktop.windows.launcher import (
     ManagedProcess,
+    DesktopBridge,
     ZhiXueStack,
+    configure_desktop_webview,
     desktop_page,
     ensure_config,
     read_env_file,
@@ -43,6 +46,63 @@ def test_desktop_page_is_utf8_and_escapes_error_details():
     assert "<script>bad()</script>" not in page
     assert "&lt;script&gt;bad()&lt;/script&gt;" in page
     assert "pywebview.api.open_logs()" in page
+
+
+def test_desktop_webview_enables_native_downloads():
+    webview_module = Mock()
+    webview_module.settings = {"ALLOW_DOWNLOADS": False}
+
+    configure_desktop_webview(webview_module)
+
+    assert webview_module.settings["ALLOW_DOWNLOADS"] is True
+
+
+def test_desktop_bridge_saves_browser_blob_with_native_dialog(tmp_path: Path):
+    destination = tmp_path / "mind-map.md"
+    window = Mock()
+    window.create_file_dialog.return_value = (str(destination),)
+    bridge = DesktopBridge(tmp_path / "logs")
+    bridge.bind_window(window)
+
+    assert not hasattr(bridge, "window")
+    assert not hasattr(bridge, "logs_dir")
+
+    result = bridge.save_blob(
+        "mind-map.md",
+        "data:text/markdown;base64,IyBUZXN0Cg==",
+    )
+
+    assert result["ok"] is True
+    assert result["size"] == len(b"# Test\n")
+    assert destination.read_bytes() == b"# Test\n"
+
+
+def test_desktop_bridge_streams_only_local_api_downloads(tmp_path: Path, monkeypatch):
+    destination = tmp_path / "podcast.wav"
+    window = Mock()
+    window.create_file_dialog.return_value = (str(destination),)
+    bridge = DesktopBridge(tmp_path / "logs")
+    bridge.bind_window(window)
+    monkeypatch.setattr(
+        "desktop.windows.launcher.urllib.request.urlopen",
+        lambda request, timeout: BytesIO(b"RIFF-test"),
+    )
+
+    result = bridge.save_download(
+        "http://127.0.0.1:5055/api/podcasts/episodes/test/audio/wav",
+        "podcast.wav",
+        {"Authorization": "Bearer test"},
+    )
+
+    assert result["ok"] is True
+    assert destination.read_bytes() == b"RIFF-test"
+
+    rejected = bridge.save_download(
+        "https://example.com/private",
+        "private.bin",
+    )
+    assert rejected["ok"] is False
+    assert "local ZhiXue API" in rejected["error"]
 
 
 def test_worker_readiness_waits_for_live_query_marker(tmp_path: Path):

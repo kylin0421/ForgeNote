@@ -357,7 +357,54 @@ function safeExportFilename(value: string, fallback = 'studio-export') {
   return compact || fallback
 }
 
-function downloadBlob(blob: Blob, filename: string) {
+type DesktopSaveResult = {
+  ok: boolean
+  cancelled?: boolean
+  error?: string
+}
+
+type DesktopSaveApi = {
+  save_download?: (
+    url: string,
+    filename: string,
+    headers: Record<string, string>
+  ) => Promise<DesktopSaveResult>
+  save_blob?: (filename: string, dataUrl: string) => Promise<DesktopSaveResult>
+}
+
+declare global {
+  interface Window {
+    pywebview?: { api?: DesktopSaveApi }
+  }
+}
+
+function desktopSaveApi(): DesktopSaveApi | undefined {
+  return typeof window === 'undefined' ? undefined : window.pywebview?.api
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error || new Error('Failed to read export data'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+function assertDesktopSaveResult(result: DesktopSaveResult) {
+  if (!result.ok && !result.cancelled) {
+    throw new Error(result.error || 'Desktop export failed')
+  }
+}
+
+async function downloadBlob(blob: Blob, filename: string) {
+  const bridge = desktopSaveApi()
+  if (bridge?.save_blob) {
+    const result = await bridge.save_blob(filename, await blobToDataUrl(blob))
+    assertDesktopSaveResult(result)
+    return
+  }
+
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -366,6 +413,26 @@ function downloadBlob(blob: Blob, filename: string) {
   link.click()
   link.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+async function downloadRemoteAsset(
+  url: string,
+  filename: string,
+  headers: HeadersInit = {}
+) {
+  const bridge = desktopSaveApi()
+  if (bridge?.save_download) {
+    const plainHeaders = Object.fromEntries(new Headers(headers).entries())
+    const result = await bridge.save_download(url, filename, plainHeaders)
+    assertDesktopSaveResult(result)
+    return
+  }
+
+  const response = await fetch(url, { headers })
+  if (!response.ok) {
+    throw new Error(`Export failed with status ${response.status}`)
+  }
+  await downloadBlob(await response.blob(), filename)
 }
 
 function svgToPngBlob(svg: string): Promise<Blob> {
@@ -1888,12 +1955,11 @@ export function NotesColumn({
           toast.error('当前播客没有可导出的音频')
           return
         }
-        const response = await fetch(exportUrl, { headers: getAuthenticatedDownloadHeaders() })
-        if (!response.ok) {
-          throw new Error(`Podcast export failed with status ${response.status}`)
-        }
-        const blob = await response.blob()
-        downloadBlob(blob, `${safeExportFilename(title, 'podcast')}.wav`)
+        await downloadRemoteAsset(
+          exportUrl,
+          `${safeExportFilename(title, 'podcast')}.wav`,
+          getAuthenticatedDownloadHeaders()
+        )
         return
       }
 
@@ -1922,11 +1988,11 @@ export function NotesColumn({
         if (format === 'mind_map_png') {
           const svg = mindMapContentToSvg(asset.content, title)
           const blob = await svgToPngBlob(svg)
-          downloadBlob(blob, `${safeExportFilename(title, 'mind-map')}.png`)
+          await downloadBlob(blob, `${safeExportFilename(title, 'mind-map')}.png`)
           return
         }
 
-        downloadBlob(
+        await downloadBlob(
           new Blob(
             [
               [
@@ -1947,10 +2013,10 @@ export function NotesColumn({
         if (imageSrc) {
           const response = await fetch(imageSrc)
           const blob = await response.blob()
-          downloadBlob(blob, `${safeExportFilename(title, 'visual-aid')}.png`)
+          await downloadBlob(blob, `${safeExportFilename(title, 'visual-aid')}.png`)
           return
         }
-        downloadBlob(
+        await downloadBlob(
           new Blob(
             [
               [
@@ -1972,7 +2038,7 @@ export function NotesColumn({
           toast.error('当前代码实验没有可执行代码块，暂不能导出 Jupyter Notebook')
           return
         }
-        downloadBlob(
+        await downloadBlob(
           new Blob([JSON.stringify(notebook, null, 2)], { type: 'application/x-ipynb+json' }),
           `${safeExportFilename(title, 'code-lab')}.ipynb`
         )

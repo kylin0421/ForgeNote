@@ -21,8 +21,8 @@ TEST_MODELS = {
     "google": ("gemini-2.0-flash", "language"),
     "groq": ("llama-3.1-8b-instant", "language"),
     "mistral": ("mistral-small-latest", "language"),
-    "deepseek": ("deepseek-chat", "language"),
-    "xai": ("grok-beta", "language"),
+    "deepseek": ("deepseek-v4-flash", "language"),
+    "xai": ("grok-4.3", "language"),
     "openrouter": ("openai/gpt-3.5-turbo", "language"),
     "voyage": ("voyage-3-lite", "embedding"),
     "elevenlabs": ("eleven_multilingual_v2", "text_to_speech"),
@@ -34,7 +34,7 @@ TEST_MODELS = {
     "openai_compatible": (None, "language"),  # Dynamic - will use first available model
     "dashscope": ("qwen-plus", "language"),
     "mimo": ("mimo-v2.5-tts", "text_to_speech"),
-    "minimax": ("MiniMax-M2.5", "language"),
+    "minimax": ("MiniMax-M2.7", "language"),
 }
 
 
@@ -133,13 +133,16 @@ async def _test_ollama_connection(base_url: str) -> Tuple[bool, str]:
 async def _test_openai_compatible_connection(base_url: str, api_key: Optional[str] = None) -> Tuple[bool, str]:
     """Test OpenAI-compatible server connectivity."""
     try:
+        models_url = base_url.rstrip("/")
+        if not models_url.endswith("/models"):
+            models_url = f"{models_url}/models"
         headers = {}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             # Try /models endpoint (standard OpenAI-compatible)
-            response = await client.get(f"{base_url}/models", headers=headers)
+            response = await client.get(models_url, headers=headers)
 
             if response.status_code == 200:
                 data = response.json()

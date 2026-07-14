@@ -57,6 +57,11 @@ import { Model, ModelDefaults } from '@/lib/types/models'
 import { MigrationBanner, ModelTestResultDialog } from '@/components/settings'
 import { EmbeddingModelChangeDialog } from '@/components/settings/EmbeddingModelChangeDialog'
 import { modelProviderLabel, modelWarnings } from '@/lib/utils/models'
+import {
+  OPENAI_COMPATIBLE_PRESETS,
+  compatiblePresetById,
+  compatiblePresetForBaseUrl,
+} from '@/lib/ai/openai-compatible-presets'
 
 type ModelType = 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text' | 'image'
 
@@ -185,11 +190,11 @@ function CredentialFormDialog({
   const isVertex = provider === 'vertex'
   const isOllama = provider === 'ollama'
   const isOpenAICompatible = provider === 'openai_compatible'
-  const requiresApiKey = !isVertex && !isOllama && !isOpenAICompatible
 
   const [name, setName] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
+  const [compatiblePreset, setCompatiblePreset] = useState('custom')
   const [showApiKey, setShowApiKey] = useState(false)
   const [project, setProject] = useState('')
   const [location, setLocation] = useState('')
@@ -208,6 +213,7 @@ function CredentialFormDialog({
       setCredentialsPath(credential.credentials_path || '')
       setNumCtx(credential.num_ctx ? String(credential.num_ctx) : '')
       setModalities(credential.modalities || [])
+      setCompatiblePreset(compatiblePresetForBaseUrl(credential.base_url).id)
     } else {
       setName('')
       setBaseUrl('')
@@ -217,8 +223,24 @@ function CredentialFormDialog({
       setCredentialsPath('')
       setNumCtx('')
       setModalities(PROVIDER_MODALITIES[provider] || ['language'])
+      setCompatiblePreset('custom')
     }
   }, [credential, provider])
+
+  const selectedCompatiblePreset = compatiblePresetById(compatiblePreset)
+  const requiresApiKey = !isVertex && !isOllama && (
+    !isOpenAICompatible || compatiblePreset !== 'custom'
+  )
+
+  const handleCompatiblePresetChange = (presetId: string) => {
+    const preset = compatiblePresetById(presetId)
+    setCompatiblePreset(preset.id)
+    setBaseUrl(preset.baseUrl)
+    setModalities([...preset.modalities])
+    if (!credential && preset.id !== 'custom') {
+      setName(`${preset.label} Config`)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -267,9 +289,13 @@ function CredentialFormDialog({
     ? true
     : isVertex
       ? name.trim() !== '' && project.trim() !== '' && location.trim() !== ''
-      : name.trim() !== '' && (!requiresApiKey || apiKey.trim() !== '')
+      : name.trim() !== ''
+        && (!isOpenAICompatible || baseUrl.trim() !== '')
+        && (!requiresApiKey || apiKey.trim() !== '')
 
-  const docsUrl = PROVIDER_DOCS[provider]
+  const docsUrl = isOpenAICompatible
+    ? selectedCompatiblePreset.docsUrl
+    : PROVIDER_DOCS[provider]
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -369,6 +395,24 @@ function CredentialFormDialog({
                   {t('apiKeys.getApiKey')} &rarr;
                 </a>
               )}
+            </div>
+          )}
+
+          {isOpenAICompatible && (
+            <div className="space-y-2">
+              <Label htmlFor="compatible-preset">{t('apiKeys.compatiblePreset')}</Label>
+              <select
+                id="compatible-preset"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={compatiblePreset}
+                onChange={(event) => handleCompatiblePresetChange(event.target.value)}
+                disabled={isSubmitting}
+              >
+                {OPENAI_COMPATIBLE_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.id}>{preset.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">{t('apiKeys.compatiblePresetHint')}</p>
             </div>
           )}
 
