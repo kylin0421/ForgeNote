@@ -11,8 +11,10 @@ from forgenote.podcasts.robust_creator import (
 )
 from forgenote.podcasts.video_creator import (
     build_keyframe_plan,
+    build_subtitle_cues,
     compose_explainer_video,
     generate_keyframe_images,
+    write_srt_subtitles,
 )
 
 
@@ -98,6 +100,63 @@ def test_keyframe_plan_has_source_text_fallback_when_model_returns_no_cue():
     assert "一致性约束" in plan[0]["prompt"]
 
 
+def test_srt_subtitles_use_real_dialogue_timestamps(tmp_path):
+    subtitle_path = write_srt_subtitles(
+        [
+            {
+                "start_time": 0.0,
+                "end_time": 2.345,
+                "dialogue": "先看整体结构。",
+            },
+            {
+                "start_time": 2.345,
+                "end_time": 5.75,
+                "dialogue": "再解释关键步骤。",
+            },
+        ],
+        output_path=tmp_path / "explainer-video.srt",
+        total_duration=5.75,
+    )
+
+    assert subtitle_path is not None
+    content = subtitle_path.read_text(encoding="utf-8-sig")
+    assert "00:00:00,000 --> 00:00:02,345" in content
+    assert "00:00:02,345 --> 00:00:05,750" in content
+    assert "先看整体结构。" in content
+
+
+def test_srt_subtitles_skip_empty_dialogue(tmp_path):
+    result = write_srt_subtitles(
+        [{"start_time": 0.0, "end_time": 1.0, "dialogue": "  "}],
+        output_path=tmp_path / "explainer-video.srt",
+        total_duration=1.0,
+    )
+
+    assert result is None
+    assert not (tmp_path / "explainer-video.srt").exists()
+
+
+def test_subtitle_cues_wrap_long_dialogue_across_the_turn_duration():
+    cues = build_subtitle_cues(
+        [
+            {
+                "start_time": 10.0,
+                "end_time": 18.0,
+                "dialogue": (
+                    "这是一个用于验证字幕自动换行和分段逻辑的较长中文讲解句子，它需要在视频底部保持清晰可读，"
+                    "并且在内容继续展开时自动切换到下一条字幕，避免单个画面承载过多文字。"
+                ),
+            }
+        ],
+        total_duration=20.0,
+    )
+
+    assert len(cues) == 2
+    assert cues[0]["start_time"] == 10.0
+    assert cues[-1]["end_time"] == 18.0
+    assert all(len(str(cue["dialogue"]).splitlines()) <= 2 for cue in cues)
+
+
 @pytest.mark.asyncio
 async def test_keyframe_images_are_persisted_with_model_provenance(
     tmp_path, monkeypatch
@@ -139,10 +198,13 @@ def test_ffmpeg_composition_uses_keyframe_durations_and_podcast_audio(
     first.write_bytes(b"one")
     second.write_bytes(b"two")
     output_path = tmp_path / "explainer.mp4"
+    subtitle_cues = [{"start_time": 0.0, "end_time": 10.0, "dialogue": "字幕"}]
     calls = []
 
     def fake_run(command, **kwargs):
-        calls.append((command, kwargs))
+        filter_flag = command.index("-filter_complex_script")
+        filter_graph = Path(command[filter_flag + 1]).read_text(encoding="utf-8")
+        calls.append((command, kwargs, filter_graph))
         Path(command[-1]).write_bytes(b"mp4")
 
     monkeypatch.setattr(
@@ -158,14 +220,21 @@ def test_ffmpeg_composition_uses_keyframe_durations_and_podcast_audio(
         ],
         output_path=output_path,
         total_duration=10.0,
+        subtitle_cues=subtitle_cues,
     )
 
     manifest = output_path.with_suffix(".ffconcat").read_text(encoding="utf-8")
     assert "duration 4.250" in manifest
     assert "duration 5.750" in manifest
     assert str(audio_path) in calls[0][0]
-    filter_flag = calls[0][0].index("-filter_complex")
-    assert "concat=n=2:v=1:a=0[outv]" in calls[0][0][filter_flag + 1]
+    filter_flag = calls[0][0].index("-filter_complex_script")
+    assert filter_flag > 0
+    filter_graph = calls[0][2]
+    assert "concat=n=2:v=1:a=0[outv]" in filter_graph
+    assert "drawtext=" in filter_graph
+    assert "enable='between(t,0.000,10.000)'" in filter_graph
+    assert "[outvsub0]" in filter_graph
+    assert calls[0][0][calls[0][0].index("-map") + 1] == "[outvsub0]"
     assert calls[0][0].count("-loop") == 2
     duration_flag = calls[0][0].index("-t")
     assert calls[0][0][duration_flag + 1] == "10.000"
@@ -181,6 +250,16 @@ def test_real_ffmpeg_builds_playable_mp4_without_video_api(tmp_path):
     frame_two = project_root / "docs" / "assets" / "screenshot-model-settings.png"
     duration = get_audio_duration_seconds(audio_path)
     output_path = tmp_path / "real-explainer.mp4"
+    subtitle_cues = build_subtitle_cues(
+        [
+            {
+                "start_time": 0.0,
+                "end_time": duration,
+                "dialogue": "字幕与讲解音频使用同一时间轴。",
+            }
+        ],
+        total_duration=duration,
+    )
 
     result = compose_explainer_video(
         audio_path=audio_path,
@@ -193,6 +272,7 @@ def test_real_ffmpeg_builds_playable_mp4_without_video_api(tmp_path):
         ],
         output_path=output_path,
         total_duration=duration,
+        subtitle_cues=subtitle_cues,
     )
 
     assert duration > 0

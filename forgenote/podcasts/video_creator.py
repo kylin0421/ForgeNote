@@ -11,6 +11,9 @@ from __future__ import annotations
 import mimetypes
 import shutil
 import subprocess
+import tempfile
+import textwrap
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Iterable, Optional
 from urllib.parse import unquote, urlparse
@@ -212,12 +215,141 @@ def _concat_file_path(path: Path) -> str:
     return f"file '{escaped}'"
 
 
+def _srt_timestamp(seconds: float) -> str:
+    milliseconds = max(0, round(float(seconds) * 1000))
+    value = timedelta(milliseconds=milliseconds)
+    total_seconds = int(value.total_seconds())
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, whole_seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d},{milliseconds % 1000:03d}"
+
+
+def build_subtitle_cues(
+    transcript: Iterable[Any],
+    *,
+    total_duration: float,
+) -> list[dict[str, Any]]:
+    """Create readable caption cues from the real TTS start and end times."""
+
+    if total_duration <= 0:
+        raise ValueError("Podcast audio duration must be greater than zero")
+
+    entries = [_as_dict(item) for item in transcript]
+    cues: list[dict[str, Any]] = []
+    for index, entry in enumerate(entries):
+        dialogue = str(entry.get("dialogue") or "").strip()
+        if not dialogue:
+            continue
+
+        raw_start = entry.get("start_time", entry.get("start", 0.0))
+        try:
+            start = min(total_duration, max(0.0, float(raw_start or 0.0)))
+        except (TypeError, ValueError):
+            start = 0.0
+
+        raw_end = entry.get("end_time", entry.get("end"))
+        try:
+            end = float(raw_end) if raw_end is not None else 0.0
+        except (TypeError, ValueError):
+            end = 0.0
+        if end <= start:
+            next_start = None
+            for following in entries[index + 1 :]:
+                candidate = following.get("start_time", following.get("start"))
+                try:
+                    next_start = float(candidate) if candidate is not None else None
+                except (TypeError, ValueError):
+                    next_start = None
+                if next_start is not None and next_start > start:
+                    break
+            end = next_start if next_start is not None else total_duration
+
+        end = min(total_duration, max(start + 0.1, end))
+        lines = textwrap.wrap(
+            " ".join(dialogue.split()),
+            width=24,
+            break_long_words=True,
+            break_on_hyphens=False,
+        ) or [dialogue]
+        caption_pages = [
+            "\n".join(line.rstrip() for line in lines[i : i + 2])
+            for i in range(0, len(lines), 2)
+        ]
+        page_duration = (end - start) / len(caption_pages)
+        for page_index, caption in enumerate(caption_pages):
+            cue_start = start + (page_duration * page_index)
+            cue_end = (
+                end
+                if page_index + 1 == len(caption_pages)
+                else cue_start + page_duration
+            )
+            cues.append(
+                {
+                    "start_time": cue_start,
+                    "end_time": cue_end,
+                    "dialogue": caption,
+                }
+            )
+
+    return cues
+
+
+def write_srt_subtitles(
+    transcript: Iterable[Any],
+    *,
+    output_path: Path,
+    total_duration: float,
+) -> Optional[Path]:
+    """Write an SRT companion file from the real TTS dialogue timeline."""
+
+    cues = build_subtitle_cues(transcript, total_duration=total_duration)
+
+    if not cues:
+        return None
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    for cue_number, cue in enumerate(cues, start=1):
+        lines.extend(
+            [
+                str(cue_number),
+                (
+                    f"{_srt_timestamp(float(cue['start_time']))} --> "
+                    f"{_srt_timestamp(float(cue['end_time']))}"
+                ),
+                str(cue["dialogue"]),
+                "",
+            ]
+        )
+    output_path.write_text("\n".join(lines), encoding="utf-8-sig")
+    return output_path
+
+
+def _ffmpeg_filter_path(path: Path) -> str:
+    escaped = path.resolve().as_posix().replace("'", "\\'")
+    if len(escaped) >= 2 and escaped[1] == ":":
+        escaped = f"{escaped[0]}\\:{escaped[2:]}"
+    return escaped
+
+
+def _subtitle_font_path() -> Optional[Path]:
+    candidates = [
+        Path("C:/Windows/Fonts/msyh.ttc"),
+        Path("C:/Windows/Fonts/msyhbd.ttc"),
+        Path("C:/Windows/Fonts/simhei.ttf"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    ]
+    return next((path for path in candidates if path.exists()), None)
+
+
 def compose_explainer_video(
     *,
     audio_path: Path,
     keyframes: list[dict[str, Any]],
     output_path: Path,
     total_duration: float,
+    subtitle_cues: Optional[list[dict[str, Any]]] = None,
     ffmpeg_binary: Optional[str] = None,
 ) -> Path:
     """Combine timed still frames and podcast audio into a portable MP4."""
@@ -276,42 +408,80 @@ def compose_explainer_video(
         "".join(f"[v{index}]" for index in range(len(keyframes)))
         + f"concat=n={len(keyframes)}:v=1:a=0[outv]"
     )
+    video_output = "[outv]"
+    font_path = _subtitle_font_path()
+    with tempfile.TemporaryDirectory(
+        dir=output_path.parent, prefix=".subtitle-text-"
+    ) as subtitle_dir:
+        for cue_index, cue in enumerate(subtitle_cues or []):
+            text_path = Path(subtitle_dir) / f"cue-{cue_index:03d}.txt"
+            text_path.write_text(str(cue["dialogue"]), encoding="utf-8")
+            next_output = f"[outvsub{cue_index}]"
+            drawtext_options = [
+                f"textfile='{_ffmpeg_filter_path(text_path)}'",
+                "reload=0",
+                "fontsize=34",
+                "fontcolor=white",
+                "borderw=2",
+                "bordercolor=black@0.85",
+                "box=1",
+                "boxcolor=black@0.45",
+                "boxborderw=12",
+                "line_spacing=8",
+                "x=(w-text_w)/2",
+                "y=h-text_h-42",
+                (
+                    "enable='between(t,"
+                    f"{float(cue['start_time']):.3f},"
+                    f"{float(cue['end_time']):.3f})'"
+                ),
+            ]
+            if font_path is not None:
+                drawtext_options.insert(
+                    1, f"fontfile='{_ffmpeg_filter_path(font_path)}'"
+                )
+            filters.append(
+                f"{video_output}drawtext={':'.join(drawtext_options)}{next_output}"
+            )
+            video_output = next_output
 
-    command.extend(
-        [
-            "-filter_complex",
-            ";".join(filters),
-            "-map",
-            "[outv]",
-            "-map",
-            f"{len(keyframes)}:a:0",
-            "-r",
-            "30",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "20",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-t",
-            f"{total_duration:.3f}",
-            "-shortest",
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
-    )
-    subprocess.run(
-        command,
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+        filter_script_path = Path(subtitle_dir) / "filter-complex.txt"
+        filter_script_path.write_text(";".join(filters), encoding="utf-8")
+        command.extend(
+            [
+                "-filter_complex_script",
+                str(filter_script_path),
+                "-map",
+                video_output,
+                "-map",
+                f"{len(keyframes)}:a:0",
+                "-r",
+                "30",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                "20",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-t",
+                f"{total_duration:.3f}",
+                "-shortest",
+                "-movflags",
+                "+faststart",
+                str(output_path),
+            ]
+        )
+        subprocess.run(
+            command,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
     if not output_path.exists() or output_path.stat().st_size == 0:
         raise RuntimeError("FFmpeg completed without producing a video file")
     return output_path
@@ -328,8 +498,9 @@ async def create_explainer_video(
 ) -> tuple[Path, list[dict[str, Any]]]:
     """Generate keyframes and compose the final explainer video."""
 
+    transcript_entries = [_as_dict(item) for item in timestamped_transcript]
     keyframes = build_keyframe_plan(
-        timestamped_transcript,
+        transcript_entries,
         episode_name=episode_name,
     )
     rendered_keyframes = await generate_keyframe_images(
@@ -337,10 +508,20 @@ async def create_explainer_video(
         output_dir=output_dir / "keyframes",
         image_model=image_model,
     )
+    subtitle_cues = build_subtitle_cues(
+        transcript_entries,
+        total_duration=total_duration,
+    )
+    write_srt_subtitles(
+        transcript_entries,
+        output_path=output_dir / "explainer-video.srt",
+        total_duration=total_duration,
+    )
     video_path = compose_explainer_video(
         audio_path=audio_path,
         keyframes=rendered_keyframes,
         output_path=output_dir / "explainer-video.mp4",
         total_duration=total_duration,
+        subtitle_cues=subtitle_cues,
     )
     return video_path, rendered_keyframes

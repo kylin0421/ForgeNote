@@ -19,7 +19,6 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SUBMISSION = ROOT / "to_be_submitted_docs"
 OUTPUT_DIR = Path(os.environ.get("SUBMISSION_DOCS_OUTPUT_DIR", SUBMISSION))
@@ -75,7 +74,9 @@ def _set_run_font(
         run.italic = italic
 
 
-def _set_style_font(style, *, size: float, color: str = BLACK, bold: bool = False) -> None:
+def _set_style_font(
+    style, *, size: float, color: str = BLACK, bold: bool = False
+) -> None:
     style.font.name = "Calibri"
     style._element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:ascii"), "Calibri")
     style._element.rPr.rFonts.set(qn("w:hAnsi"), "Calibri")
@@ -304,7 +305,15 @@ def _configure_document(doc: Document, running_label: str) -> dict[str, int]:
         style.paragraph_format.keep_with_next = True
 
     styles = doc.styles
-    for name in ("DocTitle", "DocSubtitle", "Kicker", "Lead", "Caption", "CodeBlock", "Small"):
+    for name in (
+        "DocTitle",
+        "DocSubtitle",
+        "Kicker",
+        "Lead",
+        "Caption",
+        "CodeBlock",
+        "Small",
+    ):
         if name not in styles:
             styles.add_style(name, 1)
 
@@ -344,7 +353,7 @@ def _configure_document(doc: Document, running_label: str) -> dict[str, int]:
     p = footer.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     p.paragraph_format.space_after = Pt(0)
-    r = p.add_run("ForgeNote · ")
+    r = p.add_run("Forgenote · ")
     _set_run_font(r, size=9, color=MUTED)
     _add_page_number(p)
 
@@ -373,7 +382,7 @@ def _add_cover(
     table = doc.add_table(rows=4, cols=2)
     table.style = "Table Grid"
     rows = [
-        ("项目", "ForgeNote（智学工坊）个性化学习多智能体系统"),
+        ("项目", "Forgenote（智学工坊）个性化学习多智能体系统"),
         ("文档类型", document_type),
         ("版本", version),
         ("编制日期", "2026 年 7 月 19 日"),
@@ -399,7 +408,9 @@ def _add_cover(
     doc.add_page_break()
 
 
-def _add_callout(doc: Document, label: str, text: str, *, fill: str, color: str) -> None:
+def _add_callout(
+    doc: Document, label: str, text: str, *, fill: str, color: str
+) -> None:
     table = doc.add_table(rows=1, cols=1)
     cell = table.cell(0, 0)
     _set_cell_shading(cell, fill)
@@ -520,21 +531,23 @@ def _add_code_listing(doc: Document, source: Path) -> None:
         shd.set(qn("w:fill"), "F7F9FC")
         p._p.get_or_add_pPr().append(shd)
         run = p.add_run(f"{line_no:03d}  {line}")
-        _set_run_font(run, latin="Consolas", east_asia="Microsoft YaHei", size=8.4, color=BLACK)
+        _set_run_font(
+            run, latin="Consolas", east_asia="Microsoft YaHei", size=8.4, color=BLACK
+        )
 
 
 def build_development_manual() -> Path:
     doc = Document()
-    nums = _configure_document(doc, "FORGENOTE · A3 SYSTEM DEVELOPMENT MANUAL")
+    nums = _configure_document(doc, "Forgenote · A3 SYSTEM DEVELOPMENT MANUAL")
     _add_cover(
         doc,
-        title="ForgeNote 系统开发说明书",
+        title="Forgenote 系统开发说明书",
         subtitle="基于大模型的个性化资源生成与学习多智能体系统",
-        version="V2.1（多模态讲解视频版）",
+        version="V2.2（带字幕讲解视频版）",
         document_type="系统开发说明书",
         takeaway=(
             "项目的核心创新是由 9 个职责清晰、过程可观测的智能体共同维护学习闭环，并将文本、结构化题库、"
-            "图谱、代码、图片、播客和讲解视频统一纳入来源约束的生成体系。学习画像、课程资料、练习反馈和"
+            "图谱、代码、图片、播客和带字幕讲解视频统一纳入来源约束的生成体系。学习画像、课程资料、练习反馈和"
             "路径调整在同一学习记录中持续积累，学生可以核验来源、观察过程并修正画像。"
         ),
     )
@@ -542,26 +555,50 @@ def build_development_manual() -> Path:
     _add_heading(doc, "文档摘要", 1)
     _add_body(
         doc,
-        "ForgeNote 面向高校课程自主学习场景，基于 Open Notebook 的资料、笔记与 RAG 底座进行赛题化二次开发。"
+        "Forgenote 面向高校课程自主学习场景，基于 Open Notebook 的资料、笔记与 RAG 底座进行赛题化二次开发。"
         "系统把被动的资料问答升级为主动学习工作台：学生通过自然语言表达背景与目标，系统维护动态画像，"
         "由多角色智能体协同完成资料搜集、资源生成、练习、路径规划、即时辅导、效果评估与安全检查。",
     )
     _add_body(
         doc,
         "本说明书以当前仓库代码和 2026 年 7 月 19 日实测结果为依据。重点展开 5 项创新：画像即来源（Profile-as-Source）、"
-        "9 角色模式路由、来源约束的多模态资产流水线、基于真实语音时间轴的讲解视频生成，以及长任务可观测与防幻觉阻断。",
+        "9 角色模式路由、来源约束的多模态资产流水线、基于真实语音时间轴的带字幕讲解视频生成，以及长任务可观测与防幻觉阻断。",
     )
     _add_heading(doc, "赛题要求与实现对照", 2)
     _add_table(
         doc,
-        ["官方核心要求", "ForgeNote 落地", "可核验实现"],
+        ["官方核心要求", "Forgenote 落地", "可核验实现"],
         [
-            ["对话式画像 ≥6 维", "6 个显式维度 + 稳定画像 + 最近学习信号", "LearningProfileDimension；画像事件接口"],
-            ["多智能体架构", "9 个职责角色，按 chat / collect / generate 模式路由", "AGENT_BLUEPRINTS；SSE stage trace"],
-            ["至少 5 类资源", "7 类 Studio 资产 + 播客音频 + 讲解视频", "requested_outputs；PodcastService；FFmpeg"],
-            ["动态学习路径", "4 阶段路径，含目标、活动、资源与检查点", "LearningPathStep；评估与下一步调整"],
-            ["防幻觉与内容安全", "来源优先、空来源硬阻断、结构校验、安全报告", "source context；safety_report"],
-            ["进度追踪", "SSE 智能体阶段 + command job 状态/日志", "/orchestrate/stream；任务浮窗"],
+            [
+                "对话式画像 ≥6 维",
+                "6 个显式维度 + 稳定画像 + 最近学习信号",
+                "LearningProfileDimension；画像事件接口",
+            ],
+            [
+                "多智能体架构",
+                "9 个职责角色，按 chat / collect / generate 模式路由",
+                "AGENT_BLUEPRINTS；SSE stage trace",
+            ],
+            [
+                "至少 5 类资源",
+                "7 类 Studio 资产 + 播客音频 + 讲解视频",
+                "requested_outputs；PodcastService；FFmpeg",
+            ],
+            [
+                "动态学习路径",
+                "4 阶段路径，含目标、活动、资源与检查点",
+                "LearningPathStep；评估与下一步调整",
+            ],
+            [
+                "防幻觉与内容安全",
+                "来源优先、空来源硬阻断、结构校验、安全报告",
+                "source context；safety_report",
+            ],
+            [
+                "进度追踪",
+                "SSE 智能体阶段 + command job 状态/日志",
+                "/orchestrate/stream；任务浮窗",
+            ],
         ],
         [2200, 3900, 3260],
         small=True,
@@ -574,10 +611,26 @@ def build_development_manual() -> Path:
         doc,
         ["学生痛点", "直接影响", "系统响应"],
         [
-            ["资料散乱、质量不一", "检索成本高，无法判断先学什么", "统一学习记录；资源搜集智能体评分、去重并保留采纳权"],
-            ["基础与目标差异大", "统一讲解与练习无法适配", "自然语言画像；生成内容使用专业、目标、历史与偏好"],
-            ["生成内容难核验", "大模型可能脱离课程资料", "优先使用已接受来源；引用可见；来源正文缺失时不生成"],
-            ["长任务等待不透明", "学生误以为系统卡死", "SSE 显示智能体阶段；后台任务浮窗显示队列、日志与结果"],
+            [
+                "资料散乱、质量不一",
+                "检索成本高，无法判断先学什么",
+                "统一学习记录；资源搜集智能体评分、去重并保留采纳权",
+            ],
+            [
+                "基础与目标差异大",
+                "统一讲解与练习无法适配",
+                "自然语言画像；生成内容使用专业、目标、历史与偏好",
+            ],
+            [
+                "生成内容难核验",
+                "大模型可能脱离课程资料",
+                "优先使用已接受来源；引用可见；来源正文缺失时不生成",
+            ],
+            [
+                "长任务等待不透明",
+                "学生误以为系统卡死",
+                "SSE 显示智能体阶段；后台任务浮窗显示队列、日志与结果",
+            ],
         ],
         [2200, 2800, 4360],
     )
@@ -604,7 +657,7 @@ def build_development_manual() -> Path:
     _add_heading(doc, "2.1 创新一：画像即来源（Profile-as-Source）", 2)
     _add_body(
         doc,
-        "ForgeNote 将“学习画像”保存为学习记录内可查看、可编辑、可检索的特殊 Source。画像与课程资料共享 notebook 上下文，"
+        "Forgenote 将“学习画像”保存为学习记录内可查看、可编辑、可检索的特殊 Source。画像与课程资料共享 notebook 上下文，"
         "能够参与内容个性化；学生也可以直接查看证据和置信度，修正不准确的模型判断。",
     )
     _add_table(
@@ -652,7 +705,8 @@ def build_development_manual() -> Path:
         doc,
         "脚本模型在返回逐句播客内容时，同时为概念切换点给出 visual_prompt。TTS 完成后，系统读取每句台词的真实起始时间，"
         "将视觉提示转换为带 time_index 的关键帧计划，再调用图片模型生成 16:9 画面。最后由本地 FFmpeg 按时间轴把图片和播客"
-        "音频合成为 H.264/AAC MP4。视频画面与讲解内容来自同一份脚本，时间对齐可以复现，也不需要视频生成 API。",
+        "音频合成为 H.264/AAC MP4。系统同时依据每段真实语音的起止时间生成 SRT，并把自动换行、分段后的中文字幕烧录到画面。"
+        "视频画面、字幕与讲解内容来自同一份脚本，时间对齐可以复现，也不需要视频生成 API。",
     )
     _add_heading(doc, "2.5 创新五：可观测长任务与防幻觉阻断", 2)
     _add_body(
@@ -667,15 +721,31 @@ def build_development_manual() -> Path:
         doc,
         ["角色", "核心职责", "主要输出"],
         [
-            ["画像智能体", "从自然语言与学习事件中抽取学生状态", "6 维画像、置信度、最近信号"],
+            [
+                "画像智能体",
+                "从自然语言与学习事件中抽取学生状态",
+                "6 维画像、置信度、最近信号",
+            ],
             ["课程结构智能体", "拆解知识单元并排序先修关系", "课程结构与学习边界"],
-            ["资源搜集智能体", "规划查询、评分、去重、多样性选择", "候选来源与采纳状态"],
+            [
+                "资源搜集智能体",
+                "规划查询、评分、去重、多样性选择",
+                "候选来源与采纳状态",
+            ],
             ["资源生成智能体", "生成讲解、图谱、阅读等资产", "结构化 LearningResource"],
-            ["练习实训智能体", "生成 Quiz、闪卡、代码实操", "题目、答案、解析与实验任务"],
+            [
+                "练习实训智能体",
+                "生成 Quiz、闪卡、代码实操",
+                "题目、答案、解析与实验任务",
+            ],
             ["路径规划智能体", "依据画像和掌握度安排顺序", "4 阶段路径与检查点"],
             ["智能辅导智能体", "即时答疑、错误定位、下一步引导", "tutor_answer"],
             ["学习评估智能体", "总结优势、风险与调整建议", "score 与 next_adjustments"],
-            ["安全校验智能体", "检查来源一致性、敏感内容与质量", "passed / needs_review 报告"],
+            [
+                "安全校验智能体",
+                "检查来源一致性、敏感内容与质量",
+                "passed / needs_review 报告",
+            ],
         ],
         [1900, 4360, 3100],
         small=True,
@@ -725,7 +795,11 @@ def build_development_manual() -> Path:
             ["代码实验", "Notebook 任务、运行与误差分析要求", "把概念迁移到实践"],
             ["辅助图片", "独立图片模型生成并保存 PNG/JPEG", "可视化抽象概念"],
             ["播客音频", "提纲 → 对话脚本 → 多说话人 TTS → 合成", "听觉复习与通勤学习"],
-            ["讲解视频", "脚本视觉提示 → 真实 TTS 时间轴 → 图片 → 本地 MP4", "图文同步讲解与低成本复习"],
+            [
+                "讲解视频",
+                "脚本视觉提示 → 真实 TTS 时间轴 → 图片 + 字幕 → 本地 MP4",
+                "图文同步讲解与低成本复习",
+            ],
         ],
         [1800, 4200, 3360],
         small=True,
@@ -737,7 +811,8 @@ def build_development_manual() -> Path:
             "脚本模型返回 speaker、dialogue 和可选 visual_prompt；每个分段设置 1–3 个有学习价值的关键画面。",
             "TTS 逐句生成语音并写入真实 start_time；关键帧计划以该时间为准，合并相邻提示并限制最多 12 帧。",
             "图片模型按 16:9 教学画面提示生成图片；每帧保存时间点、台词序号、提示词、模型和供应商信息。",
-            "FFmpeg 依据相邻 time_index 计算每张图片的持续时长，与播客音频合成为 1280×720 H.264/AAC MP4。",
+            "按每段台词的真实 start_time/end_time 生成 SRT；长台词自动换行，并在原语音时段内拆分为两行字幕。",
+            "FFmpeg 依据相邻 time_index 计算每张图片的持续时长，将图片、播客音频和中文字幕合成为 1280×720 H.264/AAC MP4。",
             "视频为用户显式勾选的可选输出；图片或合成失败时保留已经完成的播客音频，并返回独立 video_error。",
         ],
         nums["decimal"],
@@ -757,12 +832,16 @@ def build_development_manual() -> Path:
             "闪卡有效数量不足 6 张或缺少证据字段时判定生成无效；Quiz 统一校验答案索引与解析。",
             "Mind map 修复未闭合代码围栏；Markdown 修复破损表格和块边界。",
             "图片模型凭据缺失时给出配置错误，不生成伪图片；播客脚本、图片与 TTS 模型按用途隔离。",
-            "讲解视频关键帧间隔、重复提示和总帧数均受约束；合成过程只使用真实 TTS 时间戳。",
+            "讲解视频关键帧、字幕起止时间和字幕分段均来自真实 TTS 时间轴；字幕最多显示两行并直接烧录到成片。",
         ],
         nums["bullet"],
     )
-    _add_image(doc, ASSETS / "demo-flashcards.jpg", "图 3 真实演示资产：来源约束的知识闪卡")
-    _add_image(doc, ASSETS / "demo-podcast.jpg", "图 4 真实演示资产：独立播客与 TTS 管线")
+    _add_image(
+        doc, ASSETS / "demo-flashcards.jpg", "图 3 真实演示资产：来源约束的知识闪卡"
+    )
+    _add_image(
+        doc, ASSETS / "demo-podcast.jpg", "图 4 真实演示资产：独立播客与 TTS 管线"
+    )
 
     _add_heading(doc, "5. 个性化学习闭环", 1)
     _add_heading(doc, "5.1 四阶段动态路径", 2)
@@ -772,8 +851,16 @@ def build_development_manual() -> Path:
         [
             ["1 建立课程地图", "确认来源并理解主题关系", "能在 3 分钟内讲清知识结构"],
             ["2 补齐关键短板", "Quiz 诊断、错因归类、定向讲解", "基础题正确率达到 80%"],
-            ["3 完成实操迁移", "运行代码、观察参数、解释误差", "能解释一次实验结果与误差来源"],
-            ["4 评估并更新画像", "提交反馈、复盘错题、生成下一轮计划", "形成下一轮任务清单"],
+            [
+                "3 完成实操迁移",
+                "运行代码、观察参数、解释误差",
+                "能解释一次实验结果与误差来源",
+            ],
+            [
+                "4 评估并更新画像",
+                "提交反馈、复盘错题、生成下一轮计划",
+                "形成下一轮任务清单",
+            ],
         ],
         [1900, 4300, 3160],
     )
@@ -788,9 +875,21 @@ def build_development_manual() -> Path:
         doc,
         ["反馈层", "记录内容", "下一轮用途"],
         [
-            ["画像层", "6 维稳定特征、置信度与证据", "决定讲解深度、表达方式与资源偏好"],
-            ["行为层", "问答、资料采纳、资产生成等近期事件", "发现短期兴趣、困难与学习节奏变化"],
-            ["诊断层", "错题、解析、正确率与学习曲线", "调整路径检查点并生成针对性练习"],
+            [
+                "画像层",
+                "6 维稳定特征、置信度与证据",
+                "决定讲解深度、表达方式与资源偏好",
+            ],
+            [
+                "行为层",
+                "问答、资料采纳、资产生成等近期事件",
+                "发现短期兴趣、困难与学习节奏变化",
+            ],
+            [
+                "诊断层",
+                "错题、解析、正确率与学习曲线",
+                "调整路径检查点并生成针对性练习",
+            ],
         ],
         [1800, 3800, 3760],
         small=True,
@@ -811,7 +910,11 @@ def build_development_manual() -> Path:
             ["上下文构建", "来源切分、语义索引、token 预算", "减少无关上下文与漂移"],
             ["硬阻断", "来源存在但正文不可用时不生成", "避免模型常识冒充资料结论"],
             ["结构校验", "Quiz、闪卡、导图、Markdown 校验与修复", "阻止不完整资产入库"],
-            ["安全报告", "敏感内容、来源一致性、质量检查", "输出 passed 或 needs_review"],
+            [
+                "安全报告",
+                "敏感内容、来源一致性、质量检查",
+                "输出 passed 或 needs_review",
+            ],
             ["凭据保护", "API key 加密保存且接口不回显明文", "降低凭据泄露风险"],
         ],
         [1700, 4400, 3260],
@@ -831,13 +934,41 @@ def build_development_manual() -> Path:
         doc,
         ["层次", "核心技术", "职责"],
         [
-            ["交互层", "Next.js / React / Radix UI", "学习记录、三栏工作台、Studio、错题本、学习曲线"],
-            ["接口层", "FastAPI / SSE", "notebook、source、chat、learning、model、credential、command API"],
-            ["编排层", "LearningService / LangGraph 工作流", "角色路由、资源搜集、资产生成、路径、评估、安全"],
-            ["模型适配层", "LangChain / OpenAI-compatible / DashScope", "文本、Embedding、图片、TTS、STT 多协议统一"],
-            ["媒体合成层", "FFmpeg", "依据真实 TTS 时间轴合成讲解视频；不调用视频生成服务"],
-            ["数据与任务层", "SurrealDB / surreal-commands", "来源、资产、画像、模型、凭据、后台任务与日志"],
-            ["桌面交付层", "pywebview / WebView2 / Inno Setup", "Windows 安装包、本地服务编排与独立窗口"],
+            [
+                "交互层",
+                "Next.js / React / Radix UI",
+                "学习记录、三栏工作台、Studio、错题本、学习曲线",
+            ],
+            [
+                "接口层",
+                "FastAPI / SSE",
+                "notebook、source、chat、learning、model、credential、command API",
+            ],
+            [
+                "编排层",
+                "LearningService / LangGraph 工作流",
+                "角色路由、资源搜集、资产生成、路径、评估、安全",
+            ],
+            [
+                "模型适配层",
+                "LangChain / OpenAI-compatible / DashScope",
+                "文本、Embedding、图片、TTS、STT 多协议统一",
+            ],
+            [
+                "媒体合成层",
+                "FFmpeg",
+                "依据真实 TTS 时间轴合成画面、音频和字幕；不调用视频生成服务",
+            ],
+            [
+                "数据与任务层",
+                "SurrealDB / surreal-commands",
+                "来源、资产、画像、模型、凭据、后台任务与日志",
+            ],
+            [
+                "桌面交付层",
+                "pywebview / WebView2 / Inno Setup",
+                "Windows 安装包、本地服务编排与独立窗口",
+            ],
         ],
         [1600, 3300, 4460],
         small=True,
@@ -850,7 +981,11 @@ def build_development_manual() -> Path:
         "单一资产生成时优先选择对应模型，多资产批量生成时使用 learning_asset 模型；讲解视频复用 podcast、image 和 text_to_speech，"
         "因此无需新增视频模型配置。",
     )
-    _add_image(doc, ASSETS / "screenshot-model-settings.png", "图 6 模型/API 配置：基础默认项与按学习用途覆盖")
+    _add_image(
+        doc,
+        ASSETS / "screenshot-model-settings.png",
+        "图 6 模型/API 配置：基础默认项与按学习用途覆盖",
+    )
 
     _add_heading(doc, "8. 用户界面与体验设计", 1)
     _add_bullets(
@@ -871,13 +1006,22 @@ def build_development_manual() -> Path:
         doc,
         ["接口", "作用"],
         [
-            ["POST /api/learning/orchestrate", "同步运行一次学习编排并返回完整闭环对象"],
-            ["POST /api/learning/orchestrate/stream", "通过 SSE 返回各智能体阶段与最终结果"],
+            [
+                "POST /api/learning/orchestrate",
+                "同步运行一次学习编排并返回完整闭环对象",
+            ],
+            [
+                "POST /api/learning/orchestrate/stream",
+                "通过 SSE 返回各智能体阶段与最终结果",
+            ],
             ["POST /api/learning/resource-search/jobs", "提交资源搜集后台任务"],
             ["POST /api/learning/assets/jobs", "按资产类型提交生成任务"],
             ["GET /api/learning/profile-source/{notebook_id}", "获取或创建画像来源"],
             ["POST /api/learning/profile-event", "记录学习事件并按需更新画像"],
-            ["POST /api/podcasts/generate", "提交播客任务，并可通过 generate_video 选择讲解视频"],
+            [
+                "POST /api/podcasts/generate",
+                "提交播客任务，并可通过 generate_video 选择讲解视频",
+            ],
             ["GET /api/podcasts/episodes/{id}/video", "读取已合成的讲解视频"],
             ["/api/search 与 /api/context", "全文、向量、语义检索和上下文预算"],
             ["/api/commands", "查询任务状态、日志、结果与失败原因"],
@@ -896,7 +1040,10 @@ def build_development_manual() -> Path:
             ["model / default models", "模型、供应商、协议和按用途默认配置"],
             ["credential", "加密后的 API key 与各协议端点"],
             ["command job", "后台任务参数、状态、日志、结果和运行时间"],
-            ["podcast episode", "播客脚本、音频、讲解视频、关键帧计划与所属 notebook"],
+            [
+                "podcast episode",
+                "播客脚本、音频、讲解视频、SRT 字幕、关键帧计划与所属 notebook",
+            ],
         ],
         [2500, 6860],
         small=True,
@@ -908,7 +1055,11 @@ def build_development_manual() -> Path:
         doc,
         ["方式", "适用场景", "入口"],
         [
-            ["Windows 安装包", "答辩与普通用户使用", "桌面/开始菜单 ForgeNote；WebView2 窗口"],
+            [
+                "Windows 安装包",
+                "答辩与普通用户使用",
+                "桌面/开始菜单 Forgenote；安装文件 ForgeNote.exe；WebView2 窗口",
+            ],
             ["源码运行", "开发调试", "后端 uv run python run_api.py；前端 npm run dev"],
             ["Docker Compose", "快速复现与服务器部署", "docker compose up -d --build"],
         ],
@@ -937,25 +1088,37 @@ def build_development_manual() -> Path:
         doc,
         ["范围", "结果", "说明"],
         [
-            ["后端全量回归", "282 passed", "pytest；2 条依赖弃用 warning，无失败"],
+            ["后端全量回归", "285 passed", "pytest；2 条依赖弃用 warning，无失败"],
             ["学习编排回归", "31 passed", "learning service/API/A3 专项验收"],
-            ["A3 专项验收", "8 passed", "画像、9 智能体、7 资产、路径、安全、流式与视频时间轴"],
-            ["讲解视频专项", "8 passed", "脚本提示、时间轴、图片落盘、真实 FFmpeg 合成"],
-            ["前端单元/组件", "10 files / 55 tests passed", "Vitest；核心组件与工具函数"],
+            [
+                "A3 专项验收",
+                "8 passed",
+                "画像、9 智能体、7 资产、路径、安全、流式与视频时间轴",
+            ],
+            [
+                "讲解视频专项",
+                "11 passed",
+                "脚本提示、时间轴、SRT、字幕分段、图片落盘与真实 FFmpeg 合成",
+            ],
+            [
+                "前端单元/组件",
+                "10 files / 55 tests passed",
+                "Vitest；核心组件与工具函数",
+            ],
         ],
         [2300, 2300, 4760],
     )
     _add_body(
         doc,
         "测试结果按实际执行范围分别列出。测试说明书附有 tests/test_submission_acceptance.py、tests/test_explainer_video.py"
-        "和两组 8/8 通过截图，便于在答辩现场复现。",
+        "以及 8/8、11/11 两组通过截图，便于在答辩现场复现。",
     )
 
     _add_heading(doc, "12. 开源与 AI 工具合规", 1)
     _add_heading(doc, "12.1 开源底座与协议", 2)
     _add_body(
         doc,
-        "ForgeNote 基于 Open Notebook（https://github.com/lfnovo/open-notebook）二次开发，仓库保留 MIT License 与原版权声明。"
+        "Forgenote 基于 Open Notebook（https://github.com/lfnovo/open-notebook）二次开发，仓库保留 MIT License 与原版权声明。"
         "团队自主开发集中在学习画像、多智能体学习编排、资源搜索与确认、多类型资产、路径与评估、安全角色、模型用途化配置、"
         "任务可观测、错题本、学习曲线、Windows 交付和比赛材料。",
     )
@@ -986,7 +1149,7 @@ def build_development_manual() -> Path:
         doc,
         [
             "真实大模型、图片、播客与讲解视频的内容质量受用户模型凭据、额度与网络影响；离线测试验证系统契约和失败处理。",
-            "讲解视频采用关键静帧与语音合成，适合知识讲解；当前版本不生成连续角色动作、复杂动画或口型同步。",
+            "讲解视频采用关键静帧、语音合成和中文字幕，适合知识讲解；当前版本不生成连续角色动作、复杂动画或口型同步。",
             "生产级多租户隔离、长时间稳定性和大规模并发压测仍需在部署环境中补充。",
             "安全报告不能替代学术事实复核；后续可加入引用覆盖率、事实一致性模型和人工审核工作流。",
             "后续将根据真实学生数据改进画像置信度、路径动态调整和资源质量排序。",
@@ -1004,10 +1167,22 @@ def build_development_manual() -> Path:
             ["请求/响应契约", "api/models.py"],
             ["后台生成任务", "commands/learning_commands.py"],
             ["RAG 与语义索引", "forgenote/graphs/*；forgenote/utils/semantic_index.py"],
-            ["图片与多协议模型", "forgenote/ai/image_generation.py；forgenote/ai/model_specs.py"],
-            ["播客、TTS 与讲解视频", "api/podcast_service.py；forgenote/podcasts/robust_creator.py；forgenote/podcasts/video_creator.py"],
-            ["前端学习工作台", "frontend/src/app/(dashboard)/notebooks；frontend/src/components/learning"],
-            ["专项测试", "tests/test_submission_acceptance.py；tests/test_explainer_video.py"],
+            [
+                "图片与多协议模型",
+                "forgenote/ai/image_generation.py；forgenote/ai/model_specs.py",
+            ],
+            [
+                "播客、TTS 与讲解视频",
+                "api/podcast_service.py；forgenote/podcasts/robust_creator.py；forgenote/podcasts/video_creator.py",
+            ],
+            [
+                "前端学习工作台",
+                "frontend/src/app/(dashboard)/notebooks；frontend/src/components/learning",
+            ],
+            [
+                "专项测试",
+                "tests/test_submission_acceptance.py；tests/test_explainer_video.py",
+            ],
         ],
         [2800, 6560],
     )
@@ -1024,33 +1199,33 @@ def build_development_manual() -> Path:
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output = OUTPUT_DIR / "开发说明书.docx"
-    doc.core_properties.title = "ForgeNote 系统开发说明书"
+    doc.core_properties.title = "Forgenote 系统开发说明书"
     doc.core_properties.subject = "中国软件杯 A3 赛题配套文档"
-    doc.core_properties.author = "ForgeNote Team"
-    doc.core_properties.keywords = "ForgeNote, 多智能体, 多模态, 个性化学习"
+    doc.core_properties.author = "Forgenote Team"
+    doc.core_properties.keywords = "Forgenote, 多智能体, 多模态, 个性化学习"
     doc.save(output)
     return output
 
 
 def build_test_manual() -> Path:
     doc = Document()
-    nums = _configure_document(doc, "FORGENOTE · A3 TEST MANUAL")
+    nums = _configure_document(doc, "Forgenote · A3 TEST MANUAL")
     _add_cover(
         doc,
-        title="ForgeNote 测试说明书",
+        title="Forgenote 测试说明书",
         subtitle="核心验收范围、可复现用例与真实执行证据",
-        version="V2.1（精简实测版）",
+        version="V2.2（字幕与媒体实测版）",
         document_type="测试说明书",
         takeaway=(
             "正文集中说明测试范围、执行环境、8 个官方要求映射用例、讲解视频专项用例、真实结果与适用边界；"
-            "附录提供对应测试代码及两组 8/8 通过截图。"
+            "附录提供对应测试代码，以及 8/8 和 11/11 两组通过截图。"
         ),
     )
 
     _add_heading(doc, "1. 测试目的与范围", 1)
     _add_body(
         doc,
-        "本次测试验证 ForgeNote 的核心学习闭环、讲解视频生成管线以及相关回归行为。"
+        "本次测试验证 Forgenote 的核心学习闭环、带字幕讲解视频生成管线以及相关回归行为。"
         "各项结论均与实际执行命令、用例数量、耗时和证据截图对应。",
     )
     _add_heading(doc, "1.1 本次纳入", 2)
@@ -1058,7 +1233,7 @@ def build_test_manual() -> Path:
         doc,
         [
             "A3 专项离线验收：画像、多智能体、学习资产、路径、防幻觉、画像更新、流式进度与视频时间轴。",
-            "讲解视频专项：脚本视觉提示、真实 TTS 时间点、关键帧图片、FFmpeg 清单与真实 MP4 合成。",
+            "讲解视频专项：脚本视觉提示、真实 TTS 时间点、SRT 字幕、自动换行分段、关键帧图片与真实 MP4 合成。",
             "学习编排回归：LearningService 与 learning API。",
             "后端全量回归：领域、API、数据库适配、命令、工具与 Windows 打包逻辑。",
             "前端单元/组件测试：核心组件、配置、本地化、hooks 与工具函数。",
@@ -1110,14 +1285,34 @@ def build_test_manual() -> Path:
         doc,
         ["编号", "验证点", "主要断言", "结果"],
         [
-            ["A3-01", "对话式画像", "6 个维度；value/evidence 非空；置信度 0–1", "PASS"],
+            [
+                "A3-01",
+                "对话式画像",
+                "6 个维度；value/evidence 非空；置信度 0–1",
+                "PASS",
+            ],
             ["A3-02", "多智能体协作", "9 个唯一角色；状态 completed；进度 100", "PASS"],
-            ["A3-03", "多类型资产", "7 类输出；Quiz/闪卡/导图/代码/图片契约有效", "PASS"],
+            [
+                "A3-03",
+                "多类型资产",
+                "7 类输出；Quiz/闪卡/导图/代码/图片契约有效",
+                "PASS",
+            ],
             ["A3-04", "个性化路径", "4 步有序；每步有目标、活动、资源与检查点", "PASS"],
-            ["A3-05", "防幻觉阻断", "来源无正文时 assets=[]，并返回明确阻断提示", "PASS"],
+            [
+                "A3-05",
+                "防幻觉阻断",
+                "来源无正文时 assets=[]，并返回明确阻断提示",
+                "PASS",
+            ],
             ["A3-06", "画像随学更新", "问答与来源采纳事件进入画像并细化字段", "PASS"],
             ["A3-07", "流式进度", "阶段事件先于最终结果；进度单调不减", "PASS"],
-            ["A3-08", "讲解视频时间轴", "关键帧 time_index 来自真实台词 start_time", "PASS"],
+            [
+                "A3-08",
+                "讲解视频时间轴",
+                "关键帧 time_index 来自真实台词 start_time",
+                "PASS",
+            ],
         ],
         [1000, 2200, 4860, 1300],
         small=True,
@@ -1126,7 +1321,7 @@ def build_test_manual() -> Path:
         doc,
         "设计说明",
         "专项用例直接调用生产编排与媒体合成代码。离线用例不依赖数据库和付费模型；其中一项使用真实音频、真实产品截图和 FFmpeg"
-        "生成可播放 MP4，用于验证本地合成链路。",
+        "生成带中文字幕的可播放 MP4，用于验证本地合成链路。",
         fill=LIGHT_BLUE,
         color=BLUE,
     )
@@ -1136,11 +1331,16 @@ def build_test_manual() -> Path:
         doc,
         ["测试范围", "结果", "耗时", "备注"],
         [
-            ["A3 专项验收", "8 passed", "10.18 s", "1 条依赖弃用 warning"],
-            ["讲解视频专项", "8 passed", "6.41 s", "含 1 个真实 FFmpeg 集成用例"],
-            ["学习编排回归", "31 passed", "57.34 s", "2 条依赖弃用 warning"],
-            ["后端全量回归", "282 passed", "140.83 s", "2 条依赖弃用 warning"],
-            ["前端单元/组件", "10 files / 55 tests passed", "9.60 s", "无失败"],
+            ["A3 专项验收", "8 passed", "5.40 s", "1 条依赖弃用 warning"],
+            [
+                "讲解视频专项",
+                "11 passed",
+                "35.87 s",
+                "含字幕单元测试与 1 个真实 FFmpeg 集成用例",
+            ],
+            ["学习编排回归", "31 passed", "57.91 s", "2 条依赖弃用 warning"],
+            ["后端全量回归", "285 passed", "158.67 s", "2 条依赖弃用 warning"],
+            ["前端单元/组件", "10 files / 55 tests passed", "27.10 s", "无失败"],
         ],
         [2200, 2600, 1700, 2860],
         small=True,
@@ -1155,7 +1355,7 @@ def build_test_manual() -> Path:
     _add_callout(
         doc,
         "结论",
-        "核心学习闭环、讲解视频管线以及后端和前端回归均无失败。",
+        "核心学习闭环、带字幕讲解视频管线以及后端和前端回归均无失败。",
         fill="ECFDF5",
         color=GREEN,
     )
@@ -1164,7 +1364,7 @@ def build_test_manual() -> Path:
         [
             "结论仅适用于上述代码版本、环境与测试范围。",
             "真实模型端到端效果应在配置合法 API 凭据后另做演示验收，并记录模型、时间与来源。",
-            "多模态质量还需人工检查图片可读性、内容准确性、音频完整性和视频节奏；自动化测试验证结构与合成契约。",
+            "多模态质量还需人工检查图片可读性、内容准确性、音频完整性、字幕可读性和视频节奏；自动化测试验证结构与合成契约。",
             "后续建议增加 Docker 冒烟、Windows 安装包自动化、API 性能基线和长任务恢复测试。",
         ],
         nums["bullet"],
@@ -1190,13 +1390,15 @@ def build_test_manual() -> Path:
     _add_heading(doc, "附录 C：讲解视频专项测试源码", 1)
     _add_body(
         doc,
-        "源码位置：tests/test_explainer_video.py。用例覆盖脚本视觉提示、关键帧时间计划、图片持久化、FFmpeg 清单、"
-        "真实 MP4 合成和用户显式选择。",
+        "源码位置：tests/test_explainer_video.py。用例覆盖脚本视觉提示、关键帧时间计划、SRT 字幕、自动换行分段、"
+        "图片持久化、FFmpeg 字幕烧录、真实 MP4 合成和用户显式选择。",
     )
     _add_code_listing(doc, ROOT / "tests" / "test_explainer_video.py")
 
     _add_heading(doc, "附录 D：讲解视频专项通过截图", 1)
-    _add_image(doc, VIDEO_EVIDENCE, "图 D-1 2026-07-19 讲解视频专项：8/8 通过", width=6.45)
+    _add_image(
+        doc, VIDEO_EVIDENCE, "图 D-1 2026-07-19 讲解视频专项：11/11 通过", width=6.45
+    )
     _add_image(
         doc,
         ASSETS / "screenshot-explainer-video-details.png",
@@ -1206,10 +1408,10 @@ def build_test_manual() -> Path:
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output = OUTPUT_DIR / "测试说明书.docx"
-    doc.core_properties.title = "ForgeNote 测试说明书"
+    doc.core_properties.title = "Forgenote 测试说明书"
     doc.core_properties.subject = "中国软件杯 A3 赛题测试证据"
-    doc.core_properties.author = "ForgeNote Team"
-    doc.core_properties.keywords = "ForgeNote, 测试, pytest, Vitest, A3"
+    doc.core_properties.author = "Forgenote Team"
+    doc.core_properties.keywords = "Forgenote, 测试, pytest, Vitest, A3"
     doc.save(output)
     return output
 
