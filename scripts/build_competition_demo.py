@@ -7,6 +7,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -355,7 +356,96 @@ def generate_narration(force: bool) -> float:
 
 
 def scene_weights() -> list[int]:
-    return [max(1, len(scene.narration.replace(" ", ""))) for scene in SCENES]
+    return [max(1, round(spoken_weight(scene.narration) * 10)) for scene in SCENES]
+
+
+def spoken_weight(text: str) -> float:
+    """Estimate spoken duration without treating Latin words as one beat per letter."""
+    weight = 0.0
+    position = 0
+    for match in re.finditer(r"[A-Za-z]+(?:[-'][A-Za-z]+)*|\d+(?:\.\d+)?", text):
+        for char in text[position : match.start()]:
+            if "\u4e00" <= char <= "\u9fff":
+                weight += 1.0
+            elif char.strip() and char not in "，。！？；：、,.!?;:（）()｜·→":
+                weight += 0.5
+        token = match.group(0)
+        if token.replace(".", "").isdigit():
+            weight += max(1.0, len(token.replace(".", "")) * 0.75)
+        elif token.isupper() and len(token) <= 4:
+            weight += float(len(token))
+        else:
+            weight += max(1.5, min(4.0, len(token) / 3.2))
+        position = match.end()
+    for char in text[position:]:
+        if "\u4e00" <= char <= "\u9fff":
+            weight += 1.0
+        elif char.strip() and char not in "，。！？；：、,.!?;:（）()｜·→":
+            weight += 0.5
+    return max(1.0, weight)
+
+
+def detect_silence_windows(audio_path: Path) -> list[tuple[float, float]]:
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-nostats",
+            "-i",
+            str(audio_path),
+            "-af",
+            "silencedetect=noise=-36dB:d=0.18",
+            "-f",
+            "null",
+            "-",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    starts = [float(value) for value in re.findall(r"silence_start:\s*([0-9.]+)", result.stderr)]
+    ends = [float(value) for value in re.findall(r"silence_end:\s*([0-9.]+)", result.stderr)]
+    return [(start, end) for start, end in zip(starts, ends) if end > start]
+
+
+def align_scene_durations(
+    durations: list[float],
+    silence_windows: list[tuple[float, float]],
+) -> list[float]:
+    total_duration = sum(durations)
+    targets: list[float] = []
+    elapsed = 0.0
+    for duration in durations[:-1]:
+        elapsed += duration
+        targets.append(elapsed)
+
+    long_pauses = [
+        (start, end)
+        for start, end in silence_windows
+        if end - start >= 0.45
+    ]
+    boundaries = [0.0]
+    for target in targets:
+        previous = boundaries[-1]
+        candidates = [
+            (start, end)
+            for start, end in long_pauses
+            if previous + 7.0 < start < total_duration - 7.0
+            and abs(start - target) <= 3.2
+        ]
+        if candidates:
+            start, end = min(
+                candidates,
+                key=lambda item: abs(item[0] - target) - min(item[1] - item[0], 1.0) * 0.35,
+            )
+            boundary = start
+        else:
+            boundary = target
+        boundaries.append(max(previous + 7.0, boundary))
+    boundaries.append(total_duration)
+    return [boundaries[index + 1] - boundaries[index] for index in range(len(durations))]
 
 
 def scene_durations(total_duration: float) -> list[float]:
@@ -400,16 +490,51 @@ def split_caption(text: str, limit: int = 24) -> list[str]:
     return captions
 
 
-def caption_cues(durations: list[float]) -> list[dict[str, float | str]]:
+def caption_cues(
+    durations: list[float],
+    silence_windows: list[tuple[float, float]] | None = None,
+) -> list[dict[str, float | str]]:
     cues: list[dict[str, float | str]] = []
+    pauses = silence_windows or []
     scene_start = 0.0
     for scene, duration in zip(SCENES, durations):
+        scene_end = scene_start + duration
         captions = split_caption(scene.narration)
-        weights = [max(1, len(caption)) for caption in captions]
-        caption_start = scene_start
-        for caption, weight in zip(captions, weights):
-            caption_duration = duration * weight / sum(weights)
-            caption_end = caption_start + caption_duration
+        weights = [spoken_weight(caption) for caption in captions]
+        minimum_display = [max(0.9, min(4.8, weight / 5.5)) for weight in weights]
+        total_weight = sum(weights)
+        boundaries = [scene_start]
+        cumulative_weight = 0.0
+        for caption_index, weight in enumerate(weights[:-1]):
+            cumulative_weight += weight
+            target = scene_start + duration * cumulative_weight / total_weight
+            previous = boundaries[-1]
+            min_duration = minimum_display[caption_index]
+            latest = scene_end - sum(minimum_display[caption_index + 1 :])
+            candidates = [
+                (start, end)
+                for start, end in pauses
+                if end - start >= 0.25
+                and previous + min_duration <= start < latest
+                and abs(start - target) <= 2.4
+            ]
+            if candidates:
+                start, end = min(
+                    candidates,
+                    key=lambda item: abs(item[0] - target)
+                    - min(item[1] - item[0], 0.8) * 0.55,
+                )
+                boundary = start
+            else:
+                boundary = max(
+                    previous + min_duration, min(latest, target - 0.18)
+                )
+            boundaries.append(boundary)
+        boundaries.append(scene_end)
+
+        for caption, caption_start, caption_end in zip(
+            captions, boundaries, boundaries[1:]
+        ):
             cues.append(
                 {
                     "start": caption_start,
@@ -417,17 +542,21 @@ def caption_cues(durations: list[float]) -> list[dict[str, float | str]]:
                     "text": caption,
                 }
             )
-            caption_start = caption_end
-        scene_start += duration
+        scene_start = scene_end
     return cues
 
 
-def write_script_and_subtitles(durations: list[float]) -> None:
+def write_script_and_subtitles(
+    durations: list[float],
+    silence_windows: list[tuple[float, float]] | None = None,
+) -> None:
     lines = ["ForgeNote 七分钟实机演示旁白", ""]
     for scene in SCENES:
         lines.extend([f"【{scene.chapter}】", scene.narration, ""])
     srt_lines: list[str] = []
-    for cue_index, cue in enumerate(caption_cues(durations), start=1):
+    for cue_index, cue in enumerate(
+        caption_cues(durations, silence_windows), start=1
+    ):
         start = float(cue["start"])
         end = float(cue["end"])
         srt_lines.extend(
@@ -518,7 +647,10 @@ def render_scene(index: int, scene: Scene, duration: float) -> Path:
     return output
 
 
-def build_video(durations: list[float]) -> None:
+def build_video(
+    durations: list[float],
+    silence_windows: list[tuple[float, float]] | None = None,
+) -> None:
     scene_files = [render_scene(index, scene, duration) for index, (scene, duration) in enumerate(zip(SCENES, durations))]
     concat_file = WORK_DIR / "video-concat.txt"
     concat_file.write_text(
@@ -546,7 +678,7 @@ def build_video(durations: list[float]) -> None:
     font_path = Path("C:/Windows/Fonts/msyhbd.ttc")
     filters: list[str] = []
     video_input = "[0:v]"
-    for cue_index, cue in enumerate(caption_cues(durations)):
+    for cue_index, cue in enumerate(caption_cues(durations, silence_windows)):
         text_path = caption_dir / f"cue-{cue_index:03d}.txt"
         text_path.write_text(str(cue["text"]), encoding="utf-8", newline="\n")
         output_label = f"[caption{cue_index}]"
@@ -629,6 +761,7 @@ def write_note(duration: float) -> None:
 画面稳定：界面截图保持原始像素，不使用逐帧数字缩放；仅讲解视频片段保留自然运动。
 配音：ForgeNote 已配置的 MiMo 文本转语音模型。
 字幕：单层烧录字幕，字幕时间段之间保留 30 毫秒间隔，避免重叠。
+字幕同步：依据实际配音的静音边界校准场景和字幕切换点，下一条字幕在自然停顿开始时出现。
 视频编码：H.264 High@4.0（avc1）、1280×720、30 fps、yuv420p。
 音频编码：AAC-LC、48 kHz、双声道、160 kbps。
 总时长：{duration:.3f} 秒（比赛要求不超过 420 秒）。
@@ -646,9 +779,10 @@ def main() -> None:
     duration = generate_narration(force=args.force_tts)
     if duration > 410:
         raise RuntimeError(f"Narration is too long for the competition limit: {duration:.3f}s")
-    durations = scene_durations(duration)
-    write_script_and_subtitles(durations)
-    build_video(durations)
+    silence_windows = detect_silence_windows(NARRATION_AUDIO)
+    durations = align_scene_durations(scene_durations(duration), silence_windows)
+    write_script_and_subtitles(durations, silence_windows)
+    build_video(durations, silence_windows)
     output_duration = ffprobe_duration(OUTPUT_VIDEO)
     if output_duration > 420:
         raise RuntimeError(f"Output exceeds seven minutes: {output_duration:.3f}s")
