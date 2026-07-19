@@ -164,6 +164,11 @@ def test_ffmpeg_composition_uses_keyframe_durations_and_podcast_audio(
     assert "duration 4.250" in manifest
     assert "duration 5.750" in manifest
     assert str(audio_path) in calls[0][0]
+    filter_flag = calls[0][0].index("-filter_complex")
+    assert "concat=n=2:v=1:a=0[outv]" in calls[0][0][filter_flag + 1]
+    assert calls[0][0].count("-loop") == 2
+    duration_flag = calls[0][0].index("-t")
+    assert calls[0][0][duration_flag + 1] == "10.000"
     assert calls[0][0][-1] == str(output_path)
     assert result.read_bytes() == b"mp4"
 

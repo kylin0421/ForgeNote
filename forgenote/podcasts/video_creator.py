@@ -234,6 +234,7 @@ def compose_explainer_video(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = output_path.with_suffix(".ffconcat")
     lines = ["ffconcat version 1.0"]
+    frame_durations: list[float] = []
     for index, keyframe in enumerate(keyframes):
         start = max(0.0, float(keyframe["time_index"]))
         next_start = (
@@ -242,45 +243,68 @@ def compose_explainer_video(
             else total_duration
         )
         duration = max(0.1, next_start - start)
+        frame_durations.append(duration)
         lines.append(_concat_file_path(Path(str(keyframe["image_file"]))))
         lines.append(f"duration {duration:.3f}")
 
     lines.append(_concat_file_path(Path(str(keyframes[-1]["image_file"]))))
     manifest_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    command = [
-        ffmpeg,
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        str(manifest_path),
-        "-i",
-        str(audio_path),
-        "-vf",
-        (
+    command = [ffmpeg, "-y"]
+    for keyframe in keyframes:
+        command.extend(
+            [
+                "-loop",
+                "1",
+                "-framerate",
+                "1",
+                "-i",
+                str(Path(str(keyframe["image_file"]))),
+            ]
+        )
+    command.extend(["-i", str(audio_path)])
+
+    filters = []
+    for index, duration in enumerate(frame_durations):
+        filters.append(
+            f"[{index}:v]"
             "scale=1280:720:force_original_aspect_ratio=decrease,"
-            "pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=white,format=yuv420p"
-        ),
-        "-r",
-        "30",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        "-crf",
-        "20",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        "-shortest",
-        "-movflags",
-        "+faststart",
-        str(output_path),
-    ]
+            "pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=white,"
+            f"fps=30,trim=duration={duration:.3f},setpts=PTS-STARTPTS[v{index}]"
+        )
+    filters.append(
+        "".join(f"[v{index}]" for index in range(len(keyframes)))
+        + f"concat=n={len(keyframes)}:v=1:a=0[outv]"
+    )
+
+    command.extend(
+        [
+            "-filter_complex",
+            ";".join(filters),
+            "-map",
+            "[outv]",
+            "-map",
+            f"{len(keyframes)}:a:0",
+            "-r",
+            "30",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "20",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-t",
+            f"{total_duration:.3f}",
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ]
+    )
     subprocess.run(
         command,
         check=True,
