@@ -146,3 +146,7 @@ specs/
 .mcp.json
 
 AGENTS.md
+
+# Rebuildable competition demo intermediates
+to_be_submitted_docs/assets/competition-demo/_build/
+to_be_submitted_docs/assets/competition-demo/*-配音.wav

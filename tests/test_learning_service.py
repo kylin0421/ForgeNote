@@ -1,6 +1,7 @@
 import pytest
 
 from api.learning_service import (
+    ASSET_GENERATION_MAX_TOKENS,
     _append_profile_event,
     _generate_resources_from_sources,
     _normalize_generated_markdown,
@@ -79,6 +80,15 @@ def test_normalize_generated_markdown_keeps_table_cell_minus_inline():
     normalized = _normalize_generated_markdown(content)
 
     assert "| generation - contrast | Keep this on one table row. |" in normalized
+
+
+def test_learning_asset_token_limits_match_output_complexity():
+    assert ASSET_GENERATION_MAX_TOKENS["quiz"] == 4096
+    assert ASSET_GENERATION_MAX_TOKENS["flashcards"] == 4096
+    assert ASSET_GENERATION_MAX_TOKENS["mind_map"] == 4096
+    assert ASSET_GENERATION_MAX_TOKENS["study_guide"] == 6144
+    assert ASSET_GENERATION_MAX_TOKENS["reading"] == 6144
+    assert ASSET_GENERATION_MAX_TOKENS["code_lab"] == 6144
 
 
 def test_learning_profile_event_refines_stable_fields_from_chat():

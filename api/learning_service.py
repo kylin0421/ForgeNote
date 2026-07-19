@@ -46,6 +46,14 @@ from forgenote.utils.text_utils import extract_text_content
 
 MAX_GENERATION_CONTEXT_CHARS = 24000
 MAX_SOURCE_CHARS = 7000
+ASSET_GENERATION_MAX_TOKENS: dict[LearningOutputKind, int] = {
+    "quiz": 4096,
+    "flashcards": 4096,
+    "mind_map": 4096,
+    "study_guide": 6144,
+    "reading": 6144,
+    "code_lab": 6144,
+}
 GENERATED_ASSETS_DIR = os.getenv(
     "GENERATED_ASSETS_DIR",
     "/app/frontend/public/generated-assets",
@@ -844,6 +852,19 @@ async def _collect_generation_source_context(
         if not accepted_ids or source_ids.intersection(accepted_ids):
             selected_sources.append(source)
 
+    async def load_insights(source: Source) -> list[Any]:
+        try:
+            return await source.get_insights()
+        except Exception as error:
+            logger.debug(f"Unable to load source insights for {source.id}: {error}")
+            return []
+
+    # Source insight reads are independent. Loading them concurrently avoids
+    # adding one database round trip per selected source before the LLM call.
+    insight_batches = await asyncio.gather(
+        *(load_insights(source) for source in selected_sources)
+    )
+
     blocks: list[str] = []
     remaining_chars = MAX_GENERATION_CONTEXT_CHARS
     for index, source in enumerate(selected_sources, start=1):
@@ -851,11 +872,7 @@ async def _collect_generation_source_context(
         if source.full_text and source.full_text.strip():
             content_parts.append(_clean_source_text(source.full_text))
 
-        try:
-            insights = await source.get_insights()
-        except Exception as error:
-            logger.debug(f"Unable to load source insights for {source.id}: {error}")
-            insights = []
+        insights = insight_batches[index - 1]
 
         insight_lines = [
             f"- {insight.insight_type}: {insight.content}"
@@ -1761,12 +1778,15 @@ async def _generate_resources_from_sources(
         if len(text_outputs) == 1
         else "learning_asset"
     )
+    max_tokens = max(
+        ASSET_GENERATION_MAX_TOKENS.get(kind, 6144) for kind in text_outputs
+    )
     try:
         model = await provision_langchain_model(
             str(messages),
             None,
             default_model_type,
-            max_tokens=8192,
+            max_tokens=max_tokens,
             structured=dict(type="json"),
         )
         ai_message = await model.ainvoke(messages)
