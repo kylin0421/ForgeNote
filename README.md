@@ -43,7 +43,7 @@ ForgeNote 是一款面向高校专业课学习的本地 AI 桌面应用。它把
 
 ### Windows 桌面安装包（推荐）
 
-从 [Releases](../../releases/latest) 获取 `ForgeNote-Setup-0.1.4.exe`，双击安装后从桌面或开始菜单启动 ForgeNote。安装包不要求预装 Docker、Python 或 Node.js；旧版本可以直接覆盖升级。
+从 [Releases](../../releases/latest) 获取 `ForgeNote-Setup-0.1.5.exe`，双击安装后从桌面或开始菜单启动 ForgeNote。安装包不要求预装 Docker、Python 或 Node.js；旧版本可以直接覆盖升级。
 
 首次使用时，在“模型”页面添加供应商凭据，再在“设置”页面选择通用文本、Embedding、图片、TTS、STT 及各类学习资产使用的模型。详细步骤见 [配置指南](docs/configuration-guide.md)。
 
@@ -53,7 +53,7 @@ ForgeNote 是一款面向高校专业课学习的本地 AI 桌面应用。它把
 powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1
 ```
 
-输出位于 `dist/windows/ForgeNote-Setup-0.1.4.exe`，打包与数据目录说明见 [Windows 打包文档](desktop/windows/README.md)。
+输出位于 `dist/windows/ForgeNote-Setup-0.1.5.exe`，打包与数据目录说明见 [Windows 打包文档](desktop/windows/README.md)。
 
 ### 源码运行（开发）
 

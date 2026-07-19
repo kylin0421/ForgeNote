@@ -43,7 +43,7 @@ The demo podcast uses `mimo-v2.5-pro` for its outline and script, and `mimo-v2.5
 
 ### Windows desktop installer (recommended)
 
-Download `ForgeNote-Setup-0.1.4.exe` from [Releases](../../releases/latest), run the installer, and launch ForgeNote from the desktop or Start menu. Docker, Python, and Node.js are not required. You can install a newer version over an existing installation.
+Download `ForgeNote-Setup-0.1.5.exe` from [Releases](../../releases/latest), run the installer, and launch ForgeNote from the desktop or Start menu. Docker, Python, and Node.js are not required. You can install a newer version over an existing installation.
 
 On first launch, add provider credentials under Models. Then use Settings to select the models for general text, embeddings, images, TTS, STT, and each learning asset. See the [configuration guide](docs/configuration-guide.md) for details.
 
@@ -53,7 +53,7 @@ To build the installer yourself:
 powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1
 ```
 
-The installer is written to `dist/windows/ForgeNote-Setup-0.1.4.exe`. See the [Windows packaging guide](desktop/windows/README.md) for packaging and data-directory details.
+The installer is written to `dist/windows/ForgeNote-Setup-0.1.5.exe`. See the [Windows packaging guide](desktop/windows/README.md) for packaging and data-directory details.
 
 ### Run from source
 
