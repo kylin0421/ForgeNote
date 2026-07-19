@@ -415,7 +415,13 @@ def compose_explainer_video(
     ) as subtitle_dir:
         for cue_index, cue in enumerate(subtitle_cues or []):
             text_path = Path(subtitle_dir) / f"cue-{cue_index:03d}.txt"
-            text_path.write_text(str(cue["dialogue"]), encoding="utf-8")
+            # FFmpeg treats CRLF as two line breaks in drawtext text files on
+            # Windows, which leaves a blank line between caption rows.
+            text_path.write_text(
+                str(cue["dialogue"]),
+                encoding="utf-8",
+                newline="\n",
+            )
             next_output = f"[outvsub{cue_index}]"
             drawtext_options = [
                 f"textfile='{_ffmpeg_filter_path(text_path)}'",
@@ -431,8 +437,8 @@ def compose_explainer_video(
                 "x=(w-text_w)/2",
                 "y=h-text_h-42",
                 (
-                    "enable='between(t,"
-                    f"{float(cue['start_time']):.3f},"
+                    "enable='gte(t,"
+                    f"{float(cue['start_time']):.3f})*lt(t,"
                     f"{float(cue['end_time']):.3f})'"
                 ),
             ]
@@ -459,6 +465,14 @@ def compose_explainer_video(
                 "30",
                 "-c:v",
                 "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-profile:v",
+                "high",
+                "-level:v",
+                "4.0",
+                "-tag:v",
+                "avc1",
                 "-preset",
                 "medium",
                 "-crf",

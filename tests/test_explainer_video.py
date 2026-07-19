@@ -1,4 +1,5 @@
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -204,6 +205,9 @@ def test_ffmpeg_composition_uses_keyframe_durations_and_podcast_audio(
     def fake_run(command, **kwargs):
         filter_flag = command.index("-filter_complex_script")
         filter_graph = Path(command[filter_flag + 1]).read_text(encoding="utf-8")
+        subtitle_text_files = list(tmp_path.glob(".subtitle-text-*/cue-000.txt"))
+        assert len(subtitle_text_files) == 1
+        assert b"\r\n" not in subtitle_text_files[0].read_bytes()
         calls.append((command, kwargs, filter_graph))
         Path(command[-1]).write_bytes(b"mp4")
 
@@ -232,10 +236,14 @@ def test_ffmpeg_composition_uses_keyframe_durations_and_podcast_audio(
     filter_graph = calls[0][2]
     assert "concat=n=2:v=1:a=0[outv]" in filter_graph
     assert "drawtext=" in filter_graph
-    assert "enable='between(t,0.000,10.000)'" in filter_graph
+    assert "enable='gte(t,0.000)*lt(t,10.000)'" in filter_graph
     assert "[outvsub0]" in filter_graph
     assert calls[0][0][calls[0][0].index("-map") + 1] == "[outvsub0]"
     assert calls[0][0].count("-loop") == 2
+    assert calls[0][0][calls[0][0].index("-pix_fmt") + 1] == "yuv420p"
+    assert calls[0][0][calls[0][0].index("-profile:v") + 1] == "high"
+    assert calls[0][0][calls[0][0].index("-level:v") + 1] == "4.0"
+    assert calls[0][0][calls[0][0].index("-tag:v") + 1] == "avc1"
     duration_flag = calls[0][0].index("-t")
     assert calls[0][0][duration_flag + 1] == "10.000"
     assert calls[0][0][-1] == str(output_path)
@@ -278,6 +286,29 @@ def test_real_ffmpeg_builds_playable_mp4_without_video_api(tmp_path):
     assert duration > 0
     assert result.exists()
     assert result.stat().st_size > 1_000
+
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe is not None:
+        probe = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=pix_fmt,profile,codec_tag_string",
+                "-of",
+                "default=noprint_wrappers=1",
+                str(result),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert "profile=High" in probe.stdout
+        assert "codec_tag_string=avc1" in probe.stdout
+        assert "pix_fmt=yuv420p" in probe.stdout
 
 
 def test_podcast_request_keeps_video_generation_opt_in():
