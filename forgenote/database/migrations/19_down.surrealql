@@ -1,0 +1,3 @@
+REMOVE FIELD IF EXISTS video_error ON TABLE episode;
+REMOVE FIELD IF EXISTS keyframes ON TABLE episode;
+REMOVE FIELD IF EXISTS video_file ON TABLE episode;

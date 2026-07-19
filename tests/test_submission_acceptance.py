@@ -12,7 +12,7 @@ from api.learning_service import (
     stream_learning_orchestration,
 )
 from api.models import LearningOrchestrationRequest
-
+from forgenote.podcasts.video_creator import build_keyframe_plan
 
 EXPECTED_PROFILE_DIMENSIONS = {
     "专业背景",
@@ -154,3 +154,24 @@ async def test_a3_07_streaming_reports_agent_progress_before_the_final_result():
     assert stage_events[0]["stage"]["status"] == "running"
     assert stage_events[-1]["stage"]["status"] == "completed"
     assert complete_events[0]["result"]["resources"] == []
+
+
+def test_a3_08_explainer_video_cues_follow_the_real_speech_timeline():
+    plan = build_keyframe_plan(
+        [
+            {
+                "start_time": 0.6,
+                "dialogue": "先建立半监督学习的整体图景。",
+                "visual_prompt": "16:9 educational overview of semi-supervised learning",
+            },
+            {
+                "start_time": 7.25,
+                "dialogue": "再说明一致性正则化的训练流程。",
+                "visual_prompt": "16:9 process diagram of consistency regularization",
+            },
+        ],
+        episode_name="半监督学习讲解",
+    )
+
+    assert [cue["time_index"] for cue in plan] == [0.0, 7.25]
+    assert all(cue["prompt"].startswith("16:9") for cue in plan)

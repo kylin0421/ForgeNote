@@ -26,6 +26,10 @@ class PodcastEpisodeResponse(BaseModel):
     briefing: str
     audio_file: Optional[str] = None
     audio_url: Optional[str] = None
+    video_file: Optional[str] = None
+    video_url: Optional[str] = None
+    keyframes: Optional[List[dict]] = None
+    video_error: Optional[str] = None
     transcript: Optional[dict] = None
     outline: Optional[dict] = None
     created: Optional[str] = None
@@ -54,21 +58,24 @@ async def generate_podcast(request: PodcastGenerationRequest):
             notebook_id=request.notebook_id,
             content=request.content,
             briefing_suffix=request.briefing_suffix,
+            generate_video=request.generate_video,
         )
 
         return PodcastGenerationResponse(
             job_id=job_id,
             status="submitted",
-            message=f"Podcast generation started for episode '{request.episode_name}'",
+            message=(
+                f"Podcast and explainer video generation started for episode '{request.episode_name}'"
+                if request.generate_video
+                else f"Podcast generation started for episode '{request.episode_name}'"
+            ),
             episode_profile=request.episode_profile,
             episode_name=request.episode_name,
         )
 
     except Exception as e:
         logger.error(f"Error generating podcast: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail="Failed to generate podcast"
-        )
+        raise HTTPException(status_code=500, detail="Failed to generate podcast")
 
 
 @router.get("/podcasts/jobs/{job_id}")
@@ -80,9 +87,7 @@ async def get_podcast_job_status(job_id: str):
 
     except Exception as e:
         logger.error(f"Error fetching podcast job status: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail="Failed to fetch job status"
-        )
+        raise HTTPException(status_code=500, detail="Failed to fetch job status")
 
 
 @router.get("/podcasts/episodes", response_model=List[PodcastEpisodeResponse])
@@ -93,8 +98,12 @@ async def list_podcast_episodes():
 
         response_episodes = []
         for episode in episodes:
-            # Skip incomplete episodes without command or audio
-            if not episode.command and not episode.audio_file:
+            # Skip incomplete episodes without a command or generated media.
+            if (
+                not episode.command
+                and not episode.audio_file
+                and not episode.video_file
+            ):
                 continue
 
             # Get job status and error message if available
@@ -117,6 +126,12 @@ async def list_podcast_episodes():
                 if audio_path.exists():
                     audio_url = f"/api/podcasts/episodes/{episode.id}/audio"
 
+            video_url = None
+            if episode.video_file:
+                video_path = _resolve_audio_path(episode.video_file)
+                if video_path.exists():
+                    video_url = f"/api/podcasts/episodes/{episode.id}/video"
+
             response_episodes.append(
                 PodcastEpisodeResponse(
                     id=str(episode.id),
@@ -127,6 +142,10 @@ async def list_podcast_episodes():
                     briefing=episode.briefing,
                     audio_file=episode.audio_file,
                     audio_url=audio_url,
+                    video_file=episode.video_file,
+                    video_url=video_url,
+                    keyframes=episode.keyframes,
+                    video_error=episode.video_error,
                     transcript=episode.transcript,
                     outline=episode.outline,
                     created=str(episode.created) if episode.created else None,
@@ -139,9 +158,7 @@ async def list_podcast_episodes():
 
     except Exception as e:
         logger.error(f"Error listing podcast episodes: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail="Failed to list podcast episodes"
-        )
+        raise HTTPException(status_code=500, detail="Failed to list podcast episodes")
 
 
 @router.get("/podcasts/episodes/{episode_id}", response_model=PodcastEpisodeResponse)
@@ -170,6 +187,12 @@ async def get_podcast_episode(episode_id: str):
             if audio_path.exists():
                 audio_url = f"/api/podcasts/episodes/{episode.id}/audio"
 
+        video_url = None
+        if episode.video_file:
+            video_path = _resolve_audio_path(episode.video_file)
+            if video_path.exists():
+                video_url = f"/api/podcasts/episodes/{episode.id}/video"
+
         return PodcastEpisodeResponse(
             id=str(episode.id),
             name=episode.name,
@@ -179,6 +202,10 @@ async def get_podcast_episode(episode_id: str):
             briefing=episode.briefing,
             audio_file=episode.audio_file,
             audio_url=audio_url,
+            video_file=episode.video_file,
+            video_url=video_url,
+            keyframes=episode.keyframes,
+            video_error=episode.video_error,
             transcript=episode.transcript,
             outline=episode.outline,
             created=str(episode.created) if episode.created else None,
@@ -274,6 +301,31 @@ async def export_podcast_episode_audio_wav(episode_id: str):
     )
 
 
+@router.get("/podcasts/episodes/{episode_id}/video")
+async def stream_podcast_episode_video(episode_id: str):
+    """Stream the locally composed explainer video for a podcast episode."""
+    try:
+        episode = await PodcastService.get_episode(episode_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching podcast episode for video: {str(e)}")
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    if not episode.video_file:
+        raise HTTPException(status_code=404, detail="Episode has no explainer video")
+
+    video_path = _resolve_audio_path(episode.video_file)
+    if not video_path.exists():
+        raise HTTPException(status_code=404, detail="Video file not found on disk")
+
+    return FileResponse(
+        video_path,
+        media_type="video/mp4",
+        filename=video_path.name,
+    )
+
+
 @router.post("/podcasts/episodes/{episode_id}/retry")
 async def retry_podcast_episode(episode_id: str):
     """Retry a failed podcast episode by deleting it and submitting a new job"""
@@ -319,6 +371,9 @@ async def retry_podcast_episode(episode_id: str):
             episode_name=episode_name,
             notebook_id=episode.notebook_id,
             content=content,
+            generate_video=bool(
+                episode.video_file or episode.keyframes or episode.video_error
+            ),
         )
 
         return {"job_id": job_id, "message": "Retry submitted successfully"}
@@ -327,9 +382,7 @@ async def retry_podcast_episode(episode_id: str):
         raise
     except Exception as e:
         logger.error(f"Error retrying podcast episode: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail="Failed to retry episode"
-        )
+        raise HTTPException(status_code=500, detail="Failed to retry episode")
 
 
 @router.delete("/podcasts/episodes/{episode_id}")
@@ -349,6 +402,28 @@ async def delete_podcast_episode(episode_id: str):
                 except Exception as e:
                     logger.warning(f"Failed to delete audio file {audio_path}: {e}")
 
+        if episode.video_file:
+            video_path = _resolve_audio_path(episode.video_file)
+            if video_path.exists():
+                try:
+                    video_path.unlink()
+                    logger.info(f"Deleted video file: {video_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete video file {video_path}: {e}")
+
+        for keyframe in episode.keyframes or []:
+            image_file = (
+                keyframe.get("image_file") if isinstance(keyframe, dict) else None
+            )
+            if not image_file:
+                continue
+            image_path = _resolve_audio_path(str(image_file))
+            if image_path.exists():
+                try:
+                    image_path.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to delete keyframe {image_path}: {e}")
+
         # Delete the episode from the database
         await episode.delete()
 
@@ -357,6 +432,4 @@ async def delete_podcast_episode(episode_id: str):
 
     except Exception as e:
         logger.error(f"Error deleting podcast episode: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail="Failed to delete episode"
-        )
+        raise HTTPException(status_code=500, detail="Failed to delete episode")

@@ -517,6 +517,7 @@ class TestPodcastService:
                 speaker_profile_name="Speakers",
                 episode_name="Episode Name",
                 notebook_id="notebook:test",
+                generate_video=True,
             )
 
         assert job_id == "command:podcast"
@@ -524,6 +525,7 @@ class TestPodcastService:
         assert "First source full text for submitted podcast content." in content
         assert "Second source full text for submitted podcast content." in content
         assert "Notebook(id=" not in content
+        assert submitted_args["generate_video"] is True
 
 
 class TestPodcastEpisode:

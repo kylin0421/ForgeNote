@@ -112,6 +112,8 @@ type OutlineData = {
 type TranscriptEntry = {
   speaker?: string
   dialogue?: string
+  visual_prompt?: string | null
+  start_time?: number
 }
 
 type TranscriptData = {
@@ -142,6 +144,8 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
   const { t, language } = useTranslation()
   const [audioSrc, setAudioSrc] = useState<string | undefined>()
   const [audioError, setAudioError] = useState<string | null>(null)
+  const [videoSrc, setVideoSrc] = useState<string | undefined>()
+  const [videoError, setVideoError] = useState<string | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
 
   const outlineSegments = useMemo(() => extractOutlineSegments(episode.outline), [episode.outline])
@@ -204,6 +208,59 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
     }
   }, [episode.audio_url, episode.audio_file, t])
 
+  useEffect(() => {
+    let revokeUrl: string | undefined
+    setVideoError(null)
+
+    const loadProtectedVideo = async () => {
+      if (!detailsOpen) {
+        setVideoSrc(undefined)
+        return
+      }
+
+      const directVideoUrl = await resolvePodcastAssetUrl(
+        episode.video_url ?? episode.video_file
+      )
+      if (!directVideoUrl || !episode.video_url) {
+        setVideoSrc(directVideoUrl)
+        return
+      }
+
+      try {
+        let token: string | undefined
+        if (typeof window !== 'undefined') {
+          const raw = window.localStorage.getItem('auth-storage')
+          if (raw) {
+            const parsed = JSON.parse(raw)
+            token = parsed?.state?.token
+          }
+        }
+
+        const headers: HeadersInit = {}
+        if (token) {
+          headers.Authorization = `Bearer ${token}`
+        }
+        const response = await fetch(directVideoUrl, { headers })
+        if (!response.ok) {
+          throw new Error(`Video request failed with status ${response.status}`)
+        }
+        revokeUrl = URL.createObjectURL(await response.blob())
+        setVideoSrc(revokeUrl)
+      } catch (error) {
+        console.error('Unable to load explainer video', error)
+        setVideoError(t('podcasts.videoUnavailable'))
+        setVideoSrc(undefined)
+      }
+    }
+
+    void loadProtectedVideo()
+    return () => {
+      if (revokeUrl) {
+        URL.revokeObjectURL(revokeUrl)
+      }
+    }
+  }, [detailsOpen, episode.video_url, episode.video_file, t])
+
   const distance = episode.created
     ? formatDistanceToNow(new Date(episode.created), {
         addSuffix: true,
@@ -237,6 +294,9 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                 {episode.name}
               </h3>
               <StatusBadge status={episode.job_status} />
+              {episode.video_url || episode.video_file ? (
+                <Badge variant="secondary">{t('podcasts.explainerVideo')}</Badge>
+              ) : null}
             </div>
             <p className="text-xs text-muted-foreground">
               {t('podcasts.profile')}: {episode.episode_profile?.name || t('common.unknown')}
@@ -259,6 +319,11 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 overflow-hidden">
+                  {videoSrc ? (
+                    <video controls preload="metadata" src={videoSrc} className="w-full rounded-md bg-black" />
+                  ) : videoError ? (
+                    <p className="text-sm text-destructive">{videoError}</p>
+                  ) : null}
                   {audioSrc ? (
                     <audio controls preload="none" src={audioSrc} className="w-full" />
                   ) : audioError ? (
@@ -335,6 +400,20 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                               <div className="rounded border bg-muted/30 p-3 text-xs whitespace-pre-wrap">
                                 {episode.briefing}
                               </div>
+                            </section>
+                          ) : null}
+
+                          {episode.keyframes?.length ? (
+                            <section className="space-y-2">
+                              <h4 className="text-sm font-semibold text-foreground">
+                                {t('podcasts.explainerVideo')}
+                              </h4>
+                              <p className="text-xs text-muted-foreground">
+                                {t('podcasts.keyframesCount').replace(
+                                  '{count}',
+                                  episode.keyframes.length.toString()
+                                )}
+                              </p>
                             </section>
                           ) : null}
                         </div>
@@ -427,6 +506,17 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
           <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/30">
             <p className="text-xs font-medium text-red-800 dark:text-red-300">{t('podcasts.errorDetails')}</p>
             <p className="mt-1 text-xs whitespace-pre-wrap text-red-700 dark:text-red-400">{episode.error_message}</p>
+          </div>
+        ) : null}
+
+        {episode.video_error ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+            <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+              {t('podcasts.videoGenerationFailed')}
+            </p>
+            <p className="mt-1 text-xs whitespace-pre-wrap text-amber-700 dark:text-amber-400">
+              {episode.video_error}
+            </p>
           </div>
         ) : null}
       </CardContent>

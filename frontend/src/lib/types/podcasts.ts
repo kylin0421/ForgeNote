@@ -58,6 +58,18 @@ export interface PodcastEpisode {
   briefing: string
   audio_file?: string | null
   audio_url?: string | null
+  video_file?: string | null
+  video_url?: string | null
+  keyframes?: Array<{
+    index: number
+    turn_index: number
+    time_index: number
+    prompt: string
+    image_file?: string
+    image_model?: string
+    image_provider?: string
+  }> | null
+  video_error?: string | null
   transcript?: Record<string, unknown> | null
   outline?: Record<string, unknown> | null
   created?: string | null
@@ -72,6 +84,7 @@ export interface PodcastGenerationRequest {
   content?: string
   notebook_id?: string
   briefing_suffix?: string | null
+  generate_video?: boolean
 }
 
 export interface PodcastGenerationResponse {

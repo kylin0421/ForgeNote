@@ -403,6 +403,7 @@ export function GeneratePodcastDialog({ open, onOpenChange }: GeneratePodcastDia
   const [episodeProfileId, setEpisodeProfileId] = useState<string>('')
   const [episodeName, setEpisodeName] = useState('')
   const [instructions, setInstructions] = useState('')
+  const [generateVideo, setGenerateVideo] = useState(false)
 
   const [isBuildingContext, setIsBuildingContext] = useState(false)
   const [tokenCount, setTokenCount] = useState<number>(0)
@@ -543,6 +544,7 @@ export function GeneratePodcastDialog({ open, onOpenChange }: GeneratePodcastDia
     setEpisodeProfileId('')
     setEpisodeName('')
     setInstructions('')
+    setGenerateVideo(false)
     setTokenCount(0)
     setCharCount(0)
   }, [])
@@ -816,13 +818,16 @@ export function GeneratePodcastDialog({ open, onOpenChange }: GeneratePodcastDia
         episode_name: episodeName.trim(),
         content,
         briefing_suffix: instructions.trim() ? instructions.trim() : undefined,
+        generate_video: generateVideo,
       }
 
       await generatePodcast.mutateAsync(payload)
 
       toast({
         title: t('common.success'),
-        description: t('podcasts.podcastTaskStarted'),
+        description: generateVideo
+          ? t('podcasts.explainerTaskStarted')
+          : t('podcasts.podcastTaskStarted'),
       })
 
       // Delay closing dialog slightly to ensure refetch completes
@@ -844,6 +849,7 @@ export function GeneratePodcastDialog({ open, onOpenChange }: GeneratePodcastDia
     buildContentFromSelections,
     episodeName,
     generatePodcast,
+    generateVideo,
     instructions,
     onOpenChange,
     resetState,
@@ -939,6 +945,22 @@ export function GeneratePodcastDialog({ open, onOpenChange }: GeneratePodcastDia
                       placeholder={t('podcasts.episodeNamePlaceholder')}
                       autoComplete="off"
                     />
+                  </div>
+
+                  <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+                    <Checkbox
+                      id="generate_video"
+                      checked={generateVideo}
+                      onCheckedChange={(checked) => setGenerateVideo(checked === true)}
+                    />
+                    <Label htmlFor="generate_video" className="cursor-pointer space-y-1">
+                      <span className="block text-sm font-medium">
+                        {t('podcasts.generateExplainerVideo')}
+                      </span>
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {t('podcasts.generateExplainerVideoDesc')}
+                      </span>
+                    </Label>
                   </div>
 
                    <div className="space-y-2">

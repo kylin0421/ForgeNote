@@ -241,6 +241,17 @@ class PodcastEpisode(ObjectModel):
     audio_file: Optional[str] = Field(
         default=None, description="Path to generated audio file"
     )
+    video_file: Optional[str] = Field(
+        default=None, description="Path to locally composed explainer video"
+    )
+    keyframes: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Time-indexed visual prompts and generated keyframe files",
+    )
+    video_error: Optional[str] = Field(
+        default=None,
+        description="Explainer video error when podcast audio still completed",
+    )
     transcript: Optional[Dict[str, Any]] = Field(
         default_factory=dict, description="Generated transcript"
     )

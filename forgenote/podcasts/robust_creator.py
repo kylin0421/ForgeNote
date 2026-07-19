@@ -9,16 +9,15 @@ transcript node with a repair-aware version.
 import json
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from esperanto import AIFactory
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from loguru import logger
 from podcast_creator.core import (
-    Dialogue,
     clean_thinking_content,
-    create_validated_transcript_parser,
     extract_text_content,
     get_outline_prompter,
     get_transcript_prompter,
@@ -34,6 +33,7 @@ from podcast_creator.nodes import (
 from podcast_creator.retry import create_retry_decorator, get_retry_config
 from podcast_creator.speakers import load_speaker_config
 from podcast_creator.state import PodcastState
+from pydantic import BaseModel, Field, field_validator
 
 THINKING_BLOCK_PATTERN = re.compile(
     r"<(?:think|thinking)>(.*?)</(?:think|thinking)>",
@@ -45,10 +45,58 @@ THINKING_NO_OPEN_PATTERN = re.compile(
 )
 
 
+class VisualDialogue(BaseModel):
+    """One spoken turn plus an optional visual cue for explainer video output."""
+
+    speaker: str = Field(..., description="Speaker name")
+    dialogue: str = Field(..., description="Dialogue spoken by the speaker")
+    visual_prompt: Optional[str] = Field(
+        default=None,
+        description=(
+            "A self-contained 16:9 educational image prompt shown when this turn starts, "
+            "or null when the current visual should remain on screen"
+        ),
+    )
+
+
+def create_visual_transcript_parser(
+    valid_speaker_names: List[str],
+) -> PydanticOutputParser:
+    """Build a strict transcript parser that preserves optional visual cues."""
+
+    class ValidatedVisualDialogue(VisualDialogue):
+        @field_validator("speaker")
+        @classmethod
+        def validate_speaker_name(cls, value: str) -> str:
+            cleaned_name = (value or "").strip()
+            if not cleaned_name:
+                raise ValueError("Speaker name cannot be empty")
+            if cleaned_name not in valid_speaker_names:
+                raise ValueError(
+                    f"Invalid speaker name '{cleaned_name}'. Must be one of: "
+                    f"{', '.join(valid_speaker_names)}"
+                )
+            return cleaned_name
+
+        @field_validator("visual_prompt")
+        @classmethod
+        def normalize_visual_prompt(cls, value: Optional[str]) -> Optional[str]:
+            cleaned = (value or "").strip()
+            return cleaned or None
+
+    class ValidatedVisualTranscript(BaseModel):
+        transcript: List[ValidatedVisualDialogue] = Field(
+            ...,
+            description="Transcript turns with optional visual prompts",
+        )
+
+    return PydanticOutputParser(pydantic_object=ValidatedVisualTranscript)
+
+
 def _truncate_for_repair(text: str, limit: int = 6000) -> str:
     if len(text) <= limit:
         return text
-    return f"{text[: limit // 2]}\n\n...[truncated]...\n\n{text[-limit // 2:]}"
+    return f"{text[: limit // 2]}\n\n...[truncated]...\n\n{text[-limit // 2 :]}"
 
 
 def _extract_first_json_object(text: str) -> str:
@@ -107,7 +155,7 @@ def clean_transcript_json_output(content: str) -> str:
     return _extract_first_json_object(cleaned)
 
 
-def limit_transcript_turns(dialogue: List[Dialogue], turns: int) -> List[Dialogue]:
+def limit_transcript_turns(dialogue: List[Any], turns: int) -> List[Any]:
     """Honor the requested segment length when compatible models over-generate."""
     return dialogue[: max(0, turns)]
 
@@ -126,7 +174,9 @@ Rules:
 - Return only one JSON object, with no markdown fence, no explanation, and no prefix.
 - The JSON object must have exactly one top-level key: "transcript".
 - "transcript" must be an array of objects.
-- Every object must contain both string fields: "speaker" and "dialogue".
+- Every object must contain string fields "speaker" and "dialogue".
+- Every object may contain "visual_prompt": a complete 16:9 educational image prompt, or null.
+- Preserve useful visual_prompt values from the invalid output when possible.
 - speaker must be one of: {speakers}
 - Remove or regenerate any incomplete turn. Do not leave partial objects.
 
@@ -263,7 +313,7 @@ async def generate_transcript_node_with_repair(
     speaker_profile = state["speaker_profile"]
     assert speaker_profile is not None, "speaker_profile must be provided"
     speaker_names = speaker_profile.get_speaker_names()
-    validated_transcript_parser = create_validated_transcript_parser(speaker_names)
+    validated_transcript_parser = create_visual_transcript_parser(speaker_names)
 
     retry_cfg = get_retry_config(configurable)
     llm_retry = create_retry_decorator(**retry_cfg)
@@ -294,7 +344,7 @@ async def generate_transcript_node_with_repair(
     outline = state["outline"]
     assert outline is not None, "outline must be provided"
 
-    transcript: List[Dialogue] = []
+    transcript: List[VisualDialogue] = []
     for i, segment in enumerate(outline.segments):
         logger.info(
             f"Generating transcript for segment {i + 1}/{len(outline.segments)}: {segment.name}"
@@ -397,9 +447,7 @@ async def create_podcast_with_repair(
         if briefing:
             resolved_briefing = briefing
         elif briefing_suffix:
-            resolved_briefing = (
-                f"{episode_config.default_briefing}\n\nAdditional focus: {briefing_suffix}"
-            )
+            resolved_briefing = f"{episode_config.default_briefing}\n\nAdditional focus: {briefing_suffix}"
         else:
             resolved_briefing = episode_config.default_briefing
     else:

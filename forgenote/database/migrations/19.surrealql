@@ -1,0 +1,5 @@
+-- Migration 19: Store optional explainer-video artifacts on podcast episodes.
+
+DEFINE FIELD IF NOT EXISTS video_file ON TABLE episode TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS keyframes ON TABLE episode FLEXIBLE TYPE option<array>;
+DEFINE FIELD IF NOT EXISTS video_error ON TABLE episode TYPE option<string>;

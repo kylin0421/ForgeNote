@@ -18,6 +18,7 @@ from forgenote.podcasts.models import (
     _resolve_default_podcast_model_config,
     _resolve_model_config,
 )
+from forgenote.podcasts.video_creator import create_explainer_video
 from forgenote.utils.command_cancellation import raise_if_command_canceled
 
 try:
@@ -72,7 +73,9 @@ def get_audio_duration_seconds(audio_path: Any) -> float:
             clip.close()
 
 
-def build_timestamped_transcript(transcript: Any, audio_clips: Sequence[Any] | None) -> list[dict[str, Any]]:
+def build_timestamped_transcript(
+    transcript: Any, audio_clips: Sequence[Any] | None
+) -> list[dict[str, Any]]:
     transcript_items = full_model_dump(transcript) or []
     if not isinstance(transcript_items, list):
         return []
@@ -85,7 +88,9 @@ def build_timestamped_transcript(transcript: Any, audio_clips: Sequence[Any] | N
     timestamped: list[dict[str, Any]] = []
     for index, item in enumerate(transcript_items):
         entry = dict(item) if isinstance(item, dict) else {"dialogue": str(item)}
-        duration = get_audio_duration_seconds(clips[index]) if index < len(clips) else 0.0
+        duration = (
+            get_audio_duration_seconds(clips[index]) if index < len(clips) else 0.0
+        )
         if duration > 0:
             start_time = current_time
             end_time = current_time + duration
@@ -129,9 +134,9 @@ def build_podcast_error_message(
         )
 
     if (
-        ("failed to generate speech" in error_lower or "tts=" in resolved_model_summary.lower())
-        and ("http 404" in error_lower or "404 not found" in error_lower)
-    ):
+        "failed to generate speech" in error_lower
+        or "tts=" in resolved_model_summary.lower()
+    ) and ("http 404" in error_lower or "404 not found" in error_lower):
         error_msg += (
             "\n\n语音模型提示：当前文字转语音模型无法在所选供应商端点找到。"
             "请检查播客角色配置里的语音模型是否属于对应 provider，或切换到可用的 TTS 模型。"
@@ -152,6 +157,7 @@ class PodcastGenerationInput(CommandInput):
     content: str
     notebook_id: Optional[str] = None
     briefing_suffix: Optional[str] = None
+    generate_video: bool = False
 
 
 class PodcastGenerationOutput(CommandOutput):
@@ -160,6 +166,9 @@ class PodcastGenerationOutput(CommandOutput):
     audio_file_path: Optional[str] = None
     transcript: Optional[dict] = None
     outline: Optional[dict] = None
+    video_file_path: Optional[str] = None
+    keyframes: Optional[list[dict[str, Any]]] = None
+    video_error: Optional[str] = None
     processing_time: float
     error_message: Optional[str] = None
 
@@ -223,15 +232,21 @@ async def generate_podcast_command(
             )
 
         # 3. Resolve model configs with credentials
-        outline_provider, outline_model_name, outline_config = (
-            await episode_profile.resolve_outline_config()
-        )
-        transcript_provider, transcript_model_name, transcript_config = (
-            await episode_profile.resolve_transcript_config()
-        )
-        tts_provider, tts_model_name, tts_config = (
-            await speaker_profile.resolve_tts_config()
-        )
+        (
+            outline_provider,
+            outline_model_name,
+            outline_config,
+        ) = await episode_profile.resolve_outline_config()
+        (
+            transcript_provider,
+            transcript_model_name,
+            transcript_config,
+        ) = await episode_profile.resolve_transcript_config()
+        (
+            tts_provider,
+            tts_model_name,
+            tts_config,
+        ) = await speaker_profile.resolve_tts_config()
 
         logger.info(
             f"Resolved models - outline: {outline_provider}/{outline_model_name}, "
@@ -369,6 +384,9 @@ async def generate_podcast_command(
             audio_file=None,
             transcript=None,
             outline=None,
+            video_file=None,
+            keyframes=None,
+            video_error=None,
         )
         await episode.save()
 
@@ -410,10 +428,36 @@ async def generate_podcast_command(
             if result and result.get("transcript")
             else None
         )
-        episode.transcript = {
-            "transcript": timestamped_transcript
-        }
+        episode.transcript = {"transcript": timestamped_transcript}
         episode.outline = full_model_dump(result["outline"]) if result else None
+
+        video_file_path = None
+        keyframes = None
+        video_error = None
+        if input_data.generate_video:
+            try:
+                if not episode.audio_file:
+                    raise ValueError("Podcast audio was not produced")
+                audio_path = Path(episode.audio_file)
+                total_duration = get_audio_duration_seconds(audio_path)
+                video_path, keyframes = await create_explainer_video(
+                    episode_name=input_data.episode_name,
+                    timestamped_transcript=timestamped_transcript or [],
+                    audio_path=audio_path,
+                    output_dir=output_dir,
+                    total_duration=total_duration,
+                )
+                video_file_path = str(video_path)
+            except Exception as video_exc:
+                video_error = str(video_exc)
+                logger.exception(
+                    "Podcast audio completed, but explainer video generation failed: {}",
+                    video_exc,
+                )
+
+        episode.video_file = video_file_path
+        episode.keyframes = keyframes
+        episode.video_error = video_error
         await episode.save()
 
         processing_time = time.time() - start_time
@@ -433,6 +477,9 @@ async def generate_podcast_command(
             outline=full_model_dump(result["outline"])
             if result.get("outline")
             else None,
+            video_file_path=video_file_path,
+            keyframes=keyframes,
+            video_error=video_error,
             processing_time=processing_time,
         )
 

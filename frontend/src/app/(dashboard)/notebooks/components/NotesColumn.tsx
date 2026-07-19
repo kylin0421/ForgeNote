@@ -1674,6 +1674,7 @@ export function NotesColumn({
   const [handledPodcastJobIds, setHandledPodcastJobIds] = useState<string[]>([])
   const [podcastLanguage, setPodcastLanguage] = useState('中文')
   const [podcastSubtitleMode, setPodcastSubtitleMode] = useState<PodcastSubtitleMode>('single_line')
+  const [podcastGenerateVideo, setPodcastGenerateVideo] = useState(false)
   const [podcastEpisodeName, setPodcastEpisodeName] = useState('')
   const [podcastGenerateDialogOpen, setPodcastGenerateDialogOpen] = useState(false)
   const [podcastMaterialLibraryExpanded, setPodcastMaterialLibraryExpanded] = useState(false)
@@ -2283,6 +2284,7 @@ export function NotesColumn({
     language?: string
     subtitleMode?: PodcastSubtitleMode
     selectedMaterialIds?: string[]
+    generateVideo?: boolean
   }) => {
     const selectedMaterialIds = options?.selectedMaterialIds
     const selectedMaterialSet = new Set(selectedMaterialIds ?? [])
@@ -2338,6 +2340,7 @@ export function NotesColumn({
         episode_name: episodeName,
         content,
         notebook_id: notebookId,
+        generate_video: options?.generateVideo ?? podcastGenerateVideo,
         briefing_suffix:
           [
             '请基于当前学习记录来源生成面向学习复盘的音频播客，聚焦核心概念、易错点、概念边界和下一步学习行动；不要把内容写成提纲。',
@@ -2371,6 +2374,7 @@ export function NotesColumn({
     nextPodcastEpisodeName,
     notebookId,
     podcastLanguage,
+    podcastGenerateVideo,
     podcastSubtitleMode,
     queryClient,
     speakerProfiles,
@@ -2448,6 +2452,7 @@ export function NotesColumn({
     )
     setPodcastMaterialSearch('')
     setPodcastMaterialLibraryExpanded(false)
+    setPodcastGenerateVideo(false)
   }, [materialOptions, nextPodcastEpisodeName, podcastGenerateDialogOpen])
 
   const updatePodcastPlayback = useCallback((episodeId: string, patch: PodcastPlaybackSnapshot) => {
@@ -3004,6 +3009,24 @@ export function NotesColumn({
                 </SelectContent>
               </Select>
             </div>
+            <label
+              htmlFor="podcast-generation-video"
+              className="flex cursor-pointer items-start gap-3 rounded-lg border bg-muted/20 p-3"
+            >
+              <Checkbox
+                id="podcast-generation-video"
+                checked={podcastGenerateVideo}
+                disabled={isGeneratingStudioAsset}
+                onCheckedChange={(checked) => setPodcastGenerateVideo(checked === true)}
+                className="mt-0.5"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">同时生成讲解视频</span>
+                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                  脚本同时规划关键画面，图片按真实语音时间轴切换并在本地合成为 MP4；无需调用视频生成 API。
+                </span>
+              </span>
+            </label>
             {materialOptions.length > 0 && (
               <section className="space-y-3 rounded-lg border bg-muted/20 p-3">
                 <div className="flex items-center justify-between gap-3">
@@ -3138,6 +3161,7 @@ export function NotesColumn({
                   language: podcastLanguage,
                   subtitleMode: podcastSubtitleMode,
                   selectedMaterialIds: materialIds,
+                  generateVideo: podcastGenerateVideo,
                 })
               }}
             >

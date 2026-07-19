@@ -18,6 +18,7 @@ class PodcastGenerationRequest(BaseModel):
     content: Optional[str] = None
     notebook_id: Optional[str] = None
     briefing_suffix: Optional[str] = None
+    generate_video: bool = False
 
 
 class PodcastGenerationResponse(BaseModel):
@@ -41,6 +42,7 @@ class PodcastService:
         notebook_id: Optional[str] = None,
         content: Optional[str] = None,
         briefing_suffix: Optional[str] = None,
+        generate_video: bool = False,
     ) -> str:
         """Submit a podcast generation job for background processing"""
         try:
@@ -83,6 +85,7 @@ class PodcastService:
                 "content": str(content),
                 "notebook_id": notebook_id,
                 "briefing_suffix": briefing_suffix,
+                "generate_video": generate_video,
             }
 
             # Ensure command modules are imported before submitting
