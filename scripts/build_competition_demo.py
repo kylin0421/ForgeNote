@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import math
 import os
 import shutil
 import subprocess
@@ -468,7 +467,6 @@ def render_scene(index: int, scene: Scene, duration: float) -> Path:
     output = WORK_DIR / f"scene-{index:02d}.mp4"
     if output.exists() and abs(ffprobe_duration(output) - duration) < 0.12:
         return output
-    frames = max(1, math.ceil(duration * 30))
     common_output = [
         "-an",
         "-c:v",
@@ -514,7 +512,7 @@ def render_scene(index: int, scene: Scene, duration: float) -> Path:
             "-t",
             f"{duration:.3f}",
             "-vf",
-            f"zoompan=z='min(zoom+0.00010,1.035)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=1280x720:fps=30,format=yuv420p",
+            "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=0x061225,setsar=1,fps=30,format=yuv420p",
             *common_output,
         )
     return output
@@ -628,6 +626,7 @@ def write_note(duration: float) -> None:
 
 数据来源：人工智能与 Python 高校课程知识点测试数据。
 画面来源：ForgeNote 本地实机界面录制；资产生成等待片段已剪辑，保留发起任务和生成结果。
+画面稳定：界面截图保持原始像素，不使用逐帧数字缩放；仅讲解视频片段保留自然运动。
 配音：ForgeNote 已配置的 MiMo 文本转语音模型。
 字幕：单层烧录字幕，字幕时间段之间保留 30 毫秒间隔，避免重叠。
 视频编码：H.264 High@4.0（avc1）、1280×720、30 fps、yuv420p。
