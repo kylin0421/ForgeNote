@@ -10,8 +10,12 @@ import { themeScript } from "@/lib/theme-script";
 import { I18nProvider } from "@/components/providers/I18nProvider";
 
 export const metadata: Metadata = {
-  title: "ForgeNote",
-  description: "基于大模型的个性化资源生成与学习多智能体系统",
+  title: {
+    default: "ForgeNote｜画像驱动的 AI 学习工作台",
+    template: "%s｜ForgeNote",
+  },
+  description:
+    "先通过自然对话理解学生，再由多智能体协作生成、编排与评估个性化多模态学习资源。",
 };
 
 export default function RootLayout({

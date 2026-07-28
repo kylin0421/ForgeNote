@@ -4,12 +4,15 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { ConnectionError } from '@/lib/types/config'
 import { ConnectionErrorOverlay } from '@/components/errors/ConnectionErrorOverlay'
 import { getConfig, resetConfig } from '@/lib/config'
+import { usePathname } from 'next/navigation'
 
 interface ConnectionGuardProps {
   children: React.ReactNode
 }
 
 export function ConnectionGuard({ children }: ConnectionGuardProps) {
+  const pathname = usePathname()
+  const isPublicLandingPage = pathname === '/'
   const [error, setError] = useState<ConnectionError | null>(null)
   const [isChecking, setIsChecking] = useState(true)
   // Use a ref to track checking status to avoid dependency cycles
@@ -77,11 +80,18 @@ export function ConnectionGuard({ children }: ConnectionGuardProps) {
 
   // Check connection on mount
   useEffect(() => {
+    if (isPublicLandingPage) {
+      return
+    }
     checkConnection()
-  }, [checkConnection])
+  }, [checkConnection, isPublicLandingPage])
 
   // Add keyboard shortcut for retry (R key)
   useEffect(() => {
+    if (isPublicLandingPage) {
+      return
+    }
+
     const handleKeyPress = (e: KeyboardEvent) => {
       if (error && (e.key === 'r' || e.key === 'R')) {
         e.preventDefault()
@@ -91,7 +101,12 @@ export function ConnectionGuard({ children }: ConnectionGuardProps) {
 
     window.addEventListener('keydown', handleKeyPress)
     return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [error, checkConnection])
+  }, [error, checkConnection, isPublicLandingPage])
+
+  // The product website should remain available even while local services boot.
+  if (isPublicLandingPage) {
+    return <>{children}</>
+  }
 
   // Show overlay if there's an error
   if (error) {
