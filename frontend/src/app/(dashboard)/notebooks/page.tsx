@@ -7,34 +7,22 @@ import {
   Archive,
   ArchiveRestore,
   BookOpen,
-  Clipboard,
-  Globe2,
-  Link2,
   MoreVertical,
   Plus,
-  Search,
   Trash2,
-  Upload,
 } from 'lucide-react'
 
 import { AppShell } from '@/components/layout/AppShell'
-import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
+import { ProfileOnboardingDialog } from '@/components/learning/ProfileOnboardingDialog'
 import { CreateNotebookDialog } from '@/components/notebooks/CreateNotebookDialog'
 import { NotebookDeleteDialog } from './components/NotebookDeleteDialog'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useNotebooks, useUpdateNotebook } from '@/lib/hooks/use-notebooks'
 import type { NotebookResponse } from '@/lib/types/api'
@@ -176,10 +164,8 @@ function CreateNotebookTile({ onClick }: { onClick: () => void }) {
 export default function NotebooksPage() {
   const router = useRouter()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  const [sourcePromptOpen, setSourcePromptOpen] = useState(false)
-  const [addSourceDialogOpen, setAddSourceDialogOpen] = useState(false)
+  const [profileOnboardingOpen, setProfileOnboardingOpen] = useState(false)
   const [createdNotebook, setCreatedNotebook] = useState<NotebookResponse | null>(null)
-  const [sourceSearchQuery, setSourceSearchQuery] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const { data: notebooks, isLoading } = useNotebooks(showArchived)
 
@@ -190,22 +176,18 @@ export default function NotebooksPage() {
     [notebooks]
   )
 
-  const createdNotebookUrl = createdNotebook
-    ? `/notebooks/${encodeURIComponent(createdNotebook.id)}`
-    : '/notebooks'
-
   const handleCreatedNotebook = (notebook: NotebookResponse) => {
     setCreatedNotebook(notebook)
-    setSourceSearchQuery('')
-    setSourcePromptOpen(true)
+    setProfileOnboardingOpen(true)
   }
 
-  const openCreatedNotebook = (sourceSearch?: string) => {
+  const finishProfileOnboarding = (sourceSearch: string) => {
     if (!createdNotebook) return
-    const query = sourceSearch?.trim()
-    const suffix = query ? `?sourceSearch=${encodeURIComponent(query)}` : ''
-    setSourcePromptOpen(false)
-    router.push(`${createdNotebookUrl}${suffix}`)
+    const query = sourceSearch.trim()
+    setProfileOnboardingOpen(false)
+    router.push(
+      `/notebooks/${encodeURIComponent(createdNotebook.id)}?profileReady=1&sourceSearch=${encodeURIComponent(query)}`
+    )
   }
 
   return (
@@ -286,106 +268,10 @@ export default function NotebooksPage() {
         onCreated={handleCreatedNotebook}
       />
 
-      <Dialog open={sourcePromptOpen} onOpenChange={setSourcePromptOpen}>
-        <DialogContent className="sm:max-w-4xl">
-          <DialogHeader className="text-center">
-            <DialogTitle className="text-2xl font-semibold">
-              为学习记录添加来源
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-6">
-            <div className="rounded-xl border border-primary/60 p-3">
-              <div className="flex items-center gap-3">
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <Globe2 className="h-5 w-5 text-muted-foreground" />
-                  <Input
-                    value={sourceSearchQuery}
-                    onChange={(event) => setSourceSearchQuery(event.target.value)}
-                    placeholder="搜索网页资料作为新来源"
-                    className="border-0 px-0 shadow-none focus-visible:ring-0"
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && sourceSearchQuery.trim()) {
-                        openCreatedNotebook(sourceSearchQuery)
-                      }
-                    }}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="secondary"
-                  className="rounded-full"
-                  disabled={!sourceSearchQuery.trim()}
-                  onClick={() => openCreatedNotebook(sourceSearchQuery)}
-                  aria-label="搜索来源"
-                >
-                  <Search className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-dashed p-8">
-              <div className="text-center">
-                <p className="text-lg font-medium">也可以先手动添加来源</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  这一步不是必须的，可以关闭窗口之后再添加。
-                </p>
-              </div>
-              <div className="mt-6 grid gap-3 sm:grid-cols-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-12 rounded-full"
-                  onClick={() => {
-                    setSourcePromptOpen(false)
-                    setAddSourceDialogOpen(true)
-                  }}
-                >
-                  <Upload className="mr-2 h-4 w-4" />
-                  上传文件
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-12 rounded-full"
-                  onClick={() => {
-                    setSourcePromptOpen(false)
-                    setAddSourceDialogOpen(true)
-                  }}
-                >
-                  <Link2 className="mr-2 h-4 w-4" />
-                  网站链接
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-12 rounded-full"
-                  onClick={() => {
-                    setSourcePromptOpen(false)
-                    setAddSourceDialogOpen(true)
-                  }}
-                >
-                  <Clipboard className="mr-2 h-4 w-4" />
-                  粘贴文本
-                </Button>
-                <Button
-                  type="button"
-                  className="h-12 rounded-full"
-                  onClick={() => openCreatedNotebook()}
-                >
-                  进入记录
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <AddSourceDialog
-        open={addSourceDialogOpen}
-        onOpenChange={setAddSourceDialogOpen}
-        defaultNotebookId={createdNotebook?.id}
+      <ProfileOnboardingDialog
+        open={profileOnboardingOpen}
+        notebook={createdNotebook}
+        onCompleted={finishProfileOnboarding}
       />
     </AppShell>
   )

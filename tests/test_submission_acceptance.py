@@ -19,8 +19,10 @@ EXPECTED_PROFILE_DIMENSIONS = {
     "知识基础",
     "学习目标",
     "认知风格",
+    "学习节奏",
     "易错点偏好",
     "资源偏好",
+    "学习动机",
 }
 
 EXPECTED_AGENT_IDS = {
@@ -59,7 +61,7 @@ def _competition_request(**overrides):
     return LearningOrchestrationRequest(**values)
 
 
-def test_a3_01_dialogue_builds_six_evidenced_profile_dimensions():
+def test_a3_01_dialogue_builds_eight_evidenced_profile_dimensions():
     result = build_learning_orchestration(_competition_request())
 
     dimensions = {item.name for item in result.profile}

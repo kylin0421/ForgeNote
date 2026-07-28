@@ -155,6 +155,9 @@ function formatCommandLog(log?: CommandJobLogResponse, fallbackError?: string | 
 }
 
 function progressValue(job: CommandJob) {
+  if (typeof job.progress?.percent === 'number') {
+    return Math.max(0, Math.min(100, job.progress.percent))
+  }
   const result = job.result_summary || {}
   if (
     typeof result.jobs_submitted === 'number' &&

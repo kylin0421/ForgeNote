@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
+  Activity,
   Book,
   Bot,
   FileText,
@@ -37,6 +38,7 @@ interface AppShellProps {
 
 const NAV_ITEMS = [
   { href: '/notebooks', label: '学习记录', icon: Book },
+  { href: '/workflow', label: 'Agent 监督台', icon: Activity },
   { href: '/sources', label: '来源', icon: FileText },
   { href: '/search', label: '问询与搜索', icon: Search },
   { href: '/settings/api-keys', label: '模型', icon: Bot },

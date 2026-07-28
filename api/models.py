@@ -207,6 +207,20 @@ class LearningCollectedResource(BaseModel):
         None,
         description="The agentic search intent that found or selected this resource",
     )
+    content_type: Optional[
+        Literal["video", "article", "webpage", "paper", "course", "practice", "code"]
+    ] = Field(
+        None,
+        description="User-facing content type used to render and filter resource cards",
+    )
+    thumbnail_url: Optional[str] = Field(
+        None,
+        description="Preview image URL, especially for video resources",
+    )
+    tags: List[str] = Field(
+        default_factory=list,
+        description="Short user-facing labels derived from type, intent, and provider",
+    )
     adoption_status: Literal["recommended", "accepted", "rejected", "user_upload"] = (
         "recommended"
     )

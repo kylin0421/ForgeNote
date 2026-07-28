@@ -19,7 +19,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Plus, FileText, Link2, ChevronDown, Loader2, ListChecks, Search, CheckCircle2, Brain } from 'lucide-react'
+import {
+  Plus,
+  FileText,
+  Link2,
+  ChevronDown,
+  Loader2,
+  ListChecks,
+  Search,
+  CheckCircle2,
+  Brain,
+  ExternalLink,
+  PlayCircle,
+} from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
@@ -42,6 +54,15 @@ import { cn } from '@/lib/utils'
 
 const LEARNING_PROFILE_TOPIC = 'learning_profile'
 const LEARNING_PROFILE_TITLE = '学习画像'
+const RESOURCE_CONTENT_LABELS: Record<string, string> = {
+  video: '视频',
+  article: '文章',
+  webpage: '网页',
+  paper: '论文',
+  course: '课程',
+  practice: '练习',
+  code: '代码',
+}
 
 const ACTIVE_JOB_STATUSES = new Set(['new', 'queued', 'running'])
 
@@ -68,18 +89,26 @@ function isLearningProfileSource(source: SourceListResponse) {
 }
 
 type LearningProfileForm = {
-  background: string
+  major: string
+  knowledge: string
   goal: string
+  cognitiveStyle: string
+  pace: string
   risks: string
   preference: string
+  motivation: string
   eventsText: string
 }
 
 const DEFAULT_LEARNING_PROFILE_FORM: LearningProfileForm = {
-  background: '尚未明确。',
+  major: '尚未明确。',
+  knowledge: '尚未明确。',
   goal: '尚未明确。',
+  cognitiveStyle: '尚未明确。',
+  pace: '尚未明确。',
   risks: '等待 Quiz、对话、资料采纳和生成资产后的学习信号更新。',
   preference: '优先使用已采纳来源和用户上传资料。',
+  motivation: '尚未明确。',
   eventsText: '',
 }
 
@@ -208,7 +237,9 @@ function parseLearningProfile(content?: string | null) {
 
   for (const line of lines) {
     const clean = line.replace(/^[-*]\s*/, '')
-    const fieldMatch = clean.match(/^(背景|当前目标|易错点|资源偏好)[:：]\s*(.+)$/)
+    const fieldMatch = clean.match(
+      /^(专业背景|知识基础|学习目标|认知风格|学习节奏|易错点|资源偏好|学习动机|背景|当前目标)[:：]\s*(.+)$/
+    )
     if (fieldMatch) {
       fields[fieldMatch[1]] = fieldMatch[2]
       continue
@@ -219,10 +250,14 @@ function parseLearningProfile(content?: string | null) {
   }
 
   return {
-    background: fields['背景'] || '尚未明确',
-    goal: fields['当前目标'] || '尚未明确',
+    major: fields['专业背景'] || fields['背景'] || '尚未明确',
+    knowledge: fields['知识基础'] || '尚未明确',
+    goal: fields['学习目标'] || fields['当前目标'] || '尚未明确',
+    cognitiveStyle: fields['认知风格'] || '尚未明确',
+    pace: fields['学习节奏'] || '尚未明确',
     risks: fields['易错点'] || '等待学习信号更新',
     preference: fields['资源偏好'] || '优先使用已采纳来源和用户上传资料',
+    motivation: fields['学习动机'] || '尚未明确',
     events: formatLearningProfileEvents(events),
   }
 }
@@ -322,7 +357,7 @@ function simplifyProfilePreference(value: string) {
 function simplifyLearningProfileForm(form: LearningProfileForm): LearningProfileForm {
   return {
     ...form,
-    background: simplifyProfileBackground(form.background, form.goal),
+    major: simplifyProfileBackground(form.major, form.goal),
     goal: simplifyProfileGoal(form.goal),
     risks: simplifyProfileRisks(form.risks),
     preference: simplifyProfilePreference(form.preference),
@@ -332,10 +367,14 @@ function simplifyLearningProfileForm(form: LearningProfileForm): LearningProfile
 function learningProfileFormFromContent(content?: string | null): LearningProfileForm {
   const parsed = parseLearningProfile(content)
   return simplifyLearningProfileForm({
-    background: parsed.background,
+    major: parsed.major,
+    knowledge: parsed.knowledge,
     goal: parsed.goal,
+    cognitiveStyle: parsed.cognitiveStyle,
+    pace: parsed.pace,
     risks: parsed.risks,
     preference: parsed.preference,
+    motivation: parsed.motivation,
     eventsText: extractLearningProfileEvents(content).join('\n'),
   })
 }
@@ -348,10 +387,14 @@ function serializeLearningProfileForm(form: LearningProfileForm) {
 
   return [
     '稳定画像',
-    `背景：${form.background.trim() || DEFAULT_LEARNING_PROFILE_FORM.background}`,
-    `当前目标：${form.goal.trim() || DEFAULT_LEARNING_PROFILE_FORM.goal}`,
+    `专业背景：${form.major.trim() || DEFAULT_LEARNING_PROFILE_FORM.major}`,
+    `知识基础：${form.knowledge.trim() || DEFAULT_LEARNING_PROFILE_FORM.knowledge}`,
+    `学习目标：${form.goal.trim() || DEFAULT_LEARNING_PROFILE_FORM.goal}`,
+    `认知风格：${form.cognitiveStyle.trim() || DEFAULT_LEARNING_PROFILE_FORM.cognitiveStyle}`,
+    `学习节奏：${form.pace.trim() || DEFAULT_LEARNING_PROFILE_FORM.pace}`,
     `易错点：${form.risks.trim() || DEFAULT_LEARNING_PROFILE_FORM.risks}`,
     `资源偏好：${form.preference.trim() || DEFAULT_LEARNING_PROFILE_FORM.preference}`,
+    `学习动机：${form.motivation.trim() || DEFAULT_LEARNING_PROFILE_FORM.motivation}`,
     '',
     '最近学习信号',
     ...(events.length > 0 ? events : ['等待新的学习行为。']),
@@ -453,6 +496,7 @@ interface SourcesColumnProps {
   fetchNextPage?: () => void
   initialResourceSearchGoal?: string
   autoCollectInitialResourceSearch?: boolean
+  profileOpenSignal?: number
 }
 
 export function SourcesColumn({
@@ -469,6 +513,7 @@ export function SourcesColumn({
   fetchNextPage,
   initialResourceSearchGoal = '',
   autoCollectInitialResourceSearch = false,
+  profileOpenSignal = 0,
 }: SourcesColumnProps) {
   const { t } = useTranslation()
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -521,6 +566,7 @@ export function SourcesColumn({
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const ensuringProfileRef = useRef<string | null>(null)
   const initialResourceSearchHandledRef = useRef<string | null>(null)
+  const profileOpenHandledRef = useRef(0)
   const hasProfileSource = useMemo(
     () => Boolean(sources?.some(isLearningProfileSource)),
     [sources]
@@ -539,6 +585,13 @@ export function SourcesColumn({
       setProfileForm(learningProfileFormFromContent(profileSourceQuery.data.content))
     }
   }, [profileDialogOpen, profileSourceQuery.data?.content])
+
+  useEffect(() => {
+    if (profileOpenSignal <= 0 || profileOpenHandledRef.current === profileOpenSignal) return
+    profileOpenHandledRef.current = profileOpenSignal
+    setProfileForm(learningProfileFormFromContent(profileSourceQuery.data?.content))
+    setProfileDialogOpen(true)
+  }, [profileOpenSignal, profileSourceQuery.data?.content])
 
   useEffect(() => {
     if (!notebookId || isLoading || hasProfileSource || ensuringProfileRef.current === notebookId) {
@@ -630,8 +683,15 @@ export function SourcesColumn({
         message: normalizedGoal,
         mode: 'collect',
         course: notebookName || '当前学习记录',
+        major: profileForm.major,
         goal: normalizedGoal,
-        learning_history: (sources ?? []).map((source) => source.title || source.asset?.url || source.id),
+        learning_history: [
+          `知识基础：${profileForm.knowledge}`,
+          `认知风格：${profileForm.cognitiveStyle}`,
+          `易错点：${profileForm.risks}`,
+          `资源偏好：${profileForm.preference}`,
+          ...(sources ?? []).map((source) => source.title || source.asset?.url || source.id),
+        ],
         requested_outputs: [],
         learning_record_id: notebookId,
       })
@@ -649,7 +709,7 @@ export function SourcesColumn({
         setIsCollectingResources(false)
       }
     }
-  }, [notebookId, notebookName, resourceSearchGoal, sources])
+  }, [notebookId, notebookName, profileForm, resourceSearchGoal, sources])
 
   useEffect(() => {
     const normalizedInitialGoal = initialResourceSearchGoal.trim()
@@ -927,12 +987,59 @@ export function SourcesColumn({
                   {collectedResources.map((resource) => {
                     const accepted = Boolean(resource.url && acceptedResourceUrls[resource.url])
                     const isAccepting = Boolean(acceptingResourceIds[resource.id])
+                    const isVideo =
+                      resource.content_type === 'video' ||
+                      resource.resource_kind === 'video_lecture'
                     return (
-                      <div key={resource.id} className="rounded-md border bg-background p-3">
+                      <div key={resource.id} className="overflow-hidden rounded-xl border bg-background">
+                        {isVideo && (
+                          <a
+                            href={resource.url || undefined}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="group relative block aspect-video overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-primary/70"
+                            style={
+                              resource.thumbnail_url
+                                ? {
+                                    backgroundImage: `linear-gradient(to top, rgba(15,23,42,.58), rgba(15,23,42,.06)), url("${resource.thumbnail_url}")`,
+                                    backgroundPosition: 'center',
+                                    backgroundSize: 'cover',
+                                  }
+                                : undefined
+                            }
+                          >
+                            <span className="absolute inset-0 flex items-center justify-center">
+                              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-slate-950 shadow-lg transition-transform group-hover:scale-105">
+                                <PlayCircle className="h-7 w-7" />
+                              </span>
+                            </span>
+                            <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[11px] font-medium text-white">
+                              视频课程
+                            </span>
+                          </a>
+                        )}
+                        <div className="p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="break-words text-sm font-medium">{resource.title}</p>
+                            {resource.url ? (
+                              <a
+                                href={resource.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex break-words text-sm font-medium hover:text-primary hover:underline"
+                              >
+                                {resource.title}
+                                <ExternalLink className="ml-1 mt-0.5 h-3.5 w-3.5 shrink-0" />
+                              </a>
+                            ) : (
+                              <p className="break-words text-sm font-medium">{resource.title}</p>
+                            )}
                             <div className="mt-2 flex flex-wrap gap-1.5">
+                              {resource.content_type && (
+                                <BadgeText>
+                                  {RESOURCE_CONTENT_LABELS[resource.content_type] || resource.content_type}
+                                </BadgeText>
+                              )}
                               {typeof resource.quality_score === 'number' && (
                                 <BadgeText>
                                   质量 {Math.round(resource.quality_score * 100)}
@@ -944,12 +1051,10 @@ export function SourcesColumn({
                               {resource.search_intent && (
                                 <BadgeText>{resource.search_intent}</BadgeText>
                               )}
+                              {(resource.tags || []).map((tag) => (
+                                <BadgeText key={`${resource.id}-${tag}`}>{tag}</BadgeText>
+                              ))}
                             </div>
-                            {resource.url && (
-                              <p className="mt-1 break-all text-xs text-muted-foreground">
-                                {resource.url}
-                              </p>
-                            )}
                           </div>
                           <Button
                             type="button"
@@ -982,6 +1087,7 @@ export function SourcesColumn({
                         <p className="mt-2 text-xs text-muted-foreground">
                           {resource.provider || 'Web Search'} · {resource.reason}
                         </p>
+                        </div>
                       </div>
                     )
                   })}
@@ -1088,18 +1194,29 @@ export function SourcesColumn({
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1.5">
-                <span className="text-sm font-medium">背景</span>
+                <span className="text-sm font-medium">专业背景</span>
                 <Textarea
-                  value={profileForm.background}
+                  value={profileForm.major}
                   onChange={(event) =>
-                    setProfileForm((previous) => ({ ...previous, background: event.target.value }))
+                    setProfileForm((previous) => ({ ...previous, major: event.target.value }))
                   }
                   className="min-h-24 resize-y text-sm leading-6"
-                  placeholder="例如：有 Python 基础，正在补深度学习数学。"
+                  placeholder="例如：计算机大二，学过高数和 Python。"
                 />
               </label>
               <label className="space-y-1.5">
-                <span className="text-sm font-medium">当前目标</span>
+                <span className="text-sm font-medium">知识基础</span>
+                <Textarea
+                  value={profileForm.knowledge}
+                  onChange={(event) =>
+                    setProfileForm((previous) => ({ ...previous, knowledge: event.target.value }))
+                  }
+                  className="min-h-24 resize-y text-sm leading-6"
+                  placeholder="例如：理解基本概念，但公式推导和独立应用不稳。"
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium">学习目标</span>
                 <Textarea
                   value={profileForm.goal}
                   onChange={(event) =>
@@ -1107,6 +1224,28 @@ export function SourcesColumn({
                   }
                   className="min-h-24 resize-y text-sm leading-6"
                   placeholder="例如：读完 D2L 并能独立复现核心模型。"
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium">认知风格</span>
+                <Textarea
+                  value={profileForm.cognitiveStyle}
+                  onChange={(event) =>
+                    setProfileForm((previous) => ({ ...previous, cognitiveStyle: event.target.value }))
+                  }
+                  className="min-h-24 resize-y text-sm leading-6"
+                  placeholder="例如：先看结构图，再用例题和代码验证理解。"
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium">学习节奏</span>
+                <Textarea
+                  value={profileForm.pace}
+                  onChange={(event) =>
+                    setProfileForm((previous) => ({ ...previous, pace: event.target.value }))
+                  }
+                  className="min-h-24 resize-y text-sm leading-6"
+                  placeholder="例如：工作日每天 30 分钟，周末集中复盘。"
                 />
               </label>
               <label className="space-y-1.5">
@@ -1129,6 +1268,17 @@ export function SourcesColumn({
                   }
                   className="min-h-24 resize-y text-sm leading-6"
                   placeholder="例如：优先使用已采纳来源和用户上传资料。"
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium">学习动机</span>
+                <Textarea
+                  value={profileForm.motivation}
+                  onChange={(event) =>
+                    setProfileForm((previous) => ({ ...previous, motivation: event.target.value }))
+                  }
+                  className="min-h-24 resize-y text-sm leading-6"
+                  placeholder="例如：三周后通过期末考试，并能完成课程项目。"
                 />
               </label>
             </div>

@@ -78,6 +78,9 @@ export interface LearningCollectedResource {
   resource_kind?: string | null
   learning_value?: string | null
   search_intent?: string | null
+  content_type?: 'video' | 'article' | 'webpage' | 'paper' | 'course' | 'practice' | 'code' | null
+  thumbnail_url?: string | null
+  tags?: string[]
   adoption_status: 'recommended' | 'accepted' | 'rejected' | 'user_upload'
 }
 

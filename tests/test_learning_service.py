@@ -98,8 +98,8 @@ def test_learning_profile_event_refines_stable_fields_from_chat():
         "User asked in notebook chat: 我还是不懂一阶谓词逻辑和产生式表示法的区别",
     )
 
-    assert "背景：近期学习集中在" in updated
-    assert "当前目标：弄清" in updated
+    assert "专业背景：近期学习集中在" in updated
+    assert "学习目标：弄清" in updated
     assert "易错点：需要澄清" in updated
     assert "[chat_message]" in updated
     assert "- 20" not in updated
@@ -114,6 +114,33 @@ def test_learning_profile_event_refines_resource_preference():
 
     assert "资源偏好：偏好基于已采纳来源、上传资料、笔记与生成字幕构建学习资产" in updated
     assert "[source_accept]" in updated
+
+
+def test_initial_profile_event_extracts_eight_dimensions():
+    updated = _append_profile_event(
+        None,
+        "initial_profile",
+        (
+            "major=计算机科学大二; knowledge=学过 Python 和线性代数; "
+            "goal=三周内掌握机器学习基础; cognitive_style=先看结构再做代码; "
+            "pace=每天 30 分钟; mistakes=容易混淆损失函数和指标; "
+            "resource_preference=中文视频与官方文档; motivation=完成课程项目"
+        ),
+    )
+
+    for field in [
+        "专业背景",
+        "知识基础",
+        "学习目标",
+        "认知风格",
+        "学习节奏",
+        "易错点",
+        "资源偏好",
+        "学习动机",
+    ]:
+        assert f"- {field}：" in updated
+    assert "计算机科学大二" in updated
+    assert "中文视频与官方文档" in updated
 
 
 def test_normalize_generated_resources_derives_type_from_kind():
@@ -439,6 +466,8 @@ async def test_learning_collect_uses_web_search_results(monkeypatch):
     assert all(resource.quality_score is not None for resource in web_resources)
     assert all(resource.resource_kind for resource in web_resources)
     assert all(resource.learning_value for resource in web_resources)
+    assert all(resource.content_type for resource in web_resources)
+    assert all(resource.tags for resource in web_resources)
 
 
 @pytest.mark.asyncio

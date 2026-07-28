@@ -9,6 +9,21 @@ export interface CommandJob {
   status: CommandJobStatus
   target?: Record<string, unknown>
   result_summary?: Record<string, unknown>
+  progress?: {
+    workflow?: string
+    mode?: string
+    percent?: number
+    current_agent_id?: string | null
+    current_agent_name?: string | null
+    current_task?: string
+    updated_at?: string
+    steps?: Array<{
+      id: string
+      name: string
+      role: string
+      status: 'queued' | 'running' | 'completed' | 'failed'
+    }>
+  } | null
   error_message?: string | null
   created?: string | null
   updated?: string | null

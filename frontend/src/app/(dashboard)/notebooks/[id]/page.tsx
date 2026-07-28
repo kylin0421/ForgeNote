@@ -19,7 +19,15 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { BookMarked, FileText, StickyNote, MessageSquare, TrendingUp } from 'lucide-react'
+import {
+  BookMarked,
+  Brain,
+  FileText,
+  MessageSquare,
+  Sparkles,
+  StickyNote,
+  TrendingUp,
+} from 'lucide-react'
 import {
   applyBulkSourceContext,
   applyBulkNoteContext,
@@ -116,6 +124,12 @@ export default function NotebookPage() {
   })
   const [learningCurveOpen, setLearningCurveOpen] = useState(false)
   const [mistakeBookOpen, setMistakeBookOpen] = useState(false)
+  const [profileOpenSignal, setProfileOpenSignal] = useState(0)
+
+  const openLearningProfile = () => {
+    setMobileActiveTab('sources')
+    setProfileOpenSignal(Date.now())
+  }
 
   useEffect(() => {
     if (!notebookId) return
@@ -290,6 +304,16 @@ export default function NotebookPage() {
       <Button
         type="button"
         size="sm"
+        variant="default"
+        className={cn('gap-1.5 rounded-full text-xs', buttonClassName)}
+        onClick={openLearningProfile}
+      >
+        <Brain className="h-4 w-4" />
+        我的画像
+      </Button>
+      <Button
+        type="button"
+        size="sm"
         variant="outline"
         className={cn('gap-1.5 rounded-full text-xs', buttonClassName)}
         onClick={() => setLearningCurveOpen(true)}
@@ -363,6 +387,33 @@ export default function NotebookPage() {
             {notebookActionButtons('h-9 flex-1 px-3')}
           </div>
 
+          <button
+            type="button"
+            onClick={openLearningProfile}
+            className="mb-4 flex w-full shrink-0 flex-col gap-3 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-background px-4 py-3 text-left transition-colors hover:border-primary/40 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                <Brain className="h-5 w-5" />
+                <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-background" />
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-center gap-2 font-semibold">
+                  8 维动态学生画像
+                  <Sparkles className="h-4 w-4 text-primary" />
+                </span>
+                <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                  正在用于个性化对话、资料推荐和难度调整；每次对话、Quiz 与资料选择后自动更新。
+                </span>
+              </span>
+            </span>
+            <span className="flex shrink-0 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="rounded-full border bg-background px-2.5 py-1">随学随新</span>
+              <span className="rounded-full border bg-background px-2.5 py-1">有证据可追溯</span>
+              <span className="rounded-full border bg-background px-2.5 py-1 text-primary">查看 / 编辑</span>
+            </span>
+          </button>
+
           {/* Mobile: Tabbed interface - only render on mobile to avoid double-mounting */}
           {!isDesktop && (
             <>
@@ -402,6 +453,7 @@ export default function NotebookPage() {
                     fetchNextPage={fetchNextPage}
                     initialResourceSearchGoal={initialSourceSearch}
                     autoCollectInitialResourceSearch
+                    profileOpenSignal={profileOpenSignal}
                   />
                 )}
                 {mobileActiveTab === 'notes' && (
@@ -464,6 +516,7 @@ export default function NotebookPage() {
                 fetchNextPage={fetchNextPage}
                 initialResourceSearchGoal={initialSourceSearch}
                 autoCollectInitialResourceSearch
+                profileOpenSignal={profileOpenSignal}
               />
             </div>
 

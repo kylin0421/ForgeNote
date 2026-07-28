@@ -91,10 +91,14 @@ DEFAULT_PROFILE_SOURCE_TEXT = """# 学习画像
 这个来源由系统维护，也允许用户直接编辑。它会作为学习记录的一部分参与检索和学习资产生成。
 
 ## 稳定画像
-- 背景：尚未明确。
-- 当前目标：尚未明确。
+- 专业背景：尚未明确。
+- 知识基础：尚未明确。
+- 学习目标：尚未明确。
+- 认知风格：尚未明确。
+- 学习节奏：尚未明确。
 - 易错点：等待 Quiz、对话、资料采纳和生成资产后的学习信号更新。
 - 资源偏好：优先使用已采纳来源和用户上传资料。
+- 学习动机：尚未明确。
 
 ## 最近学习信号
 - 尚无记录。
@@ -120,10 +124,19 @@ def _profile_event_line(event_type: str, summary: str) -> str:
 
 
 PROFILE_FIELD_DEFAULTS = {
-    "背景": "尚未明确。",
-    "当前目标": "尚未明确。",
+    "专业背景": "尚未明确。",
+    "知识基础": "尚未明确。",
+    "学习目标": "尚未明确。",
+    "认知风格": "尚未明确。",
+    "学习节奏": "尚未明确。",
     "易错点": "等待 Quiz、对话、资料采纳和生成资产后的学习信号更新。",
     "资源偏好": "优先使用已采纳来源和用户上传资料。",
+    "学习动机": "尚未明确。",
+}
+
+LEGACY_PROFILE_FIELD_ALIASES = {
+    "背景": "专业背景",
+    "当前目标": "学习目标",
 }
 
 
@@ -142,9 +155,13 @@ def _extract_profile_fields(content: str | None) -> dict[str, str]:
     fields = dict(PROFILE_FIELD_DEFAULTS)
     for line in (content or "").splitlines():
         clean = line.strip().lstrip("-*").strip()
-        match = re.match(r"^(背景|当前目标|易错点|资源偏好)[:：]\s*(.+)$", clean)
+        match = re.match(
+            r"^(专业背景|知识基础|学习目标|认知风格|学习节奏|易错点|资源偏好|学习动机|背景|当前目标)[:：]\s*(.+)$",
+            clean,
+        )
         if match:
-            fields[match.group(1)] = match.group(2).strip()
+            field_name = LEGACY_PROFILE_FIELD_ALIASES.get(match.group(1), match.group(1))
+            fields[field_name] = match.group(2).strip()
     return fields
 
 
@@ -233,12 +250,34 @@ def _refine_profile_fields(
     refined = dict(fields)
     goal = _learning_goal_candidate(event_type, summary, params)
 
+    if event_type in {"initial_profile", "profile_onboarding"}:
+        onboarding_fields = {
+            "专业背景": params.get("major"),
+            "知识基础": params.get("knowledge") or params.get("level"),
+            "学习目标": params.get("goal"),
+            "认知风格": params.get("cognitive_style"),
+            "学习节奏": params.get("pace"),
+            "易错点": params.get("mistakes"),
+            "资源偏好": params.get("resource_preference"),
+            "学习动机": params.get("motivation"),
+        }
+        for field_name, candidate in onboarding_fields.items():
+            if candidate:
+                refined[field_name] = _clip_profile_signal(candidate, 240)
+        history = params.get("history")
+        if history:
+            refined["知识基础"] = _merge_profile_phrase(
+                refined["知识基础"],
+                f"学习经历：{history}",
+                3,
+            )
+
     if goal:
-        refined["当前目标"] = _merge_profile_phrase(refined["当前目标"], goal, 3)
+        refined["学习目标"] = _merge_profile_phrase(refined["学习目标"], goal, 3)
 
     topic = goal or _compact_learning_topic(params.get("message") or params.get("goal") or summary)
-    if _is_unspecified_profile_value(refined["背景"]) and topic:
-        refined["背景"] = (
+    if _is_unspecified_profile_value(refined["专业背景"]) and topic:
+        refined["专业背景"] = (
             f"近期学习集中在「{_compact_learning_topic(topic, 34)}」，"
             "个人基础会随问答、测验和资料选择继续细化。"
         )
@@ -251,6 +290,24 @@ def _refine_profile_fields(
             f"错题暴露：{_compact_learning_topic(risk, 44)}",
             4,
         )
+        refined["知识基础"] = _merge_profile_phrase(
+            refined["知识基础"],
+            f"待巩固：{_compact_learning_topic(risk, 44)}",
+            4,
+        )
+        refined["学习节奏"] = _merge_profile_phrase(
+            refined["学习节奏"],
+            "适合错题后立即进行短回顾与相似题巩固",
+            3,
+        )
+    elif event_type == "quiz_answer" and "correct" in summary.lower():
+        prompt_match = re.search(r"Prompt:\s*(.+)$", summary)
+        strength = prompt_match.group(1) if prompt_match else summary
+        refined["知识基础"] = _merge_profile_phrase(
+            refined["知识基础"],
+            f"已验证掌握：{_compact_learning_topic(strength, 44)}",
+            4,
+        )
     elif event_type == "chat_message" and re.search(
         r"(不懂|不会|报错|失败|错误|混淆|区别|为什么|怎么|如何)",
         summary,
@@ -260,6 +317,25 @@ def _refine_profile_fields(
             refined["易错点"],
             f"需要澄清：{_compact_learning_topic(summary, 44)}",
             4,
+        )
+
+    if event_type == "chat_message":
+        if re.search(r"(举例|例子|案例|实操|代码|演示)", summary, flags=re.I):
+            refined["认知风格"] = _merge_profile_phrase(
+                refined["认知风格"],
+                "偏好通过案例、演示或实操验证抽象概念",
+                3,
+            )
+        elif re.search(r"(图|导图|可视化|结构|框架|步骤)", summary, flags=re.I):
+            refined["认知风格"] = _merge_profile_phrase(
+                refined["认知风格"],
+                "偏好先建立结构和视觉框架，再进入细节",
+                3,
+            )
+        refined["学习节奏"] = _merge_profile_phrase(
+            refined["学习节奏"],
+            "通过连续追问逐步澄清知识边界",
+            3,
         )
 
     if (
@@ -282,10 +358,14 @@ def _render_learning_profile_source(fields: dict[str, str], event_lines: list[st
         "这个来源由系统维护，也允许用户直接编辑。它会作为学习记录的一部分参与检索和学习资产生成。",
         "",
         "## 稳定画像",
-        f"- 背景：{fields.get('背景') or PROFILE_FIELD_DEFAULTS['背景']}",
-        f"- 当前目标：{fields.get('当前目标') or PROFILE_FIELD_DEFAULTS['当前目标']}",
+        f"- 专业背景：{fields.get('专业背景') or PROFILE_FIELD_DEFAULTS['专业背景']}",
+        f"- 知识基础：{fields.get('知识基础') or PROFILE_FIELD_DEFAULTS['知识基础']}",
+        f"- 学习目标：{fields.get('学习目标') or PROFILE_FIELD_DEFAULTS['学习目标']}",
+        f"- 认知风格：{fields.get('认知风格') or PROFILE_FIELD_DEFAULTS['认知风格']}",
+        f"- 学习节奏：{fields.get('学习节奏') or PROFILE_FIELD_DEFAULTS['学习节奏']}",
         f"- 易错点：{fields.get('易错点') or PROFILE_FIELD_DEFAULTS['易错点']}",
         f"- 资源偏好：{fields.get('资源偏好') or PROFILE_FIELD_DEFAULTS['资源偏好']}",
+        f"- 学习动机：{fields.get('学习动机') or PROFILE_FIELD_DEFAULTS['学习动机']}",
         "",
         "## 最近学习信号",
     ]
@@ -381,7 +461,7 @@ AGENT_BLUEPRINTS = [
         "profile-agent",
         "学习画像智能体",
         "从自然语言对话中抽取画像特征并持续更新学生状态",
-        "已抽取 6 个画像维度，并识别当前学习短板",
+        "已抽取 8 个画像维度，并识别当前学习短板",
     ),
     (
         "curriculum-agent",
@@ -469,6 +549,71 @@ def _stage_blueprints_for_mode(mode: str):
     ]
 
 
+async def _update_learning_workflow_progress(
+    command_id: str | None,
+    mode: str,
+    current_agent_id: str | None,
+    task: str,
+    percent: int,
+    completed_agent_ids: set[str] | None = None,
+) -> None:
+    if not command_id:
+        return
+
+    completed = completed_agent_ids or set()
+    steps = []
+    for agent_id, name, role, _ in _stage_blueprints_for_mode(mode):
+        status = (
+            "completed"
+            if agent_id in completed or percent >= 100
+            else "running"
+            if agent_id == current_agent_id
+            else "queued"
+        )
+        steps.append(
+            {
+                "id": agent_id,
+                "name": name,
+                "role": role,
+                "status": status,
+            }
+        )
+
+    current_name = next(
+        (
+            name
+            for agent_id, name, _, _ in _stage_blueprints_for_mode(mode)
+            if agent_id == current_agent_id
+        ),
+        None,
+    )
+    progress = {
+        "workflow": f"learning_{mode}",
+        "mode": mode,
+        "percent": max(0, min(percent, 100)),
+        "current_agent_id": current_agent_id,
+        "current_agent_name": current_name,
+        "current_task": task,
+        "steps": steps,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        await repo_query(
+            """
+            UPDATE $command_id MERGE {
+                progress: $progress,
+                updated: time::now()
+            }
+            """,
+            {
+                "command_id": ensure_record_id(command_id),
+                "progress": progress,
+            },
+        )
+    except Exception as error:
+        logger.debug(f"Unable to persist learning workflow progress: {error}")
+
+
 def _normalized_request(request: LearningOrchestrationRequest) -> dict[str, str]:
     major = request.major or "计算机相关专业"
     goal = request.goal or "建立可迁移的课程知识体系"
@@ -516,6 +661,12 @@ def _build_profile(context: dict[str, str]) -> list[LearningProfileDimension]:
             confidence=0.78,
         ),
         LearningProfileDimension(
+            name="学习节奏",
+            value="适合短周期学习、即时自测与错题后快速回顾",
+            evidence="结合当前任务粒度与最近学习行为推断",
+            confidence=0.74,
+        ),
+        LearningProfileDimension(
             name="易错点偏好",
             value="容易在抽象概念、公式含义和应用边界之间混淆",
             evidence="学习历史：" + context["history"],
@@ -526,6 +677,12 @@ def _build_profile(context: dict[str, str]) -> list[LearningProfileDimension]:
             value="适合文档、图谱、练习、拓展阅读、代码案例并行推送",
             evidence="系统根据当前课程任务自动匹配多模态资源组合",
             confidence=0.84,
+        ),
+        LearningProfileDimension(
+            name="学习动机",
+            value=context["goal"],
+            evidence="由学习目标、课程选择与持续互动意图综合得出",
+            confidence=0.8,
         ),
     ]
 
@@ -2038,6 +2195,19 @@ def _detect_resource_kind(result: WebSearchResult) -> str:
     haystack = f"{result.title} {result.url} {result.snippet}".lower()
     if any(
         token in haystack
+        for token in [
+            "youtube.com",
+            "youtu.be",
+            "bilibili.com",
+            "vimeo.com",
+            "video lecture",
+            "lecture video",
+            "playlist",
+        ]
+    ):
+        return "video_lecture"
+    if any(
+        token in haystack
         for token in ["arxiv", "openreview", "proceedings", "paper", "survey"]
     ):
         return "paper_or_survey"
@@ -2054,6 +2224,90 @@ def _detect_resource_kind(result: WebSearchResult) -> str:
     return "article"
 
 
+def _resource_content_type(kind: str) -> str:
+    return {
+        "video_lecture": "video",
+        "paper_or_survey": "paper",
+        "lecture_notes": "course",
+        "official_reference": "webpage",
+        "implementation": "code",
+        "practice": "practice",
+        "tutorial": "article",
+        "article": "article",
+    }.get(kind, "webpage")
+
+
+def _youtube_thumbnail_url(url: str) -> str | None:
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower().removeprefix("www.")
+    video_id: str | None = None
+    if domain == "youtu.be":
+        video_id = parsed.path.strip("/").split("/", 1)[0]
+    elif domain.endswith("youtube.com"):
+        match = re.search(r"(?:[?&]v=|/shorts/|/embed/)([A-Za-z0-9_-]{6,})", url)
+        if match:
+            video_id = match.group(1)
+    if not video_id or not re.fullmatch(r"[A-Za-z0-9_-]{6,}", video_id):
+        return None
+    return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+
+
+def _resource_thumbnail_url(result: WebSearchResult, kind: str) -> str | None:
+    if kind == "video_lecture":
+        return _youtube_thumbnail_url(result.url)
+    return None
+
+
+def _resource_tags(
+    result: WebSearchResult,
+    kind: str,
+    intent: str,
+) -> list[str]:
+    kind_labels = {
+        "video_lecture": "视频",
+        "paper_or_survey": "论文/综述",
+        "lecture_notes": "课程讲义",
+        "official_reference": "官方资料",
+        "implementation": "代码实操",
+        "practice": "练习",
+        "tutorial": "教程",
+        "article": "文章",
+    }
+    intent_labels = {
+        "conceptual_foundation": "概念基础",
+        "primary_or_survey_papers": "经典阅读",
+        "official_reference": "权威参考",
+        "assessment_material": "自测",
+        "implementation_or_code": "实践",
+        "learner_context": "画像匹配",
+        "textbook_or_classic_reading": "教材",
+        "course_reading_list": "学习路径",
+        "video_lecture": "视频课程",
+        "misconceptions_and_pitfalls": "易错点",
+    }
+    domain = urlparse(result.url).netloc.lower().removeprefix("www.")
+    provider_label = (
+        "YouTube"
+        if "youtube.com" in domain or domain == "youtu.be"
+        else "Bilibili"
+        if "bilibili.com" in domain
+        else domain.split(".")[0].title()
+        if domain
+        else ""
+    )
+    return list(
+        dict.fromkeys(
+            label
+            for label in [
+                kind_labels.get(kind, "网页"),
+                intent_labels.get(intent),
+                provider_label,
+            ]
+            if label
+        )
+    )[:4]
+
+
 def _clean_search_result_title(title: str) -> str:
     cleaned = re.sub(r"\s+", " ", title).strip()
     cleaned = re.split(r"\s[-|–—]\s| :: | - YouTube$", cleaned, maxsplit=1)[0].strip()
@@ -2062,6 +2316,7 @@ def _clean_search_result_title(title: str) -> str:
 
 def _fallback_display_title(result: WebSearchResult, kind: str, intent: str) -> str:
     kind_labels = {
+        "video_lecture": "Video",
         "paper_or_survey": "Paper",
         "lecture_notes": "Course notes",
         "official_reference": "Official reference",
@@ -2132,6 +2387,7 @@ def _heuristic_search_score(
     term_score = min(len(matched_terms) * 0.035, 0.18)
     snippet_score = min(len(result.snippet.strip()) / 700, 0.16)
     kind_score = {
+        "video_lecture": 0.14,
         "paper_or_survey": 0.17,
         "lecture_notes": 0.16,
         "official_reference": 0.15,
@@ -2150,6 +2406,7 @@ def _heuristic_search_score(
     score = max(0.0, min(score, 1.0))
 
     learning_value = {
+        "video_lecture": "适合通过讲解画面、演示和课程节奏建立直观理解。",
         "paper_or_survey": "适合作为原始论文、综述或高密度理论来源。",
         "lecture_notes": "适合作为结构化讲解和课程化学习来源。",
         "official_reference": "适合核对术语、API、公式或权威定义。",
@@ -2212,7 +2469,7 @@ Return only JSON:
     "id": "c1",
     "score": 0.0,
     "display_title": "concise Chinese learning title, not the webpage's raw SEO title",
-    "resource_kind": "paper_or_survey | lecture_notes | official_reference | implementation | practice | tutorial | article",
+    "resource_kind": "video_lecture | paper_or_survey | lecture_notes | official_reference | implementation | practice | tutorial | article",
     "learning_value": "short Chinese explanation",
     "reason": "short Chinese reason"
   }}
@@ -2313,6 +2570,21 @@ def _select_diverse_search_results(
             selected.append(candidate)
             if len(selected) >= limit:
                 break
+
+    if selected and not any(item["resource_kind"] == "video_lecture" for item in selected):
+        best_video = next(
+            (
+                item
+                for item in sorted(candidates, key=lambda candidate: candidate["score"], reverse=True)
+                if item["resource_kind"] == "video_lecture"
+            ),
+            None,
+        )
+        if best_video is not None:
+            if len(selected) >= limit:
+                selected[-1] = best_video
+            else:
+                selected.append(best_video)
     return selected
 
 
@@ -2325,6 +2597,8 @@ def _resources_from_web_results(
         if result.url in seen_urls:
             continue
         seen_urls.add(result.url)
+        kind = _detect_resource_kind(result)
+        content_type = _resource_content_type(kind)
         resources.append(
             LearningCollectedResource(
                 id=f"web-search-{index}",
@@ -2338,6 +2612,10 @@ def _resources_from_web_results(
                 url=result.url,
                 snippet=result.snippet,
                 provider=result.provider,
+                resource_kind=kind,
+                content_type=content_type,
+                thumbnail_url=_resource_thumbnail_url(result, kind),
+                tags=_resource_tags(result, kind, "learning_resource"),
             )
         )
         if len(resources) >= 6:
@@ -2403,6 +2681,16 @@ def _resources_from_ranked_candidates(
                 resource_kind=candidate["resource_kind"],
                 learning_value=candidate["learning_value"],
                 search_intent=candidate["intent"],
+                content_type=_resource_content_type(candidate["resource_kind"]),
+                thumbnail_url=_resource_thumbnail_url(
+                    result,
+                    candidate["resource_kind"],
+                ),
+                tags=_resource_tags(
+                    result,
+                    candidate["resource_kind"],
+                    candidate["intent"],
+                ),
             )
         )
     return resources
@@ -2413,8 +2701,24 @@ async def collect_learning_resources(
     command_id: str | None = None,
 ) -> list[LearningCollectedResource]:
     await raise_if_command_canceled(command_id)
+    await _update_learning_workflow_progress(
+        command_id,
+        "collect",
+        "curriculum-agent",
+        "正在结合学生画像拆解主题、先修关系和资料搜索意图",
+        16,
+        {"profile-agent"},
+    )
     plans = await _llm_agentic_search_plan(context)
     await raise_if_command_canceled(command_id)
+    await _update_learning_workflow_progress(
+        command_id,
+        "collect",
+        "collector-agent",
+        f"正在并行执行 {len(plans)} 组检索，覆盖视频、文章、讲义、论文与练习",
+        34,
+        {"profile-agent", "curriculum-agent"},
+    )
     search_batches = await asyncio.gather(
         *(search_web(plan.query, limit=8) for plan in plans),
         return_exceptions=True,
@@ -2427,6 +2731,14 @@ async def collect_learning_resources(
             continue
         web_results.extend(batch)
 
+    await _update_learning_workflow_progress(
+        command_id,
+        "collect",
+        "collector-agent",
+        f"已获得 {len(web_results)} 条候选结果，正在去重、识别内容类型并评估质量",
+        62,
+        {"profile-agent", "curriculum-agent"},
+    )
     intent_by_query = {plan.query: plan.intent for plan in plans}
     ranked_candidates = _build_ranked_search_candidates(
         web_results,
@@ -2436,6 +2748,14 @@ async def collect_learning_resources(
     await raise_if_command_canceled(command_id)
     ranked_candidates = await _llm_rerank_search_results(context, ranked_candidates)
     await raise_if_command_canceled(command_id)
+    await _update_learning_workflow_progress(
+        command_id,
+        "collect",
+        "collector-agent",
+        "正在平衡视频、文章、网页、论文和实操资料，生成个性化候选清单",
+        82,
+        {"profile-agent", "curriculum-agent"},
+    )
     resources = _resources_from_ranked_candidates(
         _select_diverse_search_results(ranked_candidates, limit=10)
     )
@@ -2601,6 +2921,13 @@ async def build_learning_orchestration_with_search(
 ) -> LearningOrchestrationResponse:
     context = _normalized_request(request)
     await raise_if_command_canceled(command_id)
+    await _update_learning_workflow_progress(
+        command_id,
+        request.mode,
+        "profile-agent",
+        "正在读取并更新 8 维学生画像，提取目标、基础、偏好与近期学习信号",
+        6,
+    )
     if request.learning_record_id and request.use_profile_source:
         await get_or_create_learning_profile_source(request.learning_record_id)
 
@@ -2620,10 +2947,32 @@ async def build_learning_orchestration_with_search(
     generated_resources = None
     has_selected_sources_without_text = False
     if request.mode == "generate":
+        primary_generation_agent = (
+            "practice-agent"
+            if request.requested_outputs
+            and all(kind in {"quiz", "code_lab"} for kind in request.requested_outputs)
+            else "resource-agent"
+        )
+        await _update_learning_workflow_progress(
+            command_id,
+            request.mode,
+            primary_generation_agent,
+            "正在读取已采纳来源并构建严格可追溯的生成上下文",
+            28,
+            {"profile-agent", "curriculum-agent", "collector-agent"},
+        )
         source_context, selected_source_count = await _collect_generation_source_context(
             request
         )
         if source_context:
+            await _update_learning_workflow_progress(
+                command_id,
+                request.mode,
+                primary_generation_agent,
+                "正在基于来源生成个性化学习资产，并校验题目、答案与引用依据",
+                54,
+                {"profile-agent", "curriculum-agent", "collector-agent"},
+            )
             generated_resources = await _generate_resources_from_sources(
                 context,
                 request,
@@ -2640,6 +2989,20 @@ async def build_learning_orchestration_with_search(
         has_selected_sources_without_text,
     )
 
+    completed_before_safety = {
+        agent_id
+        for agent_id, _, _, _ in _stage_blueprints_for_mode(request.mode)
+        if agent_id != "safety-agent"
+    }
+    await _update_learning_workflow_progress(
+        command_id,
+        request.mode,
+        "safety-agent",
+        "正在核对画像一致性、来源可追溯性、内容类型与输出安全",
+        93,
+        completed_before_safety,
+    )
+
     if request.learning_record_id:
         summary = (
             f"mode={request.mode}; goal={context['goal']}; message={context['message']}; "
@@ -2652,6 +3015,17 @@ async def build_learning_orchestration_with_search(
             request.auto_update_profile,
         )
 
+    await _update_learning_workflow_progress(
+        command_id,
+        request.mode,
+        None,
+        "所有智能体已完成协作，结果已写入学习记录",
+        100,
+        {
+            agent_id
+            for agent_id, _, _, _ in _stage_blueprints_for_mode(request.mode)
+        },
+    )
     return response
 
 
