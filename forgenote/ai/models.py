@@ -9,11 +9,11 @@ from esperanto import (
 )
 from loguru import logger
 
+from forgenote.ai.model_specs import build_model_runtime_spec
+from forgenote.ai.provider_registration import register_runtime_ai_providers
 from forgenote.database.repository import ensure_record_id, repo_query
 from forgenote.domain.base import ObjectModel, RecordModel
 from forgenote.exceptions import ConfigurationError
-from forgenote.ai.model_specs import build_model_runtime_spec
-from forgenote.ai.provider_registration import register_runtime_ai_providers
 
 ModelType = Union[LanguageModel, EmbeddingModel, SpeechToTextModel, TextToSpeechModel]
 
@@ -347,6 +347,17 @@ class ModelManager:
             model_id = self._first_model_id(
                 defaults,
                 "default_code_lab_model",
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
+            )
+        elif model_type in {
+            "asset_blog",
+            "asset_assessment",
+            "asset_learning_path",
+        }:
+            model_id = self._first_model_id(
+                defaults,
                 "default_learning_asset_model",
                 "default_transformation_model",
                 "default_chat_model",

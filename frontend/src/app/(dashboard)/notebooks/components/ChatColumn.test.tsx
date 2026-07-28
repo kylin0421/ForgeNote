@@ -7,6 +7,19 @@ import { useNotebookChat } from '@/lib/hooks/useNotebookChat'
 // Mock the hooks
 vi.mock('@/lib/hooks/use-notes')
 vi.mock('@/lib/hooks/useNotebookChat')
+vi.mock('@/lib/hooks/use-models', () => ({
+  useModelDefaults: () => ({ data: undefined }),
+}))
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>()
+  return {
+    ...actual,
+    useQueries: () => [],
+    useQueryClient: () => ({
+      invalidateQueries: vi.fn(),
+    }),
+  }
+})
 vi.mock('@/components/source/ChatPanel', () => ({
   ChatPanel: () => <div data-testid="chat-panel" />
 }))

@@ -92,6 +92,17 @@ export const LEARNING_ASSET_OPTIONS: Array<{
     ],
   },
   {
+    kind: 'blog',
+    label: '博客讲解',
+    description: '把当前难点写成易读、有例子、有自检的教学博客。',
+    formats: [
+      { id: 'intuitive', label: '直觉讲解', description: '先讲为什么难，再用直觉和例子拆解。' },
+      { id: 'story', label: '故事化科普', description: '用问题和情境串联知识点。' },
+      { id: 'misconception', label: '误区纠偏', description: '围绕常见误解和边界展开。' },
+      { id: 'technical', label: '技术博客', description: '保留公式、机制和实现细节。' },
+    ],
+  },
+  {
     kind: 'quiz',
     label: '测验',
     description: '可互动测验，包含选项、得分和解析。',
@@ -100,6 +111,28 @@ export const LEARNING_ASSET_OPTIONS: Array<{
       { id: 'concept_check', label: '概念检查', description: '检查核心概念。' },
       { id: 'application', label: '应用迁移', description: '偏应用和迁移。' },
       { id: 'exam_style', label: '考试题型', description: '偏考试题型。' },
+    ],
+  },
+  {
+    kind: 'assessment',
+    label: '学习效果评估',
+    description: '结合实时画像、Quiz、错题和互动记录生成动态评估。',
+    formats: [
+      { id: 'comprehensive', label: '综合评估', description: '覆盖掌握度、迁移、错因和学习策略。' },
+      { id: 'progress', label: '阶段进展', description: '对比当前进展与学习目标。' },
+      { id: 'diagnostic', label: '薄弱点诊断', description: '定位最需要干预的知识与行为。' },
+      { id: 'reflection', label: '学习复盘', description: '整理证据、优势和下一步调整。' },
+    ],
+  },
+  {
+    kind: 'learning_path',
+    label: '学习路径',
+    description: '根据实时画像规划阶段顺序、资源、检查点和调整规则。',
+    formats: [
+      { id: 'adaptive', label: '动态路径', description: '按掌握情况自动设置分支和回退规则。' },
+      { id: 'exam', label: '备考路径', description: '围绕考试时间和题型安排。' },
+      { id: 'project', label: '项目路径', description: '以实践项目为主线组织学习。' },
+      { id: 'weekly', label: '周计划', description: '拆成可执行的周度任务。' },
     ],
   },
   {
@@ -224,6 +257,8 @@ export function LearningAssetGenerateDialog({
   onDeleteMaterial,
 }: LearningAssetGenerateDialogProps) {
   const option = LEARNING_ASSET_OPTIONS.find((item) => item.kind === outputKind)
+  const isProfileDrivenAsset =
+    outputKind === 'assessment' || outputKind === 'learning_path'
   const { t, language } = useTranslation()
   const targetLanguage = getGenerationLanguageFromLocale(language)
   const optionLabel = option
@@ -351,7 +386,7 @@ export function LearningAssetGenerateDialog({
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-base font-semibold">Format</h3>
                 <span className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
-                  {sourceCount} 个内容来源
+                  {isProfileDrivenAsset ? '实时画像' : `${sourceCount} 个内容来源`}
                 </span>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -588,6 +623,8 @@ export function LearningAssetGenerateDialog({
                     <p className="p-4 text-sm text-muted-foreground">
                       {materialOptions.length > 0
                         ? '没有匹配的素材，换个关键词试试。'
+                        : isProfileDrivenAsset
+                          ? '当前没有额外素材；仍可结合实时学习画像、Quiz 和互动记录生成。'
                         : '当前没有可选素材。添加来源、笔记或生成播客字幕后会出现在这里。'}
                     </p>
                   )}

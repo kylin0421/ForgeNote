@@ -8,6 +8,7 @@ from surreal_commands import submit_command
 
 from api.learning_service import (
     build_learning_orchestration_with_search,
+    detect_learning_asset_tool_calls,
     get_or_create_learning_profile_source,
     record_learning_profile_event,
     stream_learning_orchestration,
@@ -35,6 +36,17 @@ class LearningAssetJobItem(BaseModel):
 
 class LearningAssetJobsResponse(BaseModel):
     jobs: list[LearningAssetJobItem]
+
+
+class LearningAssetToolCallJobItem(LearningAssetJobItem):
+    label: str
+    reason: str
+
+
+class LearningAssetToolCallJobsResponse(BaseModel):
+    recognized: bool
+    message: str
+    jobs: list[LearningAssetToolCallJobItem]
 
 
 @router.post("/learning/orchestrate", response_model=LearningOrchestrationResponse)
@@ -102,6 +114,56 @@ async def submit_learning_asset_jobs(request: LearningOrchestrationRequest):
         raise HTTPException(
             status_code=500,
             detail="Learning asset job submission failed",
+        )
+
+
+@router.post(
+    "/learning/tool-call/jobs",
+    response_model=LearningAssetToolCallJobsResponse,
+)
+async def submit_learning_asset_tool_call_jobs(request: LearningOrchestrationRequest):
+    """Route explicit chat intents to one or more background asset-generation tools."""
+    try:
+        import commands.learning_commands as learning_commands
+
+        detected = detect_learning_asset_tool_calls(request.message)
+        if not detected:
+            return LearningAssetToolCallJobsResponse(
+                recognized=False,
+                message="当前消息是普通学习对话，不需要调用资产生成工具。",
+                jobs=[],
+            )
+
+        jobs: list[LearningAssetToolCallJobItem] = []
+        for output_kind, reason in detected:
+            payload = request.model_dump(mode="json")
+            payload["mode"] = "generate"
+            payload["output_kind"] = output_kind
+            payload.pop("requested_outputs", None)
+            job_id = submit_command(
+                "forgenote",
+                "generate_learning_asset",
+                payload,
+            )
+            jobs.append(
+                LearningAssetToolCallJobItem(
+                    job_id=str(job_id),
+                    output_kind=output_kind,
+                    label=learning_commands.learning_asset_kind_label(output_kind),
+                    reason=reason,
+                )
+            )
+
+        return LearningAssetToolCallJobsResponse(
+            recognized=True,
+            message=f"已调用 {len(jobs)} 个学习资产生成工具。",
+            jobs=jobs,
+        )
+    except Exception as e:
+        logger.error(f"Learning asset tool-call submission failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Learning asset tool-call submission failed",
         )
 
 

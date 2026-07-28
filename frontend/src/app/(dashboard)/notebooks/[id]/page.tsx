@@ -471,6 +471,7 @@ export default function NotebookPage() {
                 {mobileActiveTab === 'chat' && (
                   <ChatColumn
                     notebookId={notebookId}
+                    notebookName={notebook?.name}
                     contextSelections={contextSelections}
                     sources={sources}
                     sourcesLoading={sourcesLoading}
@@ -503,6 +504,7 @@ export default function NotebookPage() {
             >
               <ChatColumn
                 notebookId={notebookId}
+                notebookName={notebook?.name}
                 contextSelections={contextSelections}
                 sources={sources}
                 sourcesLoading={sourcesLoading}

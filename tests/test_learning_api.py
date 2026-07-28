@@ -188,3 +188,62 @@ def test_learning_asset_jobs_endpoint_submits_one_job_per_asset(monkeypatch):
     assert [item[2]["output_kind"] for item in submitted] == ["quiz", "flashcards"]
     assert all(item[2]["mode"] == "generate" for item in submitted)
     assert all("requested_outputs" not in item[2] for item in submitted)
+
+
+def test_learning_tool_call_endpoint_routes_chat_to_asset_jobs(monkeypatch):
+    submitted = []
+
+    def fake_submit_command(app_name: str, command_name: str, payload: dict):
+        submitted.append((app_name, command_name, payload))
+        return f"job-{payload['output_kind']}"
+
+    monkeypatch.setattr("api.routers.learning.submit_command", fake_submit_command)
+    from api.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/learning/tool-call/jobs",
+        json={
+            "message": "我听不懂，能不能给我来个博客讲解一下，再评估我的学习效果？",
+            "course": "机器学习",
+            "mode": "chat",
+            "requested_outputs": [],
+            "accepted_resource_ids": ["source:course", "source:profile"],
+            "learning_record_id": "notebook:xyz",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["recognized"] is True
+    assert [job["output_kind"] for job in data["jobs"]] == [
+        "assessment",
+        "blog",
+    ]
+    assert [item[2]["mode"] for item in submitted] == ["generate", "generate"]
+    assert all("requested_outputs" not in item[2] for item in submitted)
+
+
+def test_learning_tool_call_endpoint_leaves_ordinary_chat_untouched(monkeypatch):
+    submitted = []
+    monkeypatch.setattr(
+        "api.routers.learning.submit_command",
+        lambda *args: submitted.append(args),
+    )
+    from api.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/learning/tool-call/jobs",
+        json={
+            "message": "这段代码的第二行是什么意思？",
+            "course": "机器学习",
+            "mode": "chat",
+            "requested_outputs": [],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["recognized"] is False
+    assert response.json()["jobs"] == []
+    assert submitted == []

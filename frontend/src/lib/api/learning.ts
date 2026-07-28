@@ -2,6 +2,7 @@ import apiClient from './client'
 import {
   LearningProfileEventRequest,
   LearningProfileSourceResponse,
+  LearningAssetToolCallJobsResponse,
   LearningOrchestrationRequest,
   LearningOrchestrationResponse,
   LearningOutputKind,
@@ -51,6 +52,14 @@ export const learningApi = {
         output_kind: LearningOutputKind
       }>
     }>('/learning/assets/jobs', params)
+    return response.data
+  },
+
+  submitToolCallJobs: async (params: LearningOrchestrationRequest) => {
+    const response = await apiClient.post<LearningAssetToolCallJobsResponse>(
+      '/learning/tool-call/jobs',
+      params
+    )
     return response.data
   },
 

@@ -1,11 +1,14 @@
 export type LearningOutputKind =
   | 'study_guide'
+  | 'blog'
   | 'quiz'
   | 'flashcards'
   | 'mind_map'
   | 'reading'
   | 'code_lab'
   | 'visual_aid'
+  | 'assessment'
+  | 'learning_path'
 
 export interface LearningOrchestrationRequest {
   message: string
@@ -82,6 +85,19 @@ export interface LearningCollectedResource {
   thumbnail_url?: string | null
   tags?: string[]
   adoption_status: 'recommended' | 'accepted' | 'rejected' | 'user_upload'
+}
+
+export interface LearningAssetToolCallJob {
+  job_id: string
+  output_kind: LearningOutputKind
+  label: string
+  reason: string
+}
+
+export interface LearningAssetToolCallJobsResponse {
+  recognized: boolean
+  message: string
+  jobs: LearningAssetToolCallJob[]
 }
 
 export interface LearningPathStep {

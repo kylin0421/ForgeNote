@@ -957,6 +957,9 @@ export const enUS = {
       mind_map: "Mind Map",
       reading: "Reading",
       code_lab: "Code Lab",
+      blog: "Blog Explainer",
+      assessment: "Learning Assessment",
+      learning_path: "Learning Path",
     },
   },
 }

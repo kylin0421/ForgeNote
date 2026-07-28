@@ -25,6 +25,7 @@ import {
   Repeat,
   Rewind,
   Search,
+  ShieldCheck,
   FastForward,
   Sparkles,
   StickyNote,
@@ -156,7 +157,7 @@ const inferLearningAssetKind = (
   const combined = `${title ?? ''}\n${content ?? ''}`
   const normalized = combined.toLowerCase()
   const metadataKind = combined.match(
-    /"kind"\s*:\s*"(study_guide|quiz|flashcards|mind_map|reading|code_lab)"/
+    /"kind"\s*:\s*"(study_guide|blog|quiz|flashcards|mind_map|reading|code_lab|visual_aid|assessment|learning_path)"/
   )?.[1] as LearningOutputKind | undefined
 
   if (metadataKind) {
@@ -165,6 +166,9 @@ const inferLearningAssetKind = (
 
   if (/课程学习讲解|课程讲解|讲解文档|study\s*guide|深度解析/i.test(combined)) {
     return 'study_guide'
+  }
+  if (/博客讲解|教学博客|博客式讲解|\bblog\b/i.test(combined)) {
+    return 'blog'
   }
   if (/测验|小测验|诊断|练习题|quiz|diagnostic/i.test(combined)) {
     return 'quiz'
@@ -184,6 +188,12 @@ const inferLearningAssetKind = (
   ) {
     return 'code_lab'
   }
+  if (/学习效果评估|学习评估|掌握度评估|learning\s*assessment/i.test(combined)) {
+    return 'assessment'
+  }
+  if (/个性化学习路径|学习路径|学习计划|learning\s*path/i.test(combined)) {
+    return 'learning_path'
+  }
 
   return null
 }
@@ -195,23 +205,29 @@ const STUDIO_ASSET_OPTIONS: StudioAssetOption[] = [
 
 const STUDIO_ASSET_ICONS: Record<StudioAssetKind, typeof FileText> = {
   study_guide: FileText,
+  blog: FileText,
   quiz: ClipboardList,
   flashcards: StickyNote,
   mind_map: Network,
   reading: Search,
   code_lab: Code2,
   visual_aid: ImageIcon,
+  assessment: ClipboardList,
+  learning_path: Network,
   podcast: Headphones,
 }
 
 const STUDIO_ASSET_STYLES: Record<StudioAssetKind, string> = {
   study_guide: 'border-sky-300 bg-sky-50 hover:border-sky-500 hover:bg-sky-100 dark:border-sky-500/70 dark:bg-sky-950/35 dark:hover:border-sky-400 dark:hover:bg-sky-950/50',
+  blog: 'border-orange-300 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 dark:border-orange-500/70 dark:bg-orange-950/35 dark:hover:border-orange-400 dark:hover:bg-orange-950/50',
   quiz: 'border-emerald-300 bg-emerald-50 hover:border-emerald-500 hover:bg-emerald-100 dark:border-emerald-500/70 dark:bg-emerald-950/35 dark:hover:border-emerald-400 dark:hover:bg-emerald-950/50',
   flashcards: 'border-amber-300 bg-amber-50 hover:border-amber-500 hover:bg-amber-100 dark:border-amber-500/70 dark:bg-amber-950/35 dark:hover:border-amber-400 dark:hover:bg-amber-950/50',
   mind_map: 'border-violet-300 bg-violet-50 hover:border-violet-500 hover:bg-violet-100 dark:border-violet-500/70 dark:bg-violet-950/35 dark:hover:border-violet-400 dark:hover:bg-violet-950/50',
   reading: 'border-rose-300 bg-rose-50 hover:border-rose-500 hover:bg-rose-100 dark:border-rose-500/70 dark:bg-rose-950/35 dark:hover:border-rose-400 dark:hover:bg-rose-950/50',
   code_lab: 'border-cyan-300 bg-cyan-50 hover:border-cyan-500 hover:bg-cyan-100 dark:border-cyan-500/70 dark:bg-cyan-950/35 dark:hover:border-cyan-400 dark:hover:bg-cyan-950/50',
   visual_aid: 'border-fuchsia-300 bg-fuchsia-50 hover:border-fuchsia-500 hover:bg-fuchsia-100 dark:border-fuchsia-500/70 dark:bg-fuchsia-950/35 dark:hover:border-fuchsia-400 dark:hover:bg-fuchsia-950/50',
+  assessment: 'border-teal-300 bg-teal-50 hover:border-teal-500 hover:bg-teal-100 dark:border-teal-500/70 dark:bg-teal-950/35 dark:hover:border-teal-400 dark:hover:bg-teal-950/50',
+  learning_path: 'border-lime-300 bg-lime-50 hover:border-lime-500 hover:bg-lime-100 dark:border-lime-500/70 dark:bg-lime-950/35 dark:hover:border-lime-400 dark:hover:bg-lime-950/50',
   podcast: 'border-indigo-300 bg-indigo-50 hover:border-indigo-500 hover:bg-indigo-100 dark:border-indigo-500/70 dark:bg-indigo-950/35 dark:hover:border-indigo-400 dark:hover:bg-indigo-950/50',
 }
 
@@ -220,12 +236,15 @@ type StudioCategoryFilter = StudioAssetKind | 'all'
 const STUDIO_CATEGORY_OPTIONS: Array<{ id: StudioCategoryFilter; label: string }> = [
   { id: 'all', label: '全部' },
   { id: 'study_guide', label: '讲解文档' },
+  { id: 'blog', label: '博客讲解' },
   { id: 'quiz', label: '测验' },
   { id: 'flashcards', label: '知识闪卡' },
   { id: 'mind_map', label: '思维导图' },
   { id: 'reading', label: '阅读材料' },
   { id: 'code_lab', label: '代码实验' },
   { id: 'visual_aid', label: '辅助图片' },
+  { id: 'assessment', label: '学习评估' },
+  { id: 'learning_path', label: '学习路径' },
   { id: 'podcast', label: '播客' },
 ]
 
@@ -320,7 +339,15 @@ function isStudioTargetExportable(target: StudioExportTarget) {
   if (target.asset.kind === 'code_lab') {
     return extractExecutableCodeBlocks(target.asset.content).length > 0
   }
-  return ['study_guide', 'quiz', 'mind_map', 'visual_aid'].includes(target.asset.kind)
+  return [
+    'study_guide',
+    'blog',
+    'quiz',
+    'mind_map',
+    'visual_aid',
+    'assessment',
+    'learning_path',
+  ].includes(target.asset.kind)
 }
 
 function getStudioExportLabel(target: StudioExportTarget) {
@@ -330,7 +357,7 @@ function getStudioExportLabel(target: StudioExportTarget) {
   if (!target.asset) {
     return '导出'
   }
-  if (target.asset.kind === 'study_guide') {
+  if (['study_guide', 'blog', 'assessment', 'learning_path'].includes(target.asset.kind)) {
     return '导出 PDF'
   }
   if (target.asset.kind === 'quiz') {
@@ -1970,7 +1997,7 @@ export function NotesColumn({
         return
       }
 
-      if (asset.kind === 'study_guide') {
+      if (['study_guide', 'blog', 'assessment', 'learning_path'].includes(asset.kind)) {
         openPrintableDocument(title, markdownToPrintableHtml(target.visibleContent || asset.content))
         return
       }
@@ -2158,7 +2185,16 @@ export function NotesColumn({
       : contentSources.map((source) => source.id)
     const supplementalMaterials = config.supplementalMaterials ?? []
 
-    if (selectedSourceIds.length === 0 && supplementalMaterials.length === 0) {
+    const supportsProfileOnly = (
+      config.useProfileSource &&
+      profileSources.length > 0 &&
+      config.outputs.every((kind) => ['assessment', 'learning_path'].includes(kind))
+    )
+    if (
+      selectedSourceIds.length === 0 &&
+      supplementalMaterials.length === 0 &&
+      !supportsProfileOnly
+    ) {
       toast.error('请先选择至少一个素材，再生成学习资产')
       return
     }
@@ -2719,6 +2755,9 @@ export function NotesColumn({
                   const assetKind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
                   const assetKindLabel =
                     assetKind ? getLearningAssetKindLabel(assetKind, t) : asset?.type || null
+                  const trustMetadata = asset?.payload?.trust as
+                    | { safety_status?: string; grounding?: string }
+                    | undefined
                   const exportTarget: StudioExportTarget = {
                     type: 'learning_asset',
                     note,
@@ -2751,6 +2790,15 @@ export function NotesColumn({
                           {assetKindLabel && (
                             <Badge variant="outline" className="text-xs">
                               {assetKindLabel}
+                            </Badge>
+                          )}
+                          {trustMetadata?.safety_status === 'passed' && (
+                            <Badge
+                              variant="outline"
+                              className="gap-1 border-emerald-300 bg-emerald-50 text-xs text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"
+                            >
+                              <ShieldCheck className="h-3 w-3" />
+                              来源校验
                             </Badge>
                           )}
                         </div>

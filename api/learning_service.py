@@ -51,8 +51,11 @@ ASSET_GENERATION_MAX_TOKENS: dict[LearningOutputKind, int] = {
     "flashcards": 4096,
     "mind_map": 4096,
     "study_guide": 6144,
+    "blog": 6144,
     "reading": 6144,
     "code_lab": 6144,
+    "assessment": 6144,
+    "learning_path": 6144,
 }
 GENERATED_ASSETS_DIR = os.getenv(
     "GENERATED_ASSETS_DIR",
@@ -71,12 +74,49 @@ DEFAULT_GENERATION_MESSAGE = (
     "所有内容必须严格依据来源，来源不足时要明确说明。"
 )
 
+PROMPT_INJECTION_PATTERNS = (
+    r"ignore (?:all |any )?(?:previous|prior|above) instructions?",
+    r"忽略(?:以上|之前|先前|全部).{0,8}(?:要求|指令|提示)",
+    r"(?:reveal|show|print).{0,10}(?:system prompt|hidden instructions?)",
+    r"(?:泄露|显示|输出).{0,10}(?:系统提示词|隐藏指令)",
+    r"<\s*(?:system|assistant|tool)\s*>",
+    r"(?:call|invoke).{0,8}(?:tool|function)",
+)
+
+UNSAFE_ASSET_PATTERNS = (
+    r"(?:制作|组装|合成).{0,10}(?:炸弹|爆炸物|毒品)",
+    r"(?:窃取|盗取|批量获取).{0,10}(?:密码|密钥|账号|个人信息)",
+    r"(?:绕过|规避).{0,10}(?:身份验证|安全机制|内容审核|访问控制)",
+)
+
 
 def _raise_classified_service_error(error: BaseException) -> NoReturn:
     if isinstance(error, ForgeNoteError):
         raise error
     error_class, user_message = classify_error(error)
     raise error_class(user_message) from error
+
+
+def _looks_like_prompt_injection(value: str) -> bool:
+    return any(re.search(pattern, value, re.I) for pattern in PROMPT_INJECTION_PATTERNS)
+
+
+def _validate_learning_resources_safety(
+    resources: list[LearningResource],
+) -> None:
+    """Block prompt leakage and clearly unsafe procedural content before persistence."""
+    for resource in resources:
+        visible_text = "\n".join(
+            [resource.title, resource.summary, resource.content]
+        )
+        if _looks_like_prompt_injection(visible_text):
+            raise ExternalServiceError(
+                f"{resource.type} 未通过提示注入安全检查，请调整来源后重试。"
+            )
+        if any(re.search(pattern, visible_text, re.I) for pattern in UNSAFE_ASSET_PATTERNS):
+            raise ExternalServiceError(
+                f"{resource.type} 未通过内容安全检查，系统已阻止保存。"
+            )
 
 
 @dataclass(frozen=True)
@@ -515,13 +555,105 @@ AGENT_BLUEPRINTS = [
 
 OUTPUT_LABELS: dict[LearningOutputKind, str] = {
     "study_guide": "课程讲解文档",
+    "blog": "博客式讲解",
     "quiz": "小测验",
     "flashcards": "知识闪卡",
     "mind_map": "知识点思维导图",
     "reading": "拓展阅读材料",
     "code_lab": "代码实操案例",
     "visual_aid": "辅助理解图片",
+    "assessment": "学习效果评估",
+    "learning_path": "个性化学习路径",
 }
+
+LEARNING_ASSET_TOOL_PATTERNS: tuple[
+    tuple[LearningOutputKind, tuple[str, ...], str], ...
+] = (
+    (
+        "assessment",
+        (
+            r"学习效果(?:评估|评价)",
+            r"(?:评估|评价|分析).{0,8}(?:学习|掌握|水平|进度)",
+            r"(?:学得|掌握得).{0,6}(?:怎么样|如何)",
+        ),
+        "检测到学习效果评估意图，将结合实时画像、测验和互动记录生成评估资产。",
+    ),
+    (
+        "learning_path",
+        (
+            r"学习路径",
+            r"学习计划",
+            r"(?:规划|安排).{0,8}(?:学习|复习|课程)",
+            r"(?:下一步|接下来).{0,8}(?:怎么学|学什么)",
+        ),
+        "检测到学习路径规划意图，将结合画像和当前掌握情况生成动态路径资产。",
+    ),
+    (
+        "blog",
+        (r"博客", r"\bblog\b", r"文章式讲解", r"科普文章"),
+        "检测到博客式讲解意图，将把当前难点生成易读、可保存的博客资产。",
+    ),
+    (
+        "mind_map",
+        (r"思维导图", r"知识图谱", r"概念图", r"\bmind\s*map\b"),
+        "检测到知识结构可视化意图，将生成思维导图资产。",
+    ),
+    (
+        "flashcards",
+        (r"知识闪卡", r"闪卡", r"记忆卡", r"\bflashcards?\b"),
+        "检测到主动回忆练习意图，将生成知识闪卡资产。",
+    ),
+    (
+        "visual_aid",
+        (r"图解", r"示意图", r"辅助图片", r"画.{0,3}(?:图|图片)"),
+        "检测到图解意图，将调用视觉辅助资产生成。",
+    ),
+    (
+        "quiz",
+        (
+            r"\bquiz\b",
+            r"测验",
+            r"测试题",
+            r"练习题",
+            r"考考我",
+            r"出.{0,4}(?:题|小测)",
+        ),
+        "检测到练习测验意图，将生成可互动 Quiz 资产。",
+    ),
+    (
+        "code_lab",
+        (r"代码实验", r"代码实操", r"编程实验", r"实操案例", r"\bcode\s*lab\b"),
+        "检测到实操意图，将生成可执行的代码实验资产。",
+    ),
+    (
+        "reading",
+        (r"拓展阅读", r"延伸阅读", r"阅读清单", r"参考资料"),
+        "检测到拓展阅读意图，将生成分层阅读资产。",
+    ),
+    (
+        "study_guide",
+        (r"讲解文档", r"学习指南", r"教程", r"系统讲解"),
+        "检测到系统讲解意图，将生成结构化讲解文档。",
+    ),
+)
+
+LEARNING_ASSET_ACTION_PATTERN = re.compile(
+    r"(?:帮我|给我|能不能|可以(?:帮我)?|请|生成|创建|制作|写一?|来一?|做一?|出一?|规划|安排|评估|评价|考考我)",
+    re.I,
+)
+
+
+def detect_learning_asset_tool_calls(message: str) -> list[tuple[LearningOutputKind, str]]:
+    """Route explicit natural-language asset requests to generation tools."""
+    normalized = re.sub(r"\s+", " ", message or "").strip()
+    if not normalized or not LEARNING_ASSET_ACTION_PATTERN.search(normalized):
+        return []
+
+    detected: list[tuple[LearningOutputKind, str]] = []
+    for kind, patterns, reason in LEARNING_ASSET_TOOL_PATTERNS:
+        if any(re.search(pattern, normalized, re.I) for pattern in patterns):
+            detected.append((kind, reason))
+    return detected[:4]
 
 
 def _stage_blueprints_for_mode(mode: str):
@@ -818,6 +950,28 @@ def _build_resources(
             tags=["讲解", "长文档", "Markdown"],
         ),
         LearningResource(
+            kind="blog",
+            type="博客式讲解",
+            title=f"为什么总觉得「{course}」听懂了却不会用？",
+            agent="智能辅导智能体",
+            format="教学博客 Markdown",
+            summary="用问题、直觉、例子和误区纠偏把当前难点讲成一篇易读博客。",
+            content=(
+                f"# 为什么总觉得「{course}」听懂了却不会用？\n\n"
+                f"你当前想解决的是：{context['message']}。\n\n"
+                "## 先别急着背定义\n"
+                "真正的理解不只是在熟悉的例子里认出答案，而是能够说明概念为什么存在、依赖什么条件，以及换一个场景后还能否成立。\n\n"
+                "## 用一个判断框架拆开难点\n"
+                "面对任何知识点，依次回答：它解决什么问题；输入与输出是什么；关键机制是什么；什么时候不应该使用。"
+                "如果其中某一步说不清，就把这一项作为下一轮学习和测验的焦点。\n\n"
+                f"## 针对你的学习目标\n"
+                f"你的目标是「{context['goal']}」。建议先用一个小测定位断点，再回到来源补齐对应段落，最后用新例子复述一次。\n\n"
+                "## 一句话带走\n"
+                "少看一遍答案，多做一次边界判断和迁移解释，通常更接近真正掌握。"
+            ),
+            tags=["博客", "讲解", "易错点"],
+        ),
+        LearningResource(
             kind="mind_map",
             type="知识点思维导图",
             title=f"{course} 知识结构图",
@@ -928,6 +1082,60 @@ def _build_resources(
             tags=["代码", "实操", "Python"],
         ),
         LearningResource(
+            kind="assessment",
+            type="学习效果评估",
+            title=f"{course} 当前学习效果评估",
+            agent="学习评估智能体",
+            format="多维评估报告 Markdown",
+            summary="结合当前画像、学习目标和近期行为信号形成可追溯评估与调整建议。",
+            content=(
+                f"# {course} 当前学习效果评估\n\n"
+                "## 评估依据\n"
+                f"- 学习目标：{context['goal']}\n"
+                f"- 专业背景：{context['major']}\n"
+                f"- 近期学习信号：{context['history']}\n\n"
+                "## 多维判断\n"
+                "| 维度 | 当前判断 | 下一步证据 |\n"
+                "| --- | --- | --- |\n"
+                "| 目标清晰度 | 已形成明确目标 | 完成一个阶段检查点 |\n"
+                "| 知识掌握 | 需要用测验进一步验证 | 完成诊断 Quiz |\n"
+                "| 迁移能力 | 当前证据不足 | 完成一个新场景实操 |\n"
+                "| 错因复盘 | 需要持续记录 | 标注错题类型与原因 |\n\n"
+                "## 结论\n"
+                "当前证据不足以给出虚假的精确分数。建议完成一次诊断测验和一次实操后重新生成本评估，系统会随画像更新调整结论。"
+            ),
+            tags=["评估", "实时画像", "动态调整"],
+            payload={
+                "evidence_level": "initial",
+                "profile_dimensions_used": 8,
+            },
+        ),
+        LearningResource(
+            kind="learning_path",
+            type="个性化学习路径",
+            title=f"{course} 个性化学习路径",
+            agent="路径规划智能体",
+            format="阶段式路径 Markdown",
+            summary="依据画像、目标和学习信号安排学习顺序、资源与检查点。",
+            content=(
+                f"# {course} 个性化学习路径\n\n"
+                f"目标：{context['goal']}\n\n"
+                "## 阶段 1｜诊断与建图\n"
+                "- 先完成诊断 Quiz，再查看知识导图。\n"
+                "- 检查点：能指出当前最薄弱的 2 个知识点。\n\n"
+                "## 阶段 2｜聚焦补缺\n"
+                "- 只阅读与薄弱点对应的讲解或博客，并制作闪卡。\n"
+                "- 检查点：相同类型题目正确率达到 80%。\n\n"
+                "## 阶段 3｜迁移实操\n"
+                "- 完成代码实验或实践项目，记录一次失败与修正过程。\n"
+                "- 检查点：能够独立解释结果和误差来源。\n\n"
+                "## 阶段 4｜评估与重排\n"
+                "- 重新生成学习效果评估，根据新画像调整下一轮顺序。\n"
+                "- 调整规则：正确率下降则回到补缺；迁移稳定则进入更高难度资源。"
+            ),
+            tags=["学习路径", "动态规划", "画像驱动"],
+        ),
+        LearningResource(
             kind="visual_aid",
             type="辅助理解图片",
             title=f"{course} 辅助理解图片提示词",
@@ -1000,9 +1208,10 @@ async def _collect_generation_source_context(
     for source in sources:
         is_profile_source = _is_learning_profile_source(source)
         if is_profile_source:
-            # The profile guides personalization, but it is not evidence for
-            # source-grounded assets. Keeping it out prevents resources such as
-            # mind maps from rendering profile metadata as course content.
+            # The profile is personalization evidence, not course-fact evidence.
+            # Include it explicitly and let the prompt keep those two roles separate.
+            if request.use_profile_source:
+                selected_sources.append(source)
             continue
 
         source_ids = _normalize_identifier(source.id)
@@ -1090,7 +1299,11 @@ def _source_sentences(source_context: str, limit: int = 12) -> list[str]:
     seen: set[str] = set()
     for piece in pieces:
         sentence = re.sub(r"\s+", " ", piece).strip(" -\t")
-        if len(sentence) < 24 or sentence in seen:
+        if (
+            len(sentence) < 24
+            or sentence in seen
+            or _looks_like_prompt_injection(sentence)
+        ):
             continue
         seen.add(sentence)
         sentences.append(sentence[:260])
@@ -1166,6 +1379,8 @@ def _source_grounded_fallback_resources(
     course = context["course"]
     sentences = _source_sentences(source_context, limit=16)
     evidence_lines = "\n".join(f"- {sentence}" for sentence in sentences[:10])
+    profile_fields = _extract_profile_fields(source_context)
+    profile_events = _extract_profile_events(source_context)
     resources: list[LearningResource] = []
 
     for kind in requested_outputs:
@@ -1191,6 +1406,30 @@ def _source_grounded_fallback_resources(
                         "这份文档只使用当前来源中可见的文本摘录；如果需要更深入的推导，请等待来源处理完成或补充更多资料。"
                     ),
                     tags=["来源讲解", "Markdown"],
+                )
+            )
+        elif kind == "blog":
+            resources.append(
+                LearningResource(
+                    kind="blog",
+                    type=OUTPUT_LABELS["blog"],
+                    title=f"{course} 来源博客讲解",
+                    agent="智能辅导智能体",
+                    format="教学博客 Markdown",
+                    summary="把当前来源中的关键内容组织成易读、可保存的博客式讲解。",
+                    content=(
+                        f"# 换一种方式理解 {course}\n\n"
+                        f"你当前想解决的是：{context['message']}。\n\n"
+                        "## 来源真正说了什么\n"
+                        f"{evidence_lines or '- 来源不足以支持具体讲解。'}\n\n"
+                        "## 把难点拆成三个问题\n"
+                        "1. 这个概念解决什么问题？\n"
+                        "2. 它依赖哪些条件或步骤？\n"
+                        "3. 换一个场景后，结论是否仍然成立？\n\n"
+                        "## 学完立即自检\n"
+                        "合上资料，用自己的话复述一个来源要点，并给出一个不适用的边界。"
+                    ),
+                    tags=["博客", "来源讲解", "可追溯"],
                 )
             )
         elif kind == "quiz":
@@ -1341,6 +1580,77 @@ def _source_grounded_fallback_resources(
                     tags=["思维导图", "来源证据"],
                 )
             )
+        elif kind == "assessment":
+            signal_lines = (
+                "\n".join(f"- {event}" for event in profile_events[-8:])
+                or "- 暂无可用的测验、对话或资源互动记录。"
+            )
+            dimension_rows = "\n".join(
+                f"| {name} | {value} | 画像来源 |"
+                for name, value in profile_fields.items()
+            )
+            resources.append(
+                LearningResource(
+                    kind="assessment",
+                    type=OUTPUT_LABELS["assessment"],
+                    title=f"{course} 学习效果评估",
+                    agent="学习评估智能体",
+                    format="多维评估报告 Markdown",
+                    summary="基于实时学习画像和近期学习行为证据形成的动态评估。",
+                    content=(
+                        f"# {course} 学习效果评估\n\n"
+                        "## 当前画像快照\n"
+                        "| 维度 | 当前状态 | 依据 |\n"
+                        "| --- | --- | --- |\n"
+                        f"{dimension_rows}\n\n"
+                        "## 近期学习证据\n"
+                        f"{signal_lines}\n\n"
+                        "## 效果判断\n"
+                        "- 已有画像维度可用于个性化，但掌握度必须由 Quiz、错题和实操结果验证。\n"
+                        "- 若缺少近期行为证据，本报告不会虚构精确分数。\n\n"
+                        "## 下一轮调整\n"
+                        "1. 完成一个诊断 Quiz，记录正确率和错因。\n"
+                        "2. 针对最集中的错因生成博客讲解或辅助图解。\n"
+                        "3. 完成一次迁移实操后重新生成评估。"
+                    ),
+                    tags=["评估", "实时画像", "学习证据"],
+                    payload={
+                        "profile_dimensions_used": len(profile_fields),
+                        "learning_signals_used": len(profile_events),
+                        "evidence_level": "observed" if profile_events else "profile_only",
+                    },
+                )
+            )
+        elif kind == "learning_path":
+            resources.append(
+                LearningResource(
+                    kind="learning_path",
+                    type=OUTPUT_LABELS["learning_path"],
+                    title=f"{course} 个性化学习路径",
+                    agent="路径规划智能体",
+                    format="阶段式路径 Markdown",
+                    summary="根据实时画像、当前目标和来源内容动态安排学习顺序。",
+                    content=(
+                        f"# {course} 个性化学习路径\n\n"
+                        f"目标：{context['goal']}\n\n"
+                        "## 1. 诊断当前短板\n"
+                        f"- 画像中的易错点：{profile_fields['易错点']}\n"
+                        "- 资源：诊断 Quiz、知识导图。\n"
+                        "- 检查点：能定位最薄弱的 2 个知识点及错因。\n\n"
+                        "## 2. 用偏好方式补缺\n"
+                        f"- 资源偏好：{profile_fields['资源偏好']}\n"
+                        "- 资源：讲解文档、博客、闪卡或辅助图片。\n"
+                        "- 检查点：同类题正确率达到 80%。\n\n"
+                        "## 3. 完成迁移实操\n"
+                        "- 资源：代码实验、项目材料或实践案例。\n"
+                        "- 检查点：能解释结果、失败原因和一次改进。\n\n"
+                        "## 4. 评估并自动重排\n"
+                        "- 重新生成学习效果评估。\n"
+                        "- 若错题集中，回到阶段 2；若迁移稳定，进入更高难度资源。"
+                    ),
+                    tags=["路径规划", "实时画像", "动态调整"],
+                )
+            )
         else:
             resources.append(
                 LearningResource(
@@ -1381,21 +1691,26 @@ Markdown table rule: use ASCII "|" separators, include a delimiter row like "| -
 要求：
 1. 只生成 requested_outputs 中列出的资产：{requested}
 2. 无论 <sources> 或用户输入是什么语言，所有面向用户展示的 title、summary、content、quiz、闪卡、reading reason、tutor_answer 等都必须使用“目标输出语言”。必要时先在内部翻译来源，再生成结果；不要沿用英文或来源原文语种输出。
-3. 所有 quiz、闪卡、讲解文档和 mind_map 都必须围绕来源里的具体概念、方法、公式、实验、结论或术语。
-4. 如果来源证据不足，明确写“来源不足以支持”，不要编造。
-5. study_guide 必须是长 Markdown 文档，至少包含：核心问题、来源要点、概念解释、方法/实验脉络、易混点、自检清单。
-6. study_guide.content 必须是纯 Markdown 正文：不要包裹 ```markdown 代码块，不要把整篇 Markdown 做二次 JSON 字符串化，不要输出字面量 "\\n"；标题必须单独成行，使用 "#"/"##"/"###"，列表使用 "- " 或 "1. " 标准 Markdown。
-7. quiz 必须可互动：payload.questions 里生成 4-8 道题，每题 4 个选项，answer_index 为 0-3，解析必须引用来源依据；每题尽量补充 source_title、source_ref 或 evidence，便于错题回跳来源。
-8. flashcards 必须可互动：payload.cards 里生成 6-12 张互不重复的卡，每张必须包含 front/back/hint/evidence/source_ref。每张只考一个可判定的知识点；正面必须是闭卷回忆题，背面必须给出“必答要点”式评分标准，hint 只能提示思路，不能泄露答案。卡组应覆盖定义、比较、因果/机制、适用条件、易错边界、公式或实验结论等不同认知类型，不能把来源句子简单改写成“要点是什么”。
-9. mind_map.content 必须按以下顺序输出同一套知识内容：第一部分是可直接渲染的 fenced Mermaid 代码块，第一行必须单独是 ```mermaid，第二行必须是 mindmap，第三行必须是两个空格缩进的 direction right，末尾必须用单独一行 ``` 关闭；根节点靠左，所有分支水平向右展开；禁止只生成“根节点 + 一级模块”的两层图，也不要只写很短的点子或空泛三级骨架；一级节点用于模块，每个一级模块下面都必须继续展开具体概念、来源证据、条件/步骤、例子、易混边界、公式含义、实验结论或学习动作，让结构既详细又清楚；层级深度和分支数量由材料复杂度决定，不设固定上限，复杂材料可以继续向下嵌套，只要每个节点仍是可读短句而不是整段长文；禁止 flowchart/graph 语法；第二部分依次输出 "## 树状分层文本"、"## 对比表格"、"## 分级分点列表"，三种格式内容必须一一对应，不要输出无关说明。
-10. reading 必须根据来源主题给出更深入的拓展阅读候选，覆盖“相关论文/综述、必读经典/教材章节、大学课程讲义、官方文档、教学视频、实践项目或练习”至少 5 类；优先输出 payload.items，建议 8-12 项，每项包含 title、url、reason、category、difficulty、read_order，并在 reason 中说明相关性、推荐度、经典度或权威性依据。content 中也要用 Markdown 列出候选，按建议阅读顺序或总分排序，不要只给泛泛链接。
-11. 输出只允许 JSON，不要 Markdown 代码块。
+3. 标题或 Topics 标记为 learning_profile / 学习画像的来源，只能用于个性化难度、表达方式、评估和路径规划，不能作为课程事实证据；其他来源用于课程事实与引用。
+4. 所有 quiz、闪卡、讲解文档、blog 和 mind_map 都必须围绕课程来源里的具体概念、方法、公式、实验、结论或术语。
+5. 如果课程来源证据不足，明确写“来源不足以支持”，不要编造；评估证据不足时不得虚构精确分数或掌握度。
+6. study_guide 必须是长 Markdown 文档，至少包含：核心问题、来源要点、概念解释、方法/实验脉络、易混点、自检清单。
+7. study_guide.content 必须是纯 Markdown 正文：不要包裹 ```markdown 代码块，不要把整篇 Markdown 做二次 JSON 字符串化，不要输出字面量 "\\n"；标题必须单独成行，使用 "#"/"##"/"###"，列表使用 "- " 或 "1. " 标准 Markdown。
+8. blog 必须写成可独立阅读的教学博客，包含：吸引人的问题式标题、为什么难、直觉解释、来源中的具体例子或机制、常见误区、三步自检和一句话总结；语气友好但不得牺牲事实准确性。
+9. quiz 必须可互动：payload.questions 里生成 4-8 道题，每题 4 个选项，answer_index 为 0-3，解析必须引用来源依据；每题尽量补充 source_title、source_ref 或 evidence，便于错题回跳来源。
+10. flashcards 必须可互动：payload.cards 里生成 6-12 张互不重复的卡，每张必须包含 front/back/hint/evidence/source_ref。每张只考一个可判定的知识点；正面必须是闭卷回忆题，背面必须给出“必答要点”式评分标准，hint 只能提示思路，不能泄露答案。卡组应覆盖定义、比较、因果/机制、适用条件、易错边界、公式或实验结论等不同认知类型，不能把来源句子简单改写成“要点是什么”。
+11. mind_map.content 必须按以下顺序输出同一套知识内容：第一部分是可直接渲染的 fenced Mermaid 代码块，第一行必须单独是 ```mermaid，第二行必须是 mindmap，第三行必须是两个空格缩进的 direction right，末尾必须用单独一行 ``` 关闭；根节点靠左，所有分支水平向右展开；禁止只生成“根节点 + 一级模块”的两层图，也不要只写很短的点子或空泛三级骨架；一级节点用于模块，每个一级模块下面都必须继续展开具体概念、来源证据、条件/步骤、例子、易混边界、公式含义、实验结论或学习动作，让结构既详细又清楚；层级深度和分支数量由材料复杂度决定，不设固定上限，复杂材料可以继续向下嵌套，只要每个节点仍是可读短句而不是整段长文；禁止 flowchart/graph 语法；第二部分依次输出 "## 树状分层文本"、"## 对比表格"、"## 分级分点列表"，三种格式内容必须一一对应，不要输出无关说明。
+12. reading 必须根据来源主题给出更深入的拓展阅读候选，覆盖“相关论文/综述、必读经典/教材章节、大学课程讲义、官方文档、教学视频、实践项目或练习”至少 5 类；优先输出 payload.items，建议 8-12 项，每项包含 title、url、reason、category、difficulty、read_order，并在 reason 中说明相关性、推荐度、经典度或权威性依据。content 中也要用 Markdown 列出候选，按建议阅读顺序或总分排序，不要只给泛泛链接。
+13. assessment 必须结合学习画像和近期 Quiz、错题、对话、资源互动证据，输出至少 6 个评估维度、证据充分度、优势、风险和下一步调整；payload 包含 dimensions、evidence_level、signals_used。没有行为证据时明确写“证据不足”，不得伪造精确分数。
+14. learning_path 必须给出有明确顺序的阶段，每阶段包含目标、活动、使用资产、检查点和动态调整规则；必须解释哪些画像维度影响了路径排序，payload.steps 使用结构化数组保存这些阶段。
+15. 每个资源的 payload.provenance 应列出用于个性化和事实依据的来源标题或可识别引用，不得编造页码或不存在的引用。
+16. 输出只允许 JSON，不要 Markdown 代码块。
 
 JSON 结构：
 {{
   "resources": [
     {{
-      "kind": "study_guide | quiz | flashcards | mind_map | reading | code_lab",
+      "kind": "study_guide | blog | quiz | flashcards | mind_map | reading | code_lab | assessment | learning_path",
       "type": "...",
       "title": "...",
       "agent": "来源生成智能体",
@@ -1868,12 +2183,19 @@ def _normalize_generated_resources(
                     "闪卡生成结果无效：有效卡片少于 6 张，或缺少问题、答案、提示与来源依据。请重试。"
                 )
         content = _as_text(item.get("content"), "请回到来源核对对应证据。")
-        if kind == "study_guide":
+        if kind in {"study_guide", "blog", "assessment", "learning_path"}:
             content = _normalize_generated_markdown(content) or "请回到来源核对对应证据。"
         elif kind == "mind_map":
             content = _normalize_mind_map_content(content) or "请回到来源核对对应证据。"
         elif kind == "reading":
             content = _normalize_generated_markdown(content) or "请回到来源核对对应证据。"
+
+        payload_value["trust"] = {
+            "grounding": "selected_sources_and_learning_profile",
+            "hallucination_policy": "state_source_insufficiency_instead_of_fabricating",
+            "prompt_injection_filter": True,
+            "safety_status": "passed",
+        }
 
         resources.append(
             LearningResource(
@@ -2599,6 +2921,7 @@ def _resources_from_web_results(
         seen_urls.add(result.url)
         kind = _detect_resource_kind(result)
         content_type = _resource_content_type(kind)
+
         resources.append(
             LearningCollectedResource(
                 id=f"web-search-{index}",
@@ -2838,6 +3161,17 @@ def build_learning_orchestration(
             resources = _build_resources(context, request.requested_outputs)
     else:
         resources = []
+    _validate_learning_resources_safety(resources)
+    for resource in resources:
+        resource.payload.setdefault(
+            "trust",
+            {
+                "grounding": "selected_sources_and_learning_profile",
+                "hallucination_policy": "state_source_insufficiency_instead_of_fabricating",
+                "prompt_injection_filter": True,
+                "safety_status": "passed",
+            },
+        )
     learning_path = _build_learning_path(context) if request.mode == "generate" else []
     selected_labels = [
         OUTPUT_LABELS[output]
@@ -2947,8 +3281,15 @@ async def build_learning_orchestration_with_search(
     generated_resources = None
     has_selected_sources_without_text = False
     if request.mode == "generate":
+        requested_kind = request.requested_outputs[0] if request.requested_outputs else None
         primary_generation_agent = (
-            "practice-agent"
+            "evaluation-agent"
+            if requested_kind == "assessment"
+            else "path-agent"
+            if requested_kind == "learning_path"
+            else "tutor-agent"
+            if requested_kind == "blog"
+            else "practice-agent"
             if request.requested_outputs
             and all(kind in {"quiz", "code_lab"} for kind in request.requested_outputs)
             else "resource-agent"

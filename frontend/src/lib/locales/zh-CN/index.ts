@@ -956,6 +956,9 @@ export const zhCN = {
       mind_map: "思维导图",
       reading: "拓展阅读",
       code_lab: "代码实验室",
+      blog: "博客讲解",
+      assessment: "学习效果评估",
+      learning_path: "学习路径",
     },
   },
 }

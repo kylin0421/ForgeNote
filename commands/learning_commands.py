@@ -71,12 +71,15 @@ class LearningAssetGenerationOutput(CommandOutput):
 
 LEARNING_ASSET_KIND_LABELS = {
     "study_guide": "课程学习讲解",
+    "blog": "博客式讲解",
     "quiz": "小测验",
     "flashcards": "知识闪卡",
     "mind_map": "思维导图",
     "reading": "拓展阅读材料",
     "code_lab": "代码实操案例",
     "visual_aid": "辅助理解图片",
+    "assessment": "学习效果评估",
+    "learning_path": "个性化学习路径",
 }
 
 

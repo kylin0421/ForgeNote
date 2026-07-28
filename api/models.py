@@ -61,12 +61,15 @@ class AskResponse(BaseModel):
 # Learning multi-agent models
 LearningOutputKind = Literal[
     "study_guide",
+    "blog",
     "quiz",
     "flashcards",
     "mind_map",
     "reading",
     "code_lab",
     "visual_aid",
+    "assessment",
+    "learning_path",
 ]
 
 
