@@ -1,6 +1,8 @@
 import apiClient from './client'
 import {
   LearningProfileEventRequest,
+  LearningProfileInterviewRequest,
+  LearningProfileInterviewResponse,
   LearningProfileSourceResponse,
   LearningAssetToolCallJobsResponse,
   LearningOrchestrationRequest,
@@ -28,6 +30,16 @@ function getAuthToken() {
 }
 
 export const learningApi = {
+  nextProfileInterviewQuestion: async (
+    params: LearningProfileInterviewRequest
+  ) => {
+    const response = await apiClient.post<LearningProfileInterviewResponse>(
+      '/learning/profile-interview/next',
+      params
+    )
+    return response.data
+  },
+
   orchestrate: async (params: LearningOrchestrationRequest) => {
     const response = await apiClient.post<LearningOrchestrationResponse>(
       '/learning/orchestrate',

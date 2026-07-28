@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
   Archive,
@@ -25,6 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useNotebooks, useUpdateNotebook } from '@/lib/hooks/use-notebooks'
+import { QUERY_KEYS } from '@/lib/api/query-client'
 import type { NotebookResponse } from '@/lib/types/api'
 import { cn } from '@/lib/utils'
 
@@ -163,6 +165,7 @@ function CreateNotebookTile({ onClick }: { onClick: () => void }) {
 
 export default function NotebooksPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [profileOnboardingOpen, setProfileOnboardingOpen] = useState(false)
   const [createdNotebook, setCreatedNotebook] = useState<NotebookResponse | null>(null)
@@ -177,6 +180,9 @@ export default function NotebooksPage() {
   )
 
   const handleCreatedNotebook = (notebook: NotebookResponse) => {
+    const notebookPath = `/notebooks/${encodeURIComponent(notebook.id)}`
+    queryClient.setQueryData(QUERY_KEYS.notebook(notebook.id), notebook)
+    router.prefetch(notebookPath)
     setCreatedNotebook(notebook)
     setProfileOnboardingOpen(true)
   }
@@ -184,10 +190,12 @@ export default function NotebooksPage() {
   const finishProfileOnboarding = (sourceSearch: string) => {
     if (!createdNotebook) return
     const query = sourceSearch.trim()
+    const destination =
+      `/notebooks/${encodeURIComponent(createdNotebook.id)}` +
+      `?profileReady=1&sourceSearch=${encodeURIComponent(query)}`
     setProfileOnboardingOpen(false)
-    router.push(
-      `/notebooks/${encodeURIComponent(createdNotebook.id)}?profileReady=1&sourceSearch=${encodeURIComponent(query)}`
-    )
+    setCreatedNotebook(null)
+    router.replace(destination)
   }
 
   return (

@@ -1,5 +1,6 @@
 'use client'
 
+import 'katex/dist/katex.min.css'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useVersionCheck } from '@/lib/hooks/use-version-check'
 import { useRouter } from 'next/navigation'
@@ -9,8 +10,9 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { ModalProvider } from '@/components/providers/ModalProvider'
 import { CreateDialogsProvider } from '@/lib/hooks/use-create-dialogs'
 import { CommandPalette } from '@/components/common/CommandPalette'
+import { AppRuntimeProviders } from '@/components/providers/AppRuntimeProviders'
 
-export default function DashboardLayout({
+function DashboardContent({
   children,
 }: {
   children: React.ReactNode
@@ -59,5 +61,17 @@ export default function DashboardLayout({
         <CommandPalette />
       </CreateDialogsProvider>
     </ErrorBoundary>
+  )
+}
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <AppRuntimeProviders>
+      <DashboardContent>{children}</DashboardContent>
+    </AppRuntimeProviders>
   )
 }

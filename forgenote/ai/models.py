@@ -262,6 +262,13 @@ class ModelManager:
 
         if model_type == "chat":
             model_id = self._first_model_id(defaults, "default_chat_model")
+        elif model_type == "profile_interview":
+            model_id = self._first_model_id(
+                defaults,
+                "default_chat_model",
+                "default_learning_asset_model",
+                "default_transformation_model",
+            )
         elif model_type == "transformation":
             model_id = self._first_model_id(
                 defaults,

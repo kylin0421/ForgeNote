@@ -16,12 +16,20 @@ export interface CommandJob {
     current_agent_id?: string | null
     current_agent_name?: string | null
     current_task?: string
+    workflow_started_at?: string | null
+    workflow_completed_at?: string | null
+    duration_seconds?: number | null
+    elapsed_seconds?: number | null
     updated_at?: string
     steps?: Array<{
       id: string
       name: string
       role: string
       status: 'queued' | 'running' | 'completed' | 'failed'
+      started_at?: string | null
+      completed_at?: string | null
+      duration_seconds?: number | null
+      elapsed_seconds?: number | null
     }>
   } | null
   error_message?: string | null

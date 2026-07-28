@@ -164,6 +164,60 @@ class LearningProfileSourceResponse(BaseModel):
     updated_profile: bool = False
 
 
+LearningProfileDimensionKey = Literal[
+    "major",
+    "goal",
+    "knowledge",
+    "learning_history",
+    "cognitive_style",
+    "mistakes",
+    "pace",
+    "resource_preference",
+]
+
+
+class LearningProfileInterviewTurn(BaseModel):
+    question_id: str = Field(..., min_length=1, max_length=80)
+    dimension: LearningProfileDimensionKey
+    question: str = Field(..., min_length=1, max_length=1000)
+    answer: str = Field(..., min_length=1, max_length=4000)
+
+
+class LearningProfileInterviewRequest(BaseModel):
+    learning_record_id: str = Field(..., min_length=1)
+    topic: str = Field(..., min_length=1, max_length=300)
+    turns: List[LearningProfileInterviewTurn] = Field(default_factory=list)
+    target_language: str = Field("zh-CN", max_length=20)
+
+
+class LearningProfileInterviewQuestion(BaseModel):
+    id: str
+    dimension: LearningProfileDimensionKey
+    eyebrow: str
+    prompt: str
+    helper: str
+    suggestions: List[str] = Field(default_factory=list, max_length=4)
+
+
+class LearningProfileInterviewDimension(BaseModel):
+    key: LearningProfileDimensionKey
+    label: str
+    value: str
+    evidence: str
+    confidence: float = Field(..., ge=0, le=1)
+
+
+class LearningProfileInterviewResponse(BaseModel):
+    assistant_message: str
+    question: Optional[LearningProfileInterviewQuestion] = None
+    profile: List[LearningProfileInterviewDimension]
+    covered_dimensions: List[LearningProfileDimensionKey]
+    missing_dimensions: List[LearningProfileDimensionKey]
+    complete: bool
+    progress: int = Field(..., ge=0, le=100)
+    search_goal: str
+
+
 class LearningProfileDimension(BaseModel):
     name: str
     value: str

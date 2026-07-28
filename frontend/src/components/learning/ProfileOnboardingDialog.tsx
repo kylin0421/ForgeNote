@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Brain,
   CheckCircle2,
   Loader2,
-  RotateCcw,
+  RefreshCw,
   Send,
   Sparkles,
 } from 'lucide-react'
@@ -22,121 +22,57 @@ import { Progress } from '@/components/ui/progress'
 import { Textarea } from '@/components/ui/textarea'
 import { learningApi } from '@/lib/api/learning'
 import type { NotebookResponse } from '@/lib/types/api'
+import type {
+  LearningProfileInterviewQuestion,
+  LearningProfileInterviewResponse,
+  LearningProfileInterviewTurn,
+} from '@/lib/types/learning'
 import { cn } from '@/lib/utils'
 
-type SurveyKey =
-  | 'goal'
-  | 'motivation'
-  | 'major'
-  | 'knowledge'
-  | 'history'
-  | 'cognitiveStyle'
-  | 'mistakes'
-  | 'pace'
-  | 'resourcePreference'
-
-type SurveyAnswers = Partial<Record<SurveyKey, string>>
-
-type SurveyQuestion = {
-  key: SurveyKey
-  eyebrow: string
-  prompt: string
-  helper: string
-  suggestions: string[]
+type InterviewTurn = {
+  question: LearningProfileInterviewQuestion
+  answer: string
 }
 
-const SURVEY_QUESTIONS: SurveyQuestion[] = [
-  {
-    key: 'goal',
-    eyebrow: '学习目标',
-    prompt: '这次你具体想学什么？希望在什么时间点达到怎样的程度？',
-    helper: '可以像聊天一样回答，例如“3 周内学会概率论基础，能独立做完期末综合题”。',
-    suggestions: ['备考一门课程', '完成一个项目', '系统入门新领域'],
-  },
-  {
-    key: 'motivation',
-    eyebrow: '学习动机',
-    prompt: '为什么现在想学它？什么结果会让你觉得这次学习真的有价值？',
-    helper: '考试、升学、工作、兴趣或项目都可以，越具体越容易制定合适路径。',
-    suggestions: ['通过近期考试', '解决工作问题', '为项目补齐能力'],
-  },
-  {
-    key: 'major',
-    eyebrow: '专业背景',
-    prompt: '说说你的专业、年级或工作方向，以及与这个主题有关的背景。',
-    helper: '不需要填写表格，直接介绍自己即可。',
-    suggestions: ['大学本科在读', '跨专业学习', '已经参加工作'],
-  },
-  {
-    key: 'knowledge',
-    eyebrow: '知识基础',
-    prompt: '你现在已经会哪些？哪些只是听过，哪些还完全陌生？',
-    helper: '如果方便，也可以用 0–10 分描述信心，并举一道能做或不会做的题。',
-    suggestions: ['几乎从零开始', '懂概念但不会应用', '有基础想系统进阶'],
-  },
-  {
-    key: 'history',
-    eyebrow: '学习历史',
-    prompt: '过去学过哪些相关课程、书、视频或项目？之前卡在哪里、为什么停下来？',
-    helper: '这些历史会帮助系统避免重复讲解，也能识别真实先修缺口。',
-    suggestions: ['看过一些视频', '做过相关项目', '学过但忘得比较多'],
-  },
-  {
-    key: 'cognitiveStyle',
-    eyebrow: '认知风格',
-    prompt: '遇到新概念时，怎样讲你最容易理解？你通常先想看结构、例子、推导还是动手做？',
-    helper: '也可以说说你最不喜欢的讲法。',
-    suggestions: ['先看整体框架', '多举真实例子', '边写代码边理解'],
-  },
-  {
-    key: 'mistakes',
-    eyebrow: '易错点',
-    prompt: '你学习时最常见的困难或错误是什么？最近有没有一道典型错题或一次卡住的经历？',
-    helper: '例如记混概念、公式不会迁移、看懂但做不出、容易跳步骤。',
-    suggestions: ['概念容易混淆', '看懂但不会做题', '容易粗心或跳步骤'],
-  },
-  {
-    key: 'pace',
-    eyebrow: '学习节奏',
-    prompt: '你每周大概能投入多少时间？更适合短时间高频学习，还是集中成块学习？',
-    helper: '也可以说明截止日期、容易学习的时段和希望多久测验一次。',
-    suggestions: ['每天 30 分钟', '周末集中学习', '两周内冲刺完成'],
-  },
-  {
-    key: 'resourcePreference',
-    eyebrow: '资源偏好',
-    prompt: '你更愿意用哪些资料学习？对视频、文章、网页、论文、语言和难度有什么偏好？',
-    helper: '系统会据此组合视频封面卡、文章链接、网页资料和练习，并持续根据采纳行为调整。',
-    suggestions: ['中文视频 + 讲义', '官方文档 + 实操', '论文 + 深度文章'],
-  },
-]
-
-const PROFILE_LABELS: Array<{
-  key: Exclude<SurveyKey, 'history'>
-  label: string
-}> = [
-  { key: 'major', label: '专业背景' },
-  { key: 'knowledge', label: '知识基础' },
-  { key: 'goal', label: '学习目标' },
-  { key: 'cognitiveStyle', label: '认知风格' },
-  { key: 'pace', label: '学习节奏' },
-  { key: 'mistakes', label: '易错点' },
-  { key: 'resourcePreference', label: '资源偏好' },
-  { key: 'motivation', label: '学习动机' },
-]
-
-function compactProfileValue(value?: string, fallback = '等待回答') {
+function compactProfileValue(value?: string) {
   const normalized = (value || '').replace(/\s+/g, ' ').trim()
-  if (!normalized) return fallback
-  return normalized.length > 70 ? `${normalized.slice(0, 69)}…` : normalized
+  if (!normalized) return '等待对话中提取'
+  return normalized.length > 86 ? `${normalized.slice(0, 85)}…` : normalized
 }
 
 function safeSummaryValue(value?: string) {
   return (value || '尚未明确')
-    .replace(/[;\n\r]+/g, '，')
+    .replace(/[;\n\r]+/g, '；')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 420)
+    .slice(0, 600)
+}
+
+function apiErrorMessage(error: unknown) {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'response' in error &&
+    error.response &&
+    typeof error.response === 'object' &&
+    'data' in error.response &&
+    error.response.data &&
+    typeof error.response.data === 'object' &&
+    'detail' in error.response.data &&
+    typeof error.response.data.detail === 'string'
+  ) {
+    return error.response.data.detail
+  }
+  return '动态问题生成失败，请检查语言模型设置后重试。'
+}
+
+function toApiTurns(turns: InterviewTurn[]): LearningProfileInterviewTurn[] {
+  return turns.map(({ question, answer }) => ({
+    question_id: question.id,
+    dimension: question.dimension,
+    question: question.prompt,
+    answer,
+  }))
 }
 
 interface ProfileOnboardingDialogProps {
@@ -150,57 +86,121 @@ export function ProfileOnboardingDialog({
   notebook,
   onCompleted,
 }: ProfileOnboardingDialogProps) {
-  const [step, setStep] = useState(0)
-  const [answers, setAnswers] = useState<SurveyAnswers>({})
+  const [turns, setTurns] = useState<InterviewTurn[]>([])
+  const [interview, setInterview] = useState<LearningProfileInterviewResponse | null>(null)
   const [draft, setDraft] = useState('')
+  const [isLoadingQuestion, setIsLoadingQuestion] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [questionError, setQuestionError] = useState('')
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
-  const reviewing = step >= SURVEY_QUESTIONS.length
-  const currentQuestion = SURVEY_QUESTIONS[Math.min(step, SURVEY_QUESTIONS.length - 1)]
-  const progress = reviewing ? 100 : Math.round((step / SURVEY_QUESTIONS.length) * 100)
+
+  const notebookId = notebook?.id || ''
+  const notebookTitle = notebook?.name || '新的学习主题'
+  const notebookContext = [notebookTitle, notebook?.description]
+    .filter(Boolean)
+    .join('；')
+    .slice(0, 300)
+  const currentQuestion = interview?.question || null
+  const reviewing = Boolean(interview?.complete)
+  const progress = interview?.progress ?? Math.min(94, turns.length * 12)
+
+  const requestNextQuestion = async (
+    nextTurns: InterviewTurn[],
+    options?: { silentReset?: boolean }
+  ) => {
+    if (!notebookId) return
+    if (!options?.silentReset) {
+      setQuestionError('')
+    }
+    setIsLoadingQuestion(true)
+    try {
+      const response = await learningApi.nextProfileInterviewQuestion({
+        learning_record_id: notebookId,
+        topic: notebookContext,
+        turns: toApiTurns(nextTurns),
+        target_language: 'zh-CN',
+      })
+      setInterview(response)
+      setQuestionError('')
+    } catch (error) {
+      console.error('Failed to generate adaptive profile question:', error)
+      setInterview(null)
+      setQuestionError(apiErrorMessage(error))
+    } finally {
+      setIsLoadingQuestion(false)
+    }
+  }
 
   useEffect(() => {
-    if (!open) return
-    setStep(0)
-    setAnswers({})
+    if (!open || !notebookId) return
+    let cancelled = false
+
+    setTurns([])
+    setInterview(null)
     setDraft('')
     setIsSaving(false)
-  }, [notebook?.id, open])
+    setQuestionError('')
+    setIsLoadingQuestion(true)
+
+    learningApi.nextProfileInterviewQuestion({
+      learning_record_id: notebookId,
+      topic: notebookContext,
+      turns: [],
+      target_language: 'zh-CN',
+    }).then((response) => {
+      if (cancelled) return
+      setInterview(response)
+    }).catch((error) => {
+      if (cancelled) return
+      console.error('Failed to start adaptive profile interview:', error)
+      setQuestionError(apiErrorMessage(error))
+    }).finally(() => {
+      if (!cancelled) setIsLoadingQuestion(false)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [notebookContext, notebookId, open])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [answers, step])
+  }, [interview, isLoadingQuestion, turns])
 
-  const answeredQuestions = useMemo(
-    () => SURVEY_QUESTIONS.slice(0, Math.min(step + (reviewing ? 0 : 1), SURVEY_QUESTIONS.length)),
-    [reviewing, step]
-  )
-
-  const submitAnswer = () => {
+  const submitAnswer = async () => {
     const answer = draft.trim()
-    if (!answer || reviewing) return
-    setAnswers((previous) => ({
-      ...previous,
-      [currentQuestion.key]: answer,
-    }))
+    if (!answer || !currentQuestion || reviewing || isLoadingQuestion) return
+
+    const nextTurns = [...turns, { question: currentQuestion, answer }]
+    setTurns(nextTurns)
+    setInterview(null)
     setDraft('')
-    setStep((current) => current + 1)
+    await requestNextQuestion(nextTurns)
+  }
+
+  const restartInterview = () => {
+    setTurns([])
+    setInterview(null)
+    setDraft('')
+    void requestNextQuestion([])
   }
 
   const saveProfile = async () => {
-    if (!notebook || isSaving) return
+    if (!notebook || !interview?.complete || isSaving) return
     setIsSaving(true)
-    const summary = [
-      `major=${safeSummaryValue(answers.major)}`,
-      `knowledge=${safeSummaryValue(answers.knowledge)}`,
-      `history=${safeSummaryValue(answers.history)}`,
-      `goal=${safeSummaryValue(answers.goal)}`,
-      `cognitive_style=${safeSummaryValue(answers.cognitiveStyle)}`,
-      `mistakes=${safeSummaryValue(answers.mistakes)}`,
-      `pace=${safeSummaryValue(answers.pace)}`,
-      `resource_preference=${safeSummaryValue(answers.resourcePreference)}`,
-      `motivation=${safeSummaryValue(answers.motivation)}`,
-    ].join('; ')
+
+    const dimensionSummary = interview.profile
+      .map((dimension) => (
+        `${dimension.key}=${safeSummaryValue(dimension.value)}`
+      ))
+      .join('; ')
+    const evidenceSummary = interview.profile
+      .filter((dimension) => dimension.evidence)
+      .map((dimension) => (
+        `${dimension.key}_evidence=${safeSummaryValue(dimension.evidence)}`
+      ))
+      .join('; ')
+    const summary = `${dimensionSummary}; ${evidenceSummary}`.slice(0, 12000)
 
     try {
       await learningApi.ensureProfileSource(notebook.id)
@@ -211,9 +211,9 @@ export function ProfileOnboardingDialog({
         auto_update_profile: true,
       })
       toast.success('初始学习画像已建立', {
-        description: '接下来会按画像自动搜索视频、文章、网页和练习资料。',
+        description: '正在进入学习空间，并按画像准备资料搜索。',
       })
-      onCompleted(safeSummaryValue(answers.goal).slice(0, 180))
+      onCompleted(interview.search_goal || notebook.name)
     } catch (error) {
       console.error('Failed to create initial learning profile:', error)
       toast.error('画像建立失败，请重试')
@@ -239,13 +239,17 @@ export function ProfileOnboardingDialog({
               <div>
                 <DialogTitle className="text-xl">先认识你，再开始找资料</DialogTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  对话式建立 8 维动态画像 · {notebook?.name || '新学习记录'}
+                  LLM 动态访谈构建 8 维画像 · {notebookTitle}
                 </p>
               </div>
             </div>
-            <div className="min-w-48">
+            <div className="min-w-52">
               <div className="mb-1.5 flex justify-between text-xs text-muted-foreground">
-                <span>{reviewing ? '画像预览' : `${step + 1} / ${SURVEY_QUESTIONS.length}`}</span>
+                <span>
+                  {reviewing
+                    ? '画像已就绪'
+                    : `已完成 ${turns.length} 轮 · 已覆盖 ${interview?.covered_dimensions.length || 0}/8 维`}
+                </span>
                 <span>{progress}%</span>
               </div>
               <Progress value={progress} className="h-1.5" />
@@ -261,41 +265,74 @@ export function ProfileOnboardingDialog({
                   <Sparkles className="h-4 w-4" />
                 </span>
                 <div className="max-w-[88%] rounded-2xl rounded-tl-sm bg-muted px-4 py-3 text-sm leading-6">
-                  你好！我会先通过几轮自然对话了解你的目标、基础和学习方式。
-                  没有标准答案，描述得越具体，后面的资料和练习越贴合你。
+                  我会根据你每一轮提供的信息实时生成下一问，不使用固定问卷。
+                  描述得越具体，后面的资料、练习和学习路径就越贴合你。
                 </div>
               </div>
 
-              {answeredQuestions.map((question, index) => {
-                const answer = answers[question.key]
-                const isCurrent = index === step && !reviewing
-                return (
-                  <div key={question.key} className="space-y-4">
-                    <div className="flex items-start gap-3">
-                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                        {index + 1}
-                      </span>
-                      <div
-                        className={cn(
-                          'max-w-[88%] rounded-2xl rounded-tl-sm border px-4 py-3',
-                          isCurrent ? 'border-primary/30 bg-primary/5' : 'bg-muted/50'
-                        )}
-                      >
-                        <p className="text-xs font-medium text-primary">{question.eyebrow}</p>
-                        <p className="mt-1 text-sm font-medium leading-6">{question.prompt}</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{question.helper}</p>
-                      </div>
+              {turns.map((turn, index) => (
+                <div key={`${turn.question.id}-${index}`} className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                      {index + 1}
+                    </span>
+                    <div className="max-w-[88%] rounded-2xl rounded-tl-sm border bg-muted/50 px-4 py-3">
+                      <p className="text-xs font-medium text-primary">{turn.question.eyebrow}</p>
+                      <p className="mt-1 text-sm font-medium leading-6">{turn.question.prompt}</p>
                     </div>
-                    {answer && (
-                      <div className="flex justify-end">
-                        <div className="max-w-[84%] rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground">
-                          {answer}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                )
-              })}
+                  <div className="flex justify-end">
+                    <div className="max-w-[84%] rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground">
+                      {turn.answer}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {currentQuestion && !reviewing && (
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    {turns.length + 1}
+                  </span>
+                  <div className="max-w-[88%] rounded-2xl rounded-tl-sm border border-primary/30 bg-primary/5 px-4 py-3">
+                    {interview?.assistant_message && (
+                      <p className="mb-2 text-xs leading-5 text-muted-foreground">
+                        {interview.assistant_message}
+                      </p>
+                    )}
+                    <p className="text-xs font-medium text-primary">{currentQuestion.eyebrow}</p>
+                    <p className="mt-1 text-sm font-medium leading-6">{currentQuestion.prompt}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{currentQuestion.helper}</p>
+                  </div>
+                </div>
+              )}
+
+              {isLoadingQuestion && (
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </span>
+                  <div className="rounded-2xl rounded-tl-sm border border-dashed px-4 py-3 text-sm text-muted-foreground">
+                    LLM 正在结合前面的回答生成下一问…
+                  </div>
+                </div>
+              )}
+
+              {questionError && (
+                <div className="ml-11 max-w-[88%] rounded-2xl border border-destructive/30 bg-destructive/5 p-4">
+                  <p className="text-sm font-medium text-destructive">{questionError}</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-3"
+                    onClick={() => void requestNextQuestion(turns)}
+                  >
+                    <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                    重新调用模型
+                  </Button>
+                </div>
+              )}
 
               {reviewing && (
                 <div className="flex items-start gap-3">
@@ -303,8 +340,8 @@ export function ProfileOnboardingDialog({
                     <CheckCircle2 className="h-4 w-4" />
                   </span>
                   <div className="max-w-[88%] rounded-2xl rounded-tl-sm border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-950">
-                    初始画像已经整理好。确认后我会先按画像搜索视频、文章、网页、论文和练习；
-                    以后每次对话、测验和资料选择都会继续更新它。
+                    {interview?.assistant_message || '画像信息已经足够具体。'}
+                    确认后会直接进入对应学习空间，并按当前画像搜索视频、文章、网页、论文和练习。
                   </div>
                 </div>
               )}
@@ -314,31 +351,40 @@ export function ProfileOnboardingDialog({
             <div className="border-t bg-background p-4 sm:p-5">
               {!reviewing ? (
                 <>
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    {currentQuestion.suggestions.map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
-                        onClick={() =>
-                          setDraft((current) => current ? `${current}，${suggestion}` : suggestion)
-                        }
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
+                  {currentQuestion && currentQuestion.suggestions.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {currentQuestion.suggestions.map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
+                          onClick={() =>
+                            setDraft((current) => current ? `${current}；${suggestion}` : suggestion)
+                          }
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex items-end gap-2">
                     <Textarea
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
-                      placeholder="像聊天一样详细说说……"
+                      placeholder={
+                        isLoadingQuestion
+                          ? '正在生成下一问…'
+                          : questionError
+                            ? '请先重新调用模型'
+                            : '像聊天一样详细说说…'
+                      }
                       className="min-h-20 resize-none"
                       autoFocus
+                      disabled={!currentQuestion || isLoadingQuestion || Boolean(questionError)}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' && !event.shiftKey) {
                           event.preventDefault()
-                          submitAnswer()
+                          void submitAnswer()
                         }
                       }}
                     />
@@ -346,36 +392,20 @@ export function ProfileOnboardingDialog({
                       type="button"
                       size="icon"
                       className="h-11 w-11 shrink-0 rounded-full"
-                      disabled={!draft.trim()}
-                      onClick={submitAnswer}
+                      disabled={!draft.trim() || !currentQuestion || isLoadingQuestion}
+                      onClick={() => void submitAnswer()}
                       aria-label="发送回答"
                     >
-                      <Send className="h-4 w-4" />
+                      {isLoadingQuestion ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
                     </Button>
                   </div>
                   <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span>Enter 发送，Shift + Enter 换行</span>
-                    {step > 0 && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => {
-                          const previousStep = step - 1
-                          const previousQuestion = SURVEY_QUESTIONS[previousStep]
-                          setDraft(answers[previousQuestion.key] || '')
-                          setAnswers((current) => {
-                            const next = { ...current }
-                            delete next[previousQuestion.key]
-                            return next
-                          })
-                          setStep(previousStep)
-                        }}
-                      >
-                        返回上一题
-                      </Button>
-                    )}
+                    <span>下一问会根据本轮内容动态变化</span>
                   </div>
                 </>
               ) : (
@@ -383,15 +413,11 @@ export function ProfileOnboardingDialog({
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => {
-                      setStep(0)
-                      setAnswers({})
-                      setDraft('')
-                    }}
+                    onClick={restartInterview}
                     disabled={isSaving}
                   >
-                    <RotateCcw className="mr-2 h-4 w-4" />
-                    重新回答
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    重新访谈
                   </Button>
                   <Button type="button" onClick={saveProfile} disabled={isSaving}>
                     {isSaving ? (
@@ -399,7 +425,7 @@ export function ProfileOnboardingDialog({
                     ) : (
                       <Sparkles className="mr-2 h-4 w-4" />
                     )}
-                    建立画像并查找资料
+                    保存画像并进入学习空间
                   </Button>
                 </div>
               )}
@@ -411,39 +437,43 @@ export function ProfileOnboardingDialog({
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">动态画像预览</h3>
                 <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
-                  自动更新
+                  LLM 实时抽取
                 </span>
               </div>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                画像是学习路径、资料推荐和难度调整的首要上下文。
+                每轮回答都会重新分析全部上下文，画像是后续路径、资料推荐和难度调整的首要依据。
               </p>
             </div>
             <div className="flex-1 space-y-3 overflow-y-auto p-5">
-              {PROFILE_LABELS.map(({ key, label }, index) => {
-                const value = answers[key]
-                return (
-                  <div
-                    key={key}
-                    className={cn(
-                      'rounded-xl border bg-background p-3 transition-colors',
-                      value && 'border-primary/25'
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-                      <span className="text-[10px] text-muted-foreground">
-                        {value ? '已提取' : `${index + 1}/8`}
-                      </span>
-                    </div>
-                    <p className={cn('mt-1.5 text-sm leading-5', !value && 'text-muted-foreground')}>
-                      {compactProfileValue(value)}
-                    </p>
+              {(interview?.profile || []).map((dimension, index) => (
+                <div
+                  key={dimension.key}
+                  className={cn(
+                    'rounded-xl border bg-background p-3 transition-colors',
+                    dimension.value && 'border-primary/25'
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-muted-foreground">{dimension.label}</p>
+                    <span className="text-[10px] text-muted-foreground">
+                      {dimension.value
+                        ? `置信度 ${Math.round(dimension.confidence * 100)}%`
+                        : `${index + 1}/8`}
+                    </span>
                   </div>
-                )
-              })}
+                  <p className={cn('mt-1.5 text-sm leading-5', !dimension.value && 'text-muted-foreground')}>
+                    {compactProfileValue(dimension.value)}
+                  </p>
+                </div>
+              ))}
+              {!interview && (
+                <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  {isLoadingQuestion ? '正在建立第一版画像…' : '等待模型返回画像'}
+                </div>
+              )}
             </div>
             <div className="border-t p-4 text-xs leading-5 text-muted-foreground">
-              完成后仍可随时查看并手动修改；新的对话、Quiz 和资料采纳会留下更新证据。
+              完成后仍可随时查看并手动修改；新的对话、Quiz 和资料采纳会继续留下更新证据。
             </div>
           </aside>
         </div>

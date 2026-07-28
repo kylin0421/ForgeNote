@@ -9,6 +9,7 @@ from surreal_commands import submit_command
 from api.learning_service import (
     build_learning_orchestration_with_search,
     detect_learning_asset_tool_calls,
+    generate_learning_profile_interview,
     get_or_create_learning_profile_source,
     record_learning_profile_event,
     stream_learning_orchestration,
@@ -17,8 +18,11 @@ from api.models import (
     LearningOrchestrationRequest,
     LearningOrchestrationResponse,
     LearningProfileEventRequest,
+    LearningProfileInterviewRequest,
+    LearningProfileInterviewResponse,
     LearningProfileSourceResponse,
 )
+from forgenote.exceptions import ConfigurationError, ForgeNoteError
 
 router = APIRouter()
 
@@ -47,6 +51,36 @@ class LearningAssetToolCallJobsResponse(BaseModel):
     recognized: bool
     message: str
     jobs: list[LearningAssetToolCallJobItem]
+
+
+@router.post(
+    "/learning/profile-interview/next",
+    response_model=LearningProfileInterviewResponse,
+)
+async def next_learning_profile_interview_question(
+    request: LearningProfileInterviewRequest,
+):
+    """Generate the next learner-profile question from the full conversation."""
+    try:
+        return await generate_learning_profile_interview(request)
+    except ConfigurationError as error:
+        logger.warning(f"Profile interview model is not configured: {error}")
+        raise HTTPException(
+            status_code=503,
+            detail="请先在模型设置中配置默认对话模型或学习资产模型，再开始动态画像访谈。",
+        )
+    except ForgeNoteError as error:
+        logger.error(f"Profile interview model request failed: {error}")
+        raise HTTPException(
+            status_code=502,
+            detail="画像访谈模型暂时不可用，请稍后重试。",
+        )
+    except Exception as error:
+        logger.error(f"Profile interview generation failed: {error}")
+        raise HTTPException(
+            status_code=500,
+            detail="画像访谈生成失败，请重试。",
+        )
 
 
 @router.post("/learning/orchestrate", response_model=LearningOrchestrationResponse)

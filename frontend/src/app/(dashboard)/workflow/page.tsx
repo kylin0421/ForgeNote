@@ -34,6 +34,10 @@ type AgentStep = {
   name: string
   role: string
   status: 'queued' | 'running' | 'completed' | 'failed'
+  started_at?: string | null
+  completed_at?: string | null
+  duration_seconds?: number | null
+  elapsed_seconds?: number | null
 }
 
 type WorkflowFilter = 'active' | 'all' | 'completed' | 'failed'
@@ -133,6 +137,62 @@ function formatDate(value?: string | null) {
   })
 }
 
+function formatDuration(value?: number | null) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '尚未计时'
+  const seconds = Math.max(0, Math.round(value))
+  if (seconds < 1) return '< 1 秒'
+  if (seconds < 60) return `${seconds} 秒`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  if (minutes < 60) return `${minutes} 分 ${remainingSeconds} 秒`
+  const hours = Math.floor(minutes / 60)
+  return `${hours} 小时 ${minutes % 60} 分`
+}
+
+function elapsedFromTimestamps(
+  startedAt?: string | null,
+  completedAt?: string | null,
+  nowMs = Date.now()
+) {
+  if (!startedAt) return null
+  const start = Date.parse(startedAt)
+  const end = completedAt ? Date.parse(completedAt) : nowMs
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
+  return Math.max(0, (end - start) / 1000)
+}
+
+function stepElapsedSeconds(agent: AgentStep, job: CommandJob, nowMs: number) {
+  if (typeof agent.duration_seconds === 'number') return agent.duration_seconds
+  if (agent.status === 'running') {
+    return elapsedFromTimestamps(
+      agent.started_at || job.progress?.workflow_started_at,
+      null,
+      nowMs
+    )
+  }
+  if (agent.status === 'failed') {
+    return elapsedFromTimestamps(
+      agent.started_at || job.progress?.workflow_started_at || job.created,
+      agent.completed_at || job.updated,
+      nowMs
+    )
+  }
+  return elapsedFromTimestamps(agent.started_at, agent.completed_at, nowMs)
+}
+
+function jobElapsedSeconds(job: CommandJob, nowMs: number) {
+  if (typeof job.progress?.duration_seconds === 'number') {
+    return job.progress.duration_seconds
+  }
+  return elapsedFromTimestamps(
+    job.progress?.workflow_started_at || job.created,
+    ACTIVE_STATUSES.has(job.status)
+      ? null
+      : job.progress?.workflow_completed_at || job.updated,
+    nowMs
+  )
+}
+
 function shortValue(value: unknown, limit = 68) {
   const normalized = String(value || '').replace(/\s+/g, ' ').trim()
   if (!normalized) return ''
@@ -198,7 +258,11 @@ function fallbackAgents(job: CommandJob): AgentStep[] {
 
 function jobAgents(job: CommandJob): AgentStep[] {
   const steps = job.progress?.steps
-  return steps?.length ? steps : fallbackAgents(job)
+  if (!steps?.length) return fallbackAgents(job)
+  if (job.status !== 'failed') return steps
+  return steps.map((step) => (
+    step.status === 'running' ? { ...step, status: 'failed' } : step
+  ))
 }
 
 function jobPercent(job: CommandJob) {
@@ -228,10 +292,12 @@ function WorkflowJobCard({
   job,
   selected,
   onSelect,
+  nowMs,
 }: {
   job: CommandJob
   selected: boolean
   onSelect: () => void
+  nowMs: number
 }) {
   const active = ACTIVE_STATUSES.has(job.status)
   return (
@@ -263,7 +329,7 @@ function WorkflowJobCard({
           <span className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
             <span>{jobAgents(job).length} 个 Agent</span>
             <span>·</span>
-            <span>{formatDate(job.updated || job.created)}</span>
+            <span>耗时 {formatDuration(jobElapsedSeconds(job, nowMs))}</span>
           </span>
           {active && <Progress value={jobPercent(job)} className="mt-3 h-1.5" />}
         </span>
@@ -276,6 +342,7 @@ function WorkflowJobCard({
 export default function WorkflowSupervisorPage() {
   const [filter, setFilter] = useState<WorkflowFilter>('active')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const { data: jobs = [], isFetching } = useQuery({
     queryKey: ['commands', 'workflow-supervisor'],
     queryFn: () => commandsApi.listJobs({ limit: 100, include_dismissed: true }),
@@ -306,6 +373,13 @@ export default function WorkflowSupervisorPage() {
       }),
     [filter, sortedJobs]
   )
+  const hasActiveJobs = sortedJobs.some((job) => ACTIVE_STATUSES.has(job.status))
+
+  useEffect(() => {
+    if (!hasActiveJobs) return
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [hasActiveJobs])
 
   useEffect(() => {
     if (selectedJobId && sortedJobs.some((job) => job.job_id === selectedJobId)) return
@@ -322,6 +396,9 @@ export default function WorkflowSupervisorPage() {
   const currentAgent =
     selectedAgents.find((agent) => agent.status === 'running') ||
     selectedAgents.find((agent) => agent.id === selectedJob?.progress?.current_agent_id)
+  const currentStepIndex = currentAgent
+    ? selectedAgents.findIndex((agent) => agent.id === currentAgent.id)
+    : -1
 
   const stats = {
     active: sortedJobs.filter((job) => ACTIVE_STATUSES.has(job.status)).length,
@@ -396,6 +473,7 @@ export default function WorkflowSupervisorPage() {
                       job={job}
                       selected={job.job_id === selectedJob?.job_id}
                       onSelect={() => setSelectedJobId(job.job_id)}
+                      nowMs={nowMs}
                     />
                   ))
                 ) : (
@@ -442,13 +520,24 @@ export default function WorkflowSupervisorPage() {
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <p className="text-xs font-medium text-primary">
-                                {currentAgent ? '当前执行 Agent' : '当前状态'}
+                                {currentAgent && currentStepIndex >= 0
+                                  ? `当前步骤 ${currentStepIndex + 1}/${selectedAgents.length}`
+                                  : '当前状态'}
                               </p>
                               <p className="mt-0.5 font-semibold">
                                 {currentAgent?.name || statusLabel(selectedJob.status)}
                               </p>
                             </div>
-                            <span className="text-2xl font-semibold text-primary">{jobPercent(selectedJob)}%</span>
+                            <div className="text-right">
+                              <span className="block text-2xl font-semibold text-primary">
+                                {jobPercent(selectedJob)}%
+                              </span>
+                              <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                {currentAgent
+                                  ? `本步已运行 ${formatDuration(stepElapsedSeconds(currentAgent, selectedJob, nowMs))}`
+                                  : `总耗时 ${formatDuration(jobElapsedSeconds(selectedJob, nowMs))}`}
+                              </span>
+                            </div>
                           </div>
                           <p className="mt-2 text-sm leading-6 text-muted-foreground">{currentTask(selectedJob)}</p>
                           <Progress value={jobPercent(selectedJob)} className="mt-3 h-2" />
@@ -505,15 +594,29 @@ export default function WorkflowSupervisorPage() {
                                   <p className="font-medium">{agent.name}</p>
                                   <p className="mt-1 text-sm leading-6 text-muted-foreground">{agent.role}</p>
                                 </div>
-                                <span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">
-                                  {agent.status === 'running'
-                                    ? '执行中'
-                                    : agent.status === 'completed'
-                                      ? '已完成'
-                                      : agent.status === 'failed'
-                                        ? '失败'
-                                        : '等待'}
-                                </span>
+                                <div className="shrink-0 text-right">
+                                  <span className="rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">
+                                    {agent.status === 'running'
+                                      ? '执行中'
+                                      : agent.status === 'completed'
+                                        ? '已完成'
+                                        : agent.status === 'failed'
+                                          ? '失败'
+                                          : '等待'}
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      'mt-2 block text-[11px] text-muted-foreground',
+                                      agent.status === 'running' && 'font-medium text-primary'
+                                    )}
+                                  >
+                                    {agent.status === 'queued'
+                                      ? '尚未开始'
+                                      : `${agent.status === 'running' ? '已运行' : '耗时'} ${formatDuration(
+                                          stepElapsedSeconds(agent, selectedJob, nowMs)
+                                        )}`}
+                                  </span>
+                                </div>
                               </div>
                               {agent.status === 'running' && (
                                 <div className="mt-3 flex items-center gap-2 rounded-lg bg-background px-3 py-2 text-xs text-primary">
@@ -548,6 +651,10 @@ export default function WorkflowSupervisorPage() {
                             <div className="flex justify-between gap-3">
                               <span>最近更新</span>
                               <span>{formatDate(selectedJob.progress?.updated_at || selectedJob.updated)}</span>
+                            </div>
+                            <div className="flex justify-between gap-3 border-t pt-2 font-medium text-foreground">
+                              <span>总耗时</span>
+                              <span>{formatDuration(jobElapsedSeconds(selectedJob, nowMs))}</span>
                             </div>
                           </div>
                         </div>

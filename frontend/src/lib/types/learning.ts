@@ -49,6 +49,58 @@ export interface LearningProfileSourceResponse {
   updated_profile: boolean
 }
 
+export type LearningProfileDimensionKey =
+  | 'major'
+  | 'goal'
+  | 'knowledge'
+  | 'learning_history'
+  | 'cognitive_style'
+  | 'mistakes'
+  | 'pace'
+  | 'resource_preference'
+
+export interface LearningProfileInterviewTurn {
+  question_id: string
+  dimension: LearningProfileDimensionKey
+  question: string
+  answer: string
+}
+
+export interface LearningProfileInterviewRequest {
+  learning_record_id: string
+  topic: string
+  turns: LearningProfileInterviewTurn[]
+  target_language?: string
+}
+
+export interface LearningProfileInterviewQuestion {
+  id: string
+  dimension: LearningProfileDimensionKey
+  eyebrow: string
+  prompt: string
+  helper: string
+  suggestions: string[]
+}
+
+export interface LearningProfileInterviewDimension {
+  key: LearningProfileDimensionKey
+  label: string
+  value: string
+  evidence: string
+  confidence: number
+}
+
+export interface LearningProfileInterviewResponse {
+  assistant_message: string
+  question: LearningProfileInterviewQuestion | null
+  profile: LearningProfileInterviewDimension[]
+  covered_dimensions: LearningProfileDimensionKey[]
+  missing_dimensions: LearningProfileDimensionKey[]
+  complete: boolean
+  progress: number
+  search_goal: string
+}
+
 export interface LearningProfileDimension {
   name: string
   value: string
