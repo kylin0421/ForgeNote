@@ -556,7 +556,7 @@ export function SourcesColumn({
 
   // Collapsible column state
   const { sourcesCollapsed, toggleSources } = useNotebookColumnsStore()
-  const sourcesTitle = t('navigation.sources')
+  const sourcesTitle = '学习资料'
   const collapseButton = useMemo(
     () => createCollapseButton(toggleSources, sourcesTitle),
     [toggleSources, sourcesTitle]
@@ -863,12 +863,17 @@ export function SourcesColumn({
         isCollapsed={sourcesCollapsed}
         onToggle={toggleSources}
         collapsedIcon={FileText}
-        collapsedLabel={t('navigation.sources')}
+        collapsedLabel={sourcesTitle}
       >
         <Card className="h-full flex flex-col flex-1 overflow-hidden">
-          <CardHeader className="pb-3 flex-shrink-0">
+          <CardHeader className="px-4 pb-3 pt-4 flex-shrink-0">
             <div className="flex items-center justify-between gap-2">
-              <CardTitle className="text-lg">{t('navigation.sources')}</CardTitle>
+              <div className="flex min-w-0 items-center gap-2">
+                <CardTitle className="text-lg">{sourcesTitle}</CardTitle>
+                <span className="hidden rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary sm:inline-flex">
+                  主学习区
+                </span>
+              </div>
               <div className="flex items-center gap-2">
                 <LearningProfileAvatar
                   profile={profileSourceQuery.data}
@@ -904,7 +909,7 @@ export function SourcesColumn({
             </div>
           </CardHeader>
 
-          <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0 space-y-4">
+          <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0 space-y-3 px-4 pb-4">
             <div className="grid gap-2 sm:grid-cols-2">
               <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                 <DropdownMenuTrigger asChild>
@@ -983,7 +988,7 @@ export function SourcesColumn({
                 搜集外部资料
               </Button>
               {collectedResources.length > 0 && (
-                <div className="mt-3 space-y-2">
+                <div className="mt-3 grid gap-3 2xl:grid-cols-2">
                   {collectedResources.map((resource) => {
                     const accepted = Boolean(resource.url && acceptedResourceUrls[resource.url])
                     const isAccepting = Boolean(acceptingResourceIds[resource.id])
@@ -1109,7 +1114,7 @@ export function SourcesColumn({
                 description="点击右上角「添加来源」导入网页、文件、音频或文本。音频文件会使用语音识别模型转写后参与学习。"
               />
             ) : (
-              <div className="space-y-3">
+              <div className="grid gap-3 2xl:grid-cols-2">
                 {displaySources.map((source) => (
                   <SourceCard
                     key={source.id}
