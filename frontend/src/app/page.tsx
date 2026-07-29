@@ -1,3 +1,6 @@
+Exit code: 0
+Wall time: 7 seconds
+Output:
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -106,9 +109,9 @@ function ProductShot({
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f6f8fc] text-slate-950 selection:bg-blue-200">
+    <main className="min-h-screen w-full overflow-hidden bg-[#f6f8fc] text-slate-950 selection:bg-blue-200">
       <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/70 bg-[#f6f8fc]/85 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between px-5 sm:px-8 lg:px-12">
+        <div className="mx-auto flex h-16 w-full max-w-[1680px] items-center justify-between px-5 sm:px-8 lg:px-12">
           <Link
             href="/"
             className="flex items-center gap-2.5"
@@ -165,8 +168,8 @@ export default function HomePage() {
           }}
         />
 
-        <div className="relative mx-auto max-w-[1440px]">
-          <div className="mx-auto max-w-5xl text-center">
+        <div className="relative mx-auto w-full max-w-[1680px]">
+          <div className="mx-auto w-full max-w-6xl text-center">
             <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-blue-200/80 bg-white/80 px-4 py-2 text-xs font-semibold tracking-[0.12em] text-blue-700 shadow-sm shadow-blue-900/5 backdrop-blur">
               <Sparkles className="size-3.5" />
               对话驱动 · 画像先行 · 多智能体协作
@@ -177,7 +180,7 @@ export default function HomePage() {
                 而是从真正懂你开始。
               </span>
             </h1>
-            <p className="mx-auto mt-8 max-w-3xl text-balance text-base leading-8 text-slate-600 sm:text-lg">
+            <p className="mx-auto mt-8 w-full max-w-4xl text-balance text-base leading-8 text-slate-600 sm:text-lg">
               ForgeNote
               先通过自然对话建立动态学习画像，再让多个智能体协作搜索、生成、编排与评估学习资源，让每次学习反馈都成为下一步更精准的依据。
             </p>
@@ -209,7 +212,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="relative mx-auto mt-16 max-w-[1320px] sm:mt-20">
+          <div className="relative mx-auto mt-16 w-full max-w-[1560px] sm:mt-20">
             <div
               aria-hidden="true"
               className="absolute -inset-x-24 inset-y-12 -z-10 rounded-full bg-blue-400/20 blur-[90px]"
@@ -245,7 +248,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <dl className="mx-auto mt-14 grid max-w-4xl grid-cols-3 divide-x divide-slate-200 text-center">
+          <dl className="mx-auto mt-14 grid w-full max-w-5xl grid-cols-3 divide-x divide-slate-200 text-center">
             {[
               ["8", "动态画像维度"],
               ["10+", "学习资产类型"],
@@ -268,7 +271,7 @@ export default function HomePage() {
         id="features"
         className="scroll-mt-20 border-y border-slate-200/80 bg-white px-5 py-24 sm:px-8 lg:px-12 lg:py-32"
       >
-        <div className="mx-auto max-w-[1320px]">
+        <div className="mx-auto w-full max-w-[1560px]">
           <div className="grid items-start gap-12 lg:grid-cols-[0.82fr_1.18fr] lg:gap-20">
             <div className="lg:sticky lg:top-28">
               <div className="mb-5 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
@@ -373,7 +376,7 @@ export default function HomePage() {
       </section>
 
       <section className="bg-slate-950 px-5 py-24 text-white sm:px-8 lg:px-12 lg:py-32">
-        <div className="mx-auto max-w-[1320px]">
+        <div className="mx-auto w-full max-w-[1560px]">
           <div className="grid gap-12 lg:grid-cols-[1fr_0.8fr] lg:items-end">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-400">
@@ -476,8 +479,8 @@ export default function HomePage() {
         id="workflow"
         className="scroll-mt-20 bg-white px-5 py-24 sm:px-8 lg:px-12 lg:py-32"
       >
-        <div className="mx-auto max-w-[1320px]">
-          <div className="mx-auto max-w-3xl text-center">
+        <div className="mx-auto w-full max-w-[1560px]">
+          <div className="mx-auto w-full max-w-3xl text-center">
             <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
               <Network className="size-4" />
               Multi-agent workflow
@@ -527,7 +530,7 @@ export default function HomePage() {
         id="trust"
         className="scroll-mt-20 border-y border-slate-200 bg-[#eef4ff] px-5 py-24 sm:px-8 lg:px-12 lg:py-32"
       >
-        <div className="mx-auto grid max-w-[1320px] gap-14 lg:grid-cols-[0.88fr_1.12fr] lg:items-center">
+        <div className="mx-auto grid w-full max-w-[1560px] gap-14 lg:grid-cols-[0.88fr_1.12fr] lg:items-center">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
               Evaluate · verify · adapt
@@ -581,7 +584,7 @@ export default function HomePage() {
       </section>
 
       <section className="px-5 py-20 sm:px-8 lg:px-12 lg:py-28">
-        <div className="relative mx-auto max-w-[1320px] overflow-hidden rounded-[2rem] bg-slate-950 px-6 py-16 text-center text-white sm:px-12 lg:py-20">
+        <div className="relative mx-auto w-full max-w-[1560px] overflow-hidden rounded-[2rem] bg-slate-950 px-6 py-16 text-center text-white sm:px-12 lg:py-20">
           <div
             aria-hidden="true"
             className="absolute inset-0"
@@ -612,7 +615,7 @@ export default function HomePage() {
       </section>
 
       <footer className="border-t border-slate-200 px-5 py-8 sm:px-8 lg:px-12">
-        <div className="mx-auto flex max-w-[1320px] flex-col items-center justify-between gap-4 text-xs text-slate-500 sm:flex-row">
+        <div className="mx-auto flex w-full max-w-[1560px] flex-col items-center justify-between gap-4 text-xs text-slate-500 sm:flex-row">
           <div className="flex items-center gap-2.5">
             <Image src="/logo.svg" alt="" width={26} height={26} />
             <span className="font-semibold text-slate-700">ForgeNote</span>
@@ -634,3 +637,4 @@ export default function HomePage() {
     </main>
   );
 }
+
