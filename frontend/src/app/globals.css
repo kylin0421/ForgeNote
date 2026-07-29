@@ -152,13 +152,13 @@
     background: transparent;
   }
 
-  /* Ensure proper theme inheritance for popovers and dropdowns */
-  .dark {
-    color-scheme: dark;
-  }
-
   :root {
     color-scheme: light;
+  }
+
+  /* Keep native controls aligned with the effective app theme. */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
   }
 
   /* Ensure Radix UI components inherit theme properly */

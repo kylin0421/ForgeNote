@@ -53,7 +53,7 @@ export function AppShell({ children, title, titleActions }: AppShellProps) {
   const showHeaderCreate = pathname !== '/sources'
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <header className="flex h-16 shrink-0 items-center border-b px-5">
         <Link href="/notebooks" className="flex shrink-0 items-center">
           <Image src="/logo.svg" alt="ForgeNote" width={32} height={32} />
