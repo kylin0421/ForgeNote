@@ -5,17 +5,23 @@ import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
+  ArrowRight,
   Bot,
+  BrainCircuit,
   CheckCircle2,
   ChevronRight,
   Circle,
   Clock3,
   ExternalLink,
+  FileCheck2,
   ListChecks,
   Loader2,
   Radio,
+  Route,
+  SearchCheck,
   ShieldCheck,
   Sparkles,
+  TimerReset,
   XCircle,
 } from 'lucide-react'
 
@@ -73,6 +79,18 @@ const LEARNING_AGENTS: AgentStep[] = [
     id: 'practice-agent',
     name: '练习实训智能体',
     role: '生成 Quiz、闪卡、代码与迁移练习',
+    status: 'queued',
+  },
+  {
+    id: 'path-agent',
+    name: '路径规划智能体',
+    role: '依据画像、资源与掌握度动态编排学习顺序',
+    status: 'queued',
+  },
+  {
+    id: 'tutor-agent',
+    name: '智能辅导智能体',
+    role: '即时答疑、定位卡点并按需调用学习资产工具',
     status: 'queued',
   },
   {
@@ -218,9 +236,7 @@ function fallbackAgents(job: CommandJob): AgentStep[] {
       ['profile-agent', 'curriculum-agent', 'collector-agent', 'safety-agent'].includes(agent.id)
     )
   } else if (job.command === 'generate_learning_asset') {
-    agents = LEARNING_AGENTS.filter((agent) =>
-      ['profile-agent', 'resource-agent', 'practice-agent', 'evaluation-agent', 'safety-agent'].includes(agent.id)
-    )
+    agents = LEARNING_AGENTS
   } else if (!job.command?.includes('learning')) {
     agents = [
       {
@@ -336,6 +352,121 @@ function WorkflowJobCard({
         <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" />
       </div>
     </button>
+  )
+}
+
+function WorkflowBlueprint() {
+  const gates = [
+    {
+      icon: BrainCircuit,
+      label: '画像上下文',
+      detail: '目标、基础、偏好与近期学习信号',
+    },
+    {
+      icon: SearchCheck,
+      label: '来源可追溯',
+      detail: '视频、文章与网页保留出处和标签',
+    },
+    {
+      icon: FileCheck2,
+      label: '质量与安全',
+      detail: '事实一致性、引用和内容安全复核',
+    },
+  ]
+
+  return (
+    <div className="flex h-full min-h-[650px] flex-col p-5 sm:p-6">
+      <div className="flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              编排器就绪
+            </span>
+            <span className="rounded-full border px-2.5 py-1 text-[11px] text-muted-foreground">
+              9 个专业 Agent
+            </span>
+          </div>
+          <h2 className="mt-3 text-xl font-semibold tracking-tight">画像驱动的协作蓝图</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            当前没有运行中的任务。发起资料搜索、资产生成或学习评估后，节点会切换为真实执行状态，并显示当前动作、单步耗时和上下游交接。
+          </p>
+        </div>
+        <Button asChild size="sm" className="shrink-0 rounded-full">
+          <Link href="/notebooks">
+            发起学习任务
+            <ArrowRight className="ml-2 h-3.5 w-3.5" />
+          </Link>
+        </Button>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+        {LEARNING_AGENTS.map((agent, index) => (
+          <div
+            key={agent.id}
+            className={cn(
+              'group relative overflow-hidden rounded-xl border bg-background p-4 transition-colors',
+              index === 0
+                ? 'border-primary/30 bg-primary/5'
+                : 'border-dashed hover:border-primary/30'
+            )}
+          >
+            <div className="flex items-start gap-3">
+              <span
+                className={cn(
+                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-xs font-semibold',
+                  index === 0
+                    ? 'border-primary/20 bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground'
+                )}
+              >
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <div className="min-w-0">
+                <p className="font-medium">{agent.name}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{agent.role}</p>
+              </div>
+            </div>
+            {index < LEARNING_AGENTS.length - 1 && (
+              <ArrowRight className="absolute right-3 top-3 h-3.5 w-3.5 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 grid gap-3 border-t pt-5 lg:grid-cols-[minmax(0,1fr)_minmax(260px,.42fr)]">
+        <div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold">三道可核验质量门</h3>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {gates.map(({ icon: Icon, label, detail }) => (
+              <div key={label} className="rounded-xl border bg-muted/20 p-3">
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  <Icon className="h-3.5 w-3.5 text-primary" />
+                  {label}
+                </div>
+                <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">{detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <TimerReset className="h-4 w-4 text-primary" />
+            监控只展示真实事件
+          </div>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            进度、当前 Agent 与耗时均来自后台任务事件；空闲状态不伪造运行数据。
+          </p>
+          <div className="mt-3 flex items-center gap-2 text-[11px] text-primary">
+            <Route className="h-3.5 w-3.5" />
+            任务开始后自动切换为实时协作链路
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -671,15 +802,7 @@ export default function WorkflowSupervisorPage() {
                   </div>
                 </div>
               ) : (
-                <div className="flex h-full min-h-[600px] items-center justify-center p-8 text-center">
-                  <div>
-                    <Activity className="mx-auto h-12 w-12 text-muted-foreground/40" />
-                    <h2 className="mt-4 text-lg font-semibold">等待工作流任务</h2>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      当学生发起资料搜索、资产生成或来源处理后，这里会显示实时 Agent 协作链路。
-                    </p>
-                  </div>
-                </div>
+                <WorkflowBlueprint />
               )}
             </section>
           </div>

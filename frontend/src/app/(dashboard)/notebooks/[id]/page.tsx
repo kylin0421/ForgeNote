@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import {
+  ArrowRight,
   BookMarked,
   Brain,
   FileText,
@@ -388,7 +389,7 @@ export default function NotebookPage() {
           <button
             type="button"
             onClick={openLearningProfile}
-            className="mb-3 flex w-full shrink-0 flex-col gap-2.5 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-background px-3 py-2.5 text-left transition-colors hover:border-primary/40 sm:flex-row sm:items-center sm:justify-between"
+            className="mb-3 flex w-full shrink-0 flex-col gap-3 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-background px-3 py-2.5 text-left transition-colors hover:border-primary/40 xl:flex-row xl:items-center"
           >
             <span className="flex min-w-0 items-center gap-3">
               <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
@@ -405,10 +406,32 @@ export default function NotebookPage() {
                 </span>
               </span>
             </span>
-            <span className="flex shrink-0 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-              <span className="rounded-full border bg-background px-2.5 py-1">随学随新</span>
-              <span className="rounded-full border bg-background px-2.5 py-1">有证据可追溯</span>
-              <span className="rounded-full border bg-background px-2.5 py-1 text-primary">查看 / 编辑</span>
+            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground xl:justify-center">
+              {[
+                ['画像', '已启用', true],
+                ['资料', sources?.length ? `${sources.length} 项` : '待检索', Boolean(sources?.length)],
+                ['资产', notes?.length ? `${notes.length} 项` : '待生成', Boolean(notes?.length)],
+                ['评估', 'Quiz 后回写', false],
+              ].map(([label, value, ready], index, items) => (
+                <span key={String(label)} className="flex items-center gap-1.5">
+                  <span
+                    className={cn(
+                      'rounded-full border bg-background px-2.5 py-1',
+                      ready && 'border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
+                    )}
+                  >
+                    <span className="font-medium text-foreground">{label}</span>
+                    <span className="mx-1 text-muted-foreground">·</span>
+                    {value}
+                  </span>
+                  {index < items.length - 1 && (
+                    <ArrowRight className="hidden h-3 w-3 text-muted-foreground/50 sm:block" />
+                  )}
+                </span>
+              ))}
+            </span>
+            <span className="shrink-0 rounded-full border bg-background px-2.5 py-1 text-[11px] font-medium text-primary">
+              查看画像证据 / 编辑
             </span>
           </button>
 
