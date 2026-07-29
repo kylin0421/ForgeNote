@@ -6,6 +6,7 @@ import pytest
 
 from api.learning_service import (
     _LEARNING_WORKFLOW_TIMERS,
+    _explicit_profile_evidence,
     _update_learning_workflow_progress,
     generate_learning_profile_interview,
 )
@@ -52,12 +53,38 @@ def profile_payload(*, question_prompt: str, complete: bool = False):
     }
 
 
+def test_explicit_profile_evidence_preserves_multidimensional_answer():
+    answer = (
+        "我是计算机科学大三学生，想在两周内学会机器学习正则化并完成课程项目。"
+        "学过线性代数和线性回归，但容易混淆 L1 与 L2。"
+        "之前主要看课程视频，喜欢先看可运行案例和图解，再回到公式；"
+        "希望每天学习 45 分钟，偏好短视频、结构化文章、测验和 Python 实操。"
+    )
+
+    evidence = _explicit_profile_evidence(
+        [{"dimension": "goal", "answer": answer}]
+    )
+
+    assert set(evidence) == {
+        "major",
+        "goal",
+        "knowledge",
+        "learning_history",
+        "cognitive_style",
+        "mistakes",
+        "pace",
+        "resource_preference",
+    }
+    assert "每天学习 45 分钟" in evidence["pace"]["value"]
+    assert "L1" in evidence["mistakes"]["evidence"]
+
+
 @pytest.mark.asyncio
 async def test_profile_interview_calls_llm_with_prior_answers(monkeypatch):
     captured_messages = []
 
     class FakeModel:
-        async def ainvoke(self, messages):
+        async def achat_complete(self, *, messages):
             captured_messages.append(messages)
             return SimpleNamespace(
                 content=json.dumps(
@@ -68,14 +95,15 @@ async def test_profile_interview_calls_llm_with_prior_answers(monkeypatch):
                 )
             )
 
-    async def fake_provision(*args, **kwargs):
-        assert args[2] == "profile_interview"
+    async def fake_get_default_model(model_type, **kwargs):
+        assert model_type == "profile_interview"
         assert kwargs["structured"] == {"type": "json"}
+        assert kwargs["max_tokens"] == 900
         return FakeModel()
 
     monkeypatch.setattr(
-        "api.learning_service.provision_langchain_model",
-        fake_provision,
+        "api.learning_service.model_manager.get_default_model",
+        fake_get_default_model,
     )
     request = LearningProfileInterviewRequest(
         learning_record_id="notebook:adaptive",
@@ -93,7 +121,7 @@ async def test_profile_interview_calls_llm_with_prior_answers(monkeypatch):
     response = await generate_learning_profile_interview(request)
 
     assert len(captured_messages) == 1
-    assert "两周后完成项目" in captured_messages[0][1].content
+    assert "两周后完成项目" in captured_messages[0][1]["content"]
     assert response.question is not None
     assert "刚才提到的正则化难点" in response.question.prompt
     assert len(response.covered_dimensions) == 6

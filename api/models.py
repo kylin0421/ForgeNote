@@ -366,6 +366,7 @@ class ModelResponse(BaseModel):
 
 class DefaultModelsResponse(BaseModel):
     default_chat_model: Optional[str] = None
+    default_profile_interview_model: Optional[str] = None
     default_transformation_model: Optional[str] = None
     large_context_model: Optional[str] = None
     default_text_to_speech_model: Optional[str] = None

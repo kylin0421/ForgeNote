@@ -84,6 +84,44 @@ function extractCollectedResources(result: Record<string, unknown> | null | unde
   return []
 }
 
+type PersistedResourceSearch = {
+  goal: string
+  jobId: string | null
+  resources: LearningCollectedResource[]
+}
+
+function resourceSearchStorageKey(notebookId: string) {
+  return `forgenote:resource-search:${notebookId}`
+}
+
+function readPersistedResourceSearch(notebookId: string): PersistedResourceSearch | null {
+  if (typeof window === 'undefined' || !notebookId) return null
+  try {
+    const raw = window.sessionStorage.getItem(resourceSearchStorageKey(notebookId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<PersistedResourceSearch>
+    return {
+      goal: typeof parsed.goal === 'string' ? parsed.goal : '',
+      jobId: typeof parsed.jobId === 'string' ? parsed.jobId : null,
+      resources: Array.isArray(parsed.resources) ? parsed.resources : [],
+    }
+  } catch {
+    return null
+  }
+}
+
+function persistResourceSearch(
+  notebookId: string,
+  state: PersistedResourceSearch
+) {
+  if (typeof window === 'undefined' || !notebookId) return
+  try {
+    window.sessionStorage.setItem(resourceSearchStorageKey(notebookId), JSON.stringify(state))
+  } catch {
+    // Browsing can continue even when storage is unavailable or full.
+  }
+}
+
 function isLearningProfileSource(source: SourceListResponse) {
   return source.title === LEARNING_PROFILE_TITLE || source.topics?.includes(LEARNING_PROFILE_TOPIC)
 }
@@ -524,7 +562,9 @@ export function SourcesColumn({
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
   const [sourceToRemove, setSourceToRemove] = useState<string | null>(null)
   const [resourceSearchGoal, setResourceSearchGoal] = useState(initialResourceSearchGoal)
-  const [resourceSearchExpanded, setResourceSearchExpanded] = useState(Boolean(initialResourceSearchGoal.trim()))
+  const [resourceSearchExpanded, setResourceSearchExpanded] = useState(
+    Boolean(initialResourceSearchGoal.trim())
+  )
   const [collectedResources, setCollectedResources] = useState<LearningCollectedResource[]>([])
   const [acceptedResourceUrls, setAcceptedResourceUrls] = useState<Record<string, boolean>>({})
   const [acceptingResourceIds, setAcceptingResourceIds] = useState<Record<string, boolean>>({})
@@ -579,6 +619,21 @@ export function SourcesColumn({
     () => buildAdaptiveLearningSummary(profileForm, displaySources.length),
     [displaySources.length, profileForm]
   )
+
+  useEffect(() => {
+    const persisted = readPersistedResourceSearch(notebookId)
+    if (!persisted) return
+    if (!initialResourceSearchGoal.trim() && persisted.goal) {
+      setResourceSearchGoal(persisted.goal)
+    }
+    setCollectedResources(persisted.resources)
+    setResourceSearchJobId(persisted.jobId)
+    setHandledResourceSearchJobId(null)
+    setIsCollectingResources(Boolean(persisted.jobId))
+    if (persisted.jobId || persisted.resources.length) {
+      setResourceSearchExpanded(true)
+    }
+  }, [initialResourceSearchGoal, notebookId])
 
   useEffect(() => {
     if (profileSourceQuery.data?.content && !profileDialogOpen) {
@@ -646,6 +701,11 @@ export function SourcesColumn({
     if (resourceSearchJob.status === 'completed') {
       const webResources = extractCollectedResources(resourceSearchJob.result).filter((resource) => resource.url)
       setCollectedResources(webResources)
+      persistResourceSearch(notebookId, {
+        goal: resourceSearchGoal,
+        jobId: null,
+        resources: webResources,
+      })
       setHandledResourceSearchJobId(resourceSearchJobId)
       setResourceSearchJobId(null)
       setIsCollectingResources(false)
@@ -658,6 +718,11 @@ export function SourcesColumn({
     }
 
     if (resourceSearchJob.status === 'failed' || resourceSearchJob.status === 'canceled') {
+      persistResourceSearch(notebookId, {
+        goal: resourceSearchGoal,
+        jobId: null,
+        resources: collectedResources,
+      })
       setHandledResourceSearchJobId(resourceSearchJobId)
       setResourceSearchJobId(null)
       setIsCollectingResources(false)
@@ -667,7 +732,14 @@ export function SourcesColumn({
           : resourceSearchJob.error_message || '\u641c\u96c6\u8d44\u6599\u5931\u8d25'
       )
     }
-  }, [handledResourceSearchJobId, resourceSearchJob, resourceSearchJobId])
+  }, [
+    collectedResources,
+    handledResourceSearchJobId,
+    notebookId,
+    resourceSearchGoal,
+    resourceSearchJob,
+    resourceSearchJobId,
+  ])
 
   const handleCollectResources = useCallback(async (goalOverride?: string) => {
     const normalizedGoal = (goalOverride ?? resourceSearchGoal).trim()
@@ -699,6 +771,11 @@ export function SourcesColumn({
       setCollectedResources([])
       setHandledResourceSearchJobId(null)
       setResourceSearchJobId(response.job_id)
+      persistResourceSearch(notebookId, {
+        goal: normalizedGoal,
+        jobId: response.job_id,
+        resources: [],
+      })
       submitted = true
       toast.success('资料搜集已加入任务队列')
     } catch (error) {

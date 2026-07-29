@@ -226,11 +226,11 @@ export function ProfileOnboardingDialog({
     <Dialog open={open}>
       <DialogContent
         showCloseButton={false}
-        className="h-[min(90vh,840px)] grid-rows-[auto_minmax(0,1fr)] gap-0 p-0 sm:max-w-6xl"
+        className="h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 p-0 sm:h-[min(94dvh,900px)] sm:w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-2rem)] 2xl:max-w-[1800px]"
         onEscapeKeyDown={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => event.preventDefault()}
       >
-        <DialogHeader className="border-b bg-muted/20 px-6 py-5 pr-6">
+        <DialogHeader className="border-b bg-muted/20 px-4 py-4 pr-4 sm:px-6 sm:py-5 sm:pr-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
@@ -257,8 +257,8 @@ export function ProfileOnboardingDialog({
           </div>
         </DialogHeader>
 
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,.8fr)]">
-          <section className="flex min-h-0 flex-col border-r">
+        <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,.72fr)]">
+          <section className="flex min-h-0 flex-col xl:border-r">
             <div className="flex-1 space-y-5 overflow-y-auto px-5 py-6 sm:px-8">
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -432,7 +432,7 @@ export function ProfileOnboardingDialog({
             </div>
           </section>
 
-          <aside className="hidden min-h-0 flex-col bg-muted/15 lg:flex">
+          <aside className="hidden min-h-0 flex-col bg-muted/15 xl:flex">
             <div className="border-b px-5 py-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">动态画像预览</h3>

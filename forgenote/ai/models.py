@@ -64,6 +64,7 @@ class Model(ObjectModel):
 class DefaultModels(RecordModel):
     record_id: ClassVar[str] = "forgenote:default_models"
     default_chat_model: Optional[str] = None
+    default_profile_interview_model: Optional[str] = None
     default_transformation_model: Optional[str] = None
     large_context_model: Optional[str] = None
     default_text_to_speech_model: Optional[str] = None
@@ -265,6 +266,7 @@ class ModelManager:
         elif model_type == "profile_interview":
             model_id = self._first_model_id(
                 defaults,
+                "default_profile_interview_model",
                 "default_chat_model",
                 "default_learning_asset_model",
                 "default_transformation_model",

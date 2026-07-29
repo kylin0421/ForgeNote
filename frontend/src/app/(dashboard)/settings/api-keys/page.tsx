@@ -878,6 +878,7 @@ function CredentialItem({
   if (defaults) {
     const slotMap: Record<string, string | null | undefined> = {
       'Chat': defaults.default_chat_model,
+      'Profile': defaults.default_profile_interview_model,
       'RAG': defaults.default_rag_model ?? defaults.default_retrieval_model,
       'Search': defaults.default_resource_search_model ?? defaults.default_tools_model,
       'Assets': defaults.default_learning_asset_model ?? defaults.default_transformation_model,
@@ -1213,6 +1214,7 @@ function DefaultModelSelectors({
 
   const languageDefaultKeys: Array<keyof ModelDefaults> = [
     'default_chat_model',
+    'default_profile_interview_model',
     'default_rag_model',
     'default_retrieval_model',
     'default_resource_search_model',
@@ -1230,6 +1232,7 @@ function DefaultModelSelectors({
 
   const primaryConfigs: DefaultConfig[] = [
     { key: 'default_chat_model', label: '通用文本模型', description: '默认用于 Studio、聊天、RAG、播客脚本等文本生成。', modelType: 'language', required: true, id: `${generatedId}-language` },
+    { key: 'default_profile_interview_model', label: '画像访谈模型', description: '用于实时生成下一问并抽取动态学习画像；建议选择低延迟模型。', modelType: 'language', id: `${generatedId}-profile-interview` },
     { key: 'default_embedding_model', label: t('models.embeddingModelLabel'), description: t('models.embeddingModelDesc'), modelType: 'embedding', required: true, id: `${generatedId}-embed` },
     { key: 'default_image_model', label: '辅助图片模型', description: '用于 Studio 的辅助理解图片生成。', modelType: 'image', id: `${generatedId}-image` },
   ]

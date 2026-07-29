@@ -10,6 +10,11 @@ import {
   LearningOutputKind,
 } from '@/lib/types/learning'
 
+const profileInterviewRequests = new Map<
+  string,
+  Promise<LearningProfileInterviewResponse>
+>()
+
 function getAuthToken() {
   if (typeof window === 'undefined') {
     return null
@@ -33,11 +38,27 @@ export const learningApi = {
   nextProfileInterviewQuestion: async (
     params: LearningProfileInterviewRequest
   ) => {
-    const response = await apiClient.post<LearningProfileInterviewResponse>(
-      '/learning/profile-interview/next',
-      params
-    )
-    return response.data
+    const requestKey = JSON.stringify(params)
+    const pendingRequest = profileInterviewRequests.get(requestKey)
+    if (pendingRequest) {
+      return pendingRequest
+    }
+
+    const request = apiClient
+      .post<LearningProfileInterviewResponse>(
+        '/learning/profile-interview/next',
+        params
+      )
+      .then((response) => response.data)
+
+    profileInterviewRequests.set(requestKey, request)
+    try {
+      return await request
+    } finally {
+      if (profileInterviewRequests.get(requestKey) === request) {
+        profileInterviewRequests.delete(requestKey)
+      }
+    }
   },
 
   orchestrate: async (params: LearningOrchestrationRequest) => {

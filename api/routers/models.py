@@ -336,6 +336,11 @@ def _default_models_response(defaults: DefaultModels) -> DefaultModelsResponse:
 
     return DefaultModelsResponse(
         default_chat_model=defaults.default_chat_model,  # type: ignore[attr-defined]
+        default_profile_interview_model=getattr(
+            defaults,
+            "default_profile_interview_model",
+            None,
+        ),
         default_transformation_model=learning_asset_model,
         large_context_model=defaults.large_context_model,  # type: ignore[attr-defined]
         default_text_to_speech_model=defaults.default_text_to_speech_model,  # type: ignore[attr-defined]
@@ -382,6 +387,7 @@ async def update_default_models(defaults_data: DefaultModelsResponse):
         provided = defaults_data.model_fields_set
         fields = [
             "default_chat_model",
+            "default_profile_interview_model",
             "default_transformation_model",
             "large_context_model",
             "default_text_to_speech_model",
@@ -821,6 +827,7 @@ async def auto_assign_defaults():
         # Define slot configuration: (slot_name, model_type, current_value)
         slot_configs = [
             ("default_chat_model", "language", defaults.default_chat_model),  # type: ignore[attr-defined]
+            ("default_profile_interview_model", "language", getattr(defaults, "default_profile_interview_model", None)),
             ("default_rag_model", "language", getattr(defaults, "default_rag_model", None) or defaults.default_retrieval_model),  # type: ignore[attr-defined]
             ("default_resource_search_model", "language", getattr(defaults, "default_resource_search_model", None) or defaults.default_tools_model),  # type: ignore[attr-defined]
             ("default_learning_asset_model", "language", getattr(defaults, "default_learning_asset_model", None) or defaults.default_transformation_model),  # type: ignore[attr-defined]
