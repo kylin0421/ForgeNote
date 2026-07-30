@@ -69,8 +69,10 @@ npm run dev
 
 访问：
 
-- 前端：`http://localhost:8502`
+- 开发前端：`http://localhost:3000`
 - API：`http://localhost:5055`
+
+源码模式还需要单独启动 command worker；完整的三终端命令见项目根目录 [`README.md`](../README.md#源码运行浏览器开发)。`8502` 是 Docker 与 Windows 桌面安装包使用的生产前端端口。
 
 ## Docker 运行
 

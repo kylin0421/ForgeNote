@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -38,6 +38,48 @@ const CARD_STYLES = [
   'bg-amber-50 border-amber-100',
   'bg-cyan-50 border-cyan-100',
 ]
+
+// Keep structural spacing with the page markup. In development, a route can
+// receive fresh JSX before its generated utility stylesheet refreshes; these
+// inline fallbacks prevent that transient state from collapsing the layout.
+const NOTEBOOK_PAGE_STYLES = {
+  scroll: {
+    minWidth: 0,
+    minHeight: 0,
+    overflowX: 'hidden',
+    overflowY: 'auto',
+  },
+  content: {
+    boxSizing: 'border-box',
+    width: '100%',
+    maxWidth: 1680,
+    marginInline: 'auto',
+    paddingBlock: '2rem',
+    paddingInline: 'clamp(1.5rem, 4vw, 2.5rem)',
+  },
+  header: {
+    gap: '0.75rem',
+    marginBottom: '1.5rem',
+  },
+  description: {
+    marginTop: '0.25rem',
+  },
+  toggleGroup: {
+    gap: '0.5rem',
+  },
+  emptyState: {
+    padding: '3rem 1.5rem',
+  },
+  emptyDescription: {
+    marginTop: '0.5rem',
+  },
+  emptyAction: {
+    marginTop: '1.25rem',
+  },
+  emptyActionIcon: {
+    marginRight: '0.5rem',
+  },
+} satisfies Record<string, CSSProperties>
 
 function NotebookTile({
   notebook,
@@ -200,20 +242,35 @@ export default function NotebooksPage() {
 
   return (
     <AppShell>
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[1680px] px-6 py-8 lg:px-10">
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div
+        className="notebooks-page-scroll flex-1"
+        style={NOTEBOOK_PAGE_STYLES.scroll}
+      >
+        <div
+          className="notebooks-page-content"
+          style={NOTEBOOK_PAGE_STYLES.content}
+        >
+          <div
+            className="notebooks-page-header flex flex-col sm:flex-row sm:items-end sm:justify-between"
+            style={NOTEBOOK_PAGE_STYLES.header}
+          >
             <div>
               <h1 className="text-2xl font-semibold tracking-normal">
                 {showArchived ? '已归档学习记录' : '当前学习记录'}
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p
+                className="notebooks-page-description text-sm text-muted-foreground"
+                style={NOTEBOOK_PAGE_STYLES.description}
+              >
                 {showArchived
                   ? '这些记录已从当前列表隐藏，但内容没有删除，可以随时恢复。'
                   : '移到已归档会从当前列表隐藏学习记录，不会删除来源、资产或播客。'}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div
+              className="notebooks-page-toggle-group flex"
+              style={NOTEBOOK_PAGE_STYLES.toggleGroup}
+            >
               <Button
                 type="button"
                 variant={showArchived ? 'outline' : 'default'}
@@ -235,11 +292,17 @@ export default function NotebooksPage() {
               <LoadingSpinner size="lg" />
             </div>
           ) : sortedNotebooks.length === 0 ? (
-            <div className="rounded-xl border bg-card px-6 py-12 text-center">
+            <div
+              className="notebooks-empty-state rounded-xl border bg-card text-center"
+              style={NOTEBOOK_PAGE_STYLES.emptyState}
+            >
               <p className="text-lg font-medium">
                 {showArchived ? '暂无已归档学习记录' : '暂无当前学习记录'}
               </p>
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p
+                className="notebooks-empty-description text-sm text-muted-foreground"
+                style={NOTEBOOK_PAGE_STYLES.emptyDescription}
+              >
                 {showArchived
                   ? '当学习记录被移到已归档后，会显示在这里。'
                   : '新建一个学习记录，或添加来源开始学习。'}
@@ -247,10 +310,14 @@ export default function NotebooksPage() {
               {!showArchived && (
                 <Button
                   type="button"
-                  className="mt-5"
+                  className="notebooks-empty-action"
+                  style={NOTEBOOK_PAGE_STYLES.emptyAction}
                   onClick={() => setCreateDialogOpen(true)}
                 >
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Plus
+                    className="notebooks-empty-action-icon h-4 w-4"
+                    style={NOTEBOOK_PAGE_STYLES.emptyActionIcon}
+                  />
                   新建学习记录
                 </Button>
               )}

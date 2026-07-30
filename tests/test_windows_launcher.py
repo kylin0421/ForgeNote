@@ -1,5 +1,7 @@
+import sys
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from desktop.windows.launcher import (
@@ -10,6 +12,7 @@ from desktop.windows.launcher import (
     desktop_page,
     ensure_config,
     read_env_file,
+    run_desktop,
 )
 
 
@@ -55,6 +58,25 @@ def test_desktop_webview_enables_native_downloads():
     configure_desktop_webview(webview_module)
 
     assert webview_module.settings["ALLOW_DOWNLOADS"] is True
+
+
+def test_desktop_window_disables_document_zoom(tmp_path: Path, monkeypatch):
+    window = Mock()
+    webview_module = SimpleNamespace(
+        settings={"ALLOW_DOWNLOADS": False},
+        create_window=Mock(return_value=window),
+        start=Mock(),
+    )
+    monkeypatch.setitem(sys.modules, "webview", webview_module)
+    stack = Mock()
+    stack.logs_dir = tmp_path / "logs"
+    stack.data_root = tmp_path / "data"
+
+    result = run_desktop(stack)
+
+    assert result == 0
+    assert webview_module.create_window.call_args.kwargs["zoomable"] is False
+    stack.stop.assert_called_once()
 
 
 def test_desktop_bridge_saves_browser_blob_with_native_dialog(tmp_path: Path):

@@ -38,6 +38,12 @@ services:
       - SURREAL_NAMESPACE=forgenote
       - SURREAL_DATABASE=forgenote
       - FORGENOTE_EMBEDDING_BATCH_SIZE=${FORGENOTE_EMBEDDING_BATCH_SIZE:-10}
+
+      # Browser deployment. Leave API_URL empty for localhost/LAN auto-detection.
+      # Behind an HTTPS reverse proxy, set it to the public web origin so API
+      # requests stay same-origin; Next.js forwards /api/* to INTERNAL_API_URL.
+      - API_URL=${API_URL:-}
+      - INTERNAL_API_URL=${INTERNAL_API_URL:-http://localhost:5055}
     volumes:
       - ./notebook_data:/app/data
     depends_on:
