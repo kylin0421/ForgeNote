@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
+  Activity,
   Brain,
   CheckCircle2,
+  Gauge,
   Loader2,
   RefreshCw,
   Send,
@@ -66,6 +68,128 @@ function apiErrorMessage(error: unknown) {
   return '动态问题生成失败，请检查语言模型设置后重试。'
 }
 
+const PROFILE_VISUAL_META: Record<string, { label: string; short: string; accent: string }> = {
+  major: { label: '专业背景', short: '背景', accent: 'bg-sky-500' },
+  goal: { label: '学习目标', short: '目标', accent: 'bg-emerald-500' },
+  knowledge: { label: '知识基础', short: '基础', accent: 'bg-indigo-500' },
+  learning_history: { label: '学习经历', short: '经历', accent: 'bg-amber-500' },
+  cognitive_style: { label: '认知风格', short: '风格', accent: 'bg-fuchsia-500' },
+  mistakes: { label: '易错点', short: '风险', accent: 'bg-rose-500' },
+  pace: { label: '学习节奏', short: '节奏', accent: 'bg-cyan-500' },
+  resource_preference: { label: '资源偏好', short: '资源', accent: 'bg-lime-500' },
+}
+
+function profileConfidenceScore(value?: string, confidence = 0) {
+  if (!value?.trim()) return 8
+  return Math.max(18, Math.min(100, Math.round(confidence * 100)))
+}
+
+function ProfileRadar({
+  dimensions,
+}: {
+  dimensions: LearningProfileInterviewResponse['profile']
+}) {
+  const size = 214
+  const center = size / 2
+  const radius = 76
+  const axes = dimensions
+  const points = axes.map((dimension, index) => {
+    const angle = -Math.PI / 2 + (index / Math.max(axes.length, 1)) * Math.PI * 2
+    const score = profileConfidenceScore(dimension.value, dimension.confidence) / 100
+    return {
+      x: center + Math.cos(angle) * radius * score,
+      y: center + Math.sin(angle) * radius * score,
+      labelX: center + Math.cos(angle) * (radius + 22),
+      labelY: center + Math.sin(angle) * (radius + 22),
+      axisX: center + Math.cos(angle) * radius,
+      axisY: center + Math.sin(angle) * radius,
+      short: PROFILE_VISUAL_META[dimension.key]?.short || dimension.label.slice(0, 2),
+    }
+  })
+  const polygon = points.map((point) => `${point.x},${point.y}`).join(' ')
+
+  return (
+    <div className="rounded-2xl border bg-background p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold">画像雷达</p>
+          <p className="text-xs text-muted-foreground">越靠外，证据越充分</p>
+        </div>
+        <Gauge className="h-4 w-4 text-primary" />
+      </div>
+      <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto h-56 w-full max-w-64" role="img" aria-label="学习画像雷达图">
+        <defs>
+          <linearGradient id="profile-radar-fill" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.32" />
+            <stop offset="100%" stopColor="#22c55e" stopOpacity="0.2" />
+          </linearGradient>
+        </defs>
+        {[0.35, 0.65, 1].map((scale) => (
+          <circle
+            key={scale}
+            cx={center}
+            cy={center}
+            r={radius * scale}
+            className="fill-none stroke-border"
+            strokeDasharray={scale === 1 ? undefined : '4 5'}
+          />
+        ))}
+        {points.map((point) => (
+          <g key={point.short}>
+            <line x1={center} y1={center} x2={point.axisX} y2={point.axisY} className="stroke-border" />
+            <text x={point.labelX} y={point.labelY} textAnchor="middle" dominantBaseline="middle" className="fill-muted-foreground text-[10px]">
+              {point.short}
+            </text>
+          </g>
+        ))}
+        {polygon && <polygon points={polygon} fill="url(#profile-radar-fill)" stroke="#0284c7" strokeWidth="2.5" />}
+        {points.map((point) => (
+          <circle key={`${point.short}-point`} cx={point.x} cy={point.y} r="4" className="fill-background stroke-primary" strokeWidth="2" />
+        ))}
+      </svg>
+    </div>
+  )
+}
+
+function ProfileDimensionCard({
+  dimension,
+  index,
+}: {
+  dimension: LearningProfileInterviewResponse['profile'][number]
+  index: number
+}) {
+  const meta = PROFILE_VISUAL_META[dimension.key] || {
+    label: dimension.label,
+    short: dimension.label.slice(0, 2),
+    accent: 'bg-primary',
+  }
+  const score = profileConfidenceScore(dimension.value, dimension.confidence)
+  const filled = Boolean(dimension.value?.trim())
+
+  return (
+    <div className={cn('rounded-xl border bg-background p-3 shadow-sm transition-colors', filled && 'border-primary/25')}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={cn('h-2.5 w-2.5 rounded-full', meta.accent)} />
+          <p className="truncate text-sm font-medium">{meta.label}</p>
+        </div>
+        <span className="shrink-0 text-[11px] text-muted-foreground">{filled ? `${score}%` : `${index + 1}/8`}</span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+        <span className={cn('block h-full rounded-full', meta.accent)} style={{ width: `${score}%` }} />
+      </div>
+      <p className={cn('mt-2 line-clamp-2 text-xs leading-5', !filled && 'text-muted-foreground')}>
+        {compactProfileValue(dimension.value)}
+      </p>
+      {dimension.evidence && (
+        <p className="mt-2 line-clamp-2 rounded-lg bg-muted/45 px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
+          证据：{dimension.evidence}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function toApiTurns(turns: InterviewTurn[]): LearningProfileInterviewTurn[] {
   return turns.map(({ question, answer }) => ({
     question_id: question.id,
@@ -103,6 +227,16 @@ export function ProfileOnboardingDialog({
   const currentQuestion = interview?.question || null
   const reviewing = Boolean(interview?.complete)
   const progress = interview?.progress ?? Math.min(94, turns.length * 12)
+  const profileDimensions = interview?.profile || []
+  const filledProfileCount = profileDimensions.filter((dimension) => dimension.value.trim()).length
+  const averageConfidence = profileDimensions.length > 0
+    ? Math.round(
+      profileDimensions.reduce(
+        (sum, dimension) => sum + profileConfidenceScore(dimension.value, dimension.confidence),
+        0
+      ) / profileDimensions.length
+    )
+    : 0
 
   const requestNextQuestion = async (
     nextTurns: InterviewTurn[],
@@ -444,7 +578,43 @@ export function ProfileOnboardingDialog({
                 每轮回答都会重新分析全部上下文，画像是后续路径、资料推荐和难度调整的首要依据。
               </p>
             </div>
-            <div className="flex-1 space-y-3 overflow-y-auto p-5">
+            <div className="flex-1 space-y-4 overflow-y-auto p-5">
+              {profileDimensions.length > 0 ? (
+                <>
+                  <ProfileRadar dimensions={profileDimensions} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl border bg-background p-3 shadow-sm">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Activity className="h-3.5 w-3.5 text-emerald-600" />
+                        覆盖维度
+                      </div>
+                      <p className="mt-2 text-2xl font-semibold">{filledProfileCount}/8</p>
+                    </div>
+                    <div className="rounded-xl border bg-background p-3 shadow-sm">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Gauge className="h-3.5 w-3.5 text-sky-600" />
+                        平均置信
+                      </div>
+                      <p className="mt-2 text-2xl font-semibold">{averageConfidence}%</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-3">
+                    {profileDimensions.map((dimension, index) => (
+                      <ProfileDimensionCard
+                        key={dimension.key}
+                        dimension={dimension}
+                        index={index}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  {isLoadingQuestion ? '正在建立第一版画像...' : '等待模型返回画像'}
+                </div>
+              )}
+            </div>
+            <div className="hidden">
               {(interview?.profile || []).map((dimension, index) => (
                 <div
                   key={dimension.key}

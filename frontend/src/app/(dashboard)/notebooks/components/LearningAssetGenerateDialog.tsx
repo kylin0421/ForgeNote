@@ -12,13 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getLearningAssetKindLabel } from '@/components/learning/LearningAssetPreview'
@@ -43,6 +36,10 @@ const OUTPUT_LANGUAGE_OPTIONS = [
   'Italiano',
   'Русский',
 ]
+
+function formatOutputLanguageLabel(language: string) {
+  return language === '中文' ? '简体中文' : language
+}
 
 export interface LearningProfileOptions {
   autoUpdateProfile: boolean
@@ -93,7 +90,7 @@ export const LEARNING_ASSET_OPTIONS: Array<{
   },
   {
     kind: 'blog',
-    label: '博客讲解',
+    label: '图文讲解',
     description: '把当前难点写成易读、有例子、有自检的教学博客。',
     formats: [
       { id: 'intuitive', label: '直觉讲解', description: '先讲为什么难，再用直觉和例子拆解。' },
@@ -148,7 +145,7 @@ export const LEARNING_ASSET_OPTIONS: Array<{
   },
   {
     kind: 'mind_map',
-    label: '知识图谱',
+    label: '思维导图',
     description: '把概念关系组织成结构图。',
     formats: [
       { id: 'concept_map', label: '概念关系', description: '概念和依赖关系。' },
@@ -159,7 +156,7 @@ export const LEARNING_ASSET_OPTIONS: Array<{
   },
   {
     kind: 'reading',
-    label: '阅读材料',
+    label: '拓展阅读',
     description: '扩展阅读与精读路线。',
     formats: [
       { id: 'guided', label: '问题导读', description: '带阅读问题。' },
@@ -170,7 +167,7 @@ export const LEARNING_ASSET_OPTIONS: Array<{
   },
   {
     kind: 'code_lab',
-    label: '代码实验',
+    label: '代码实验室',
     description: '技术主题的实验步骤和检查点。',
     formats: [
       { id: 'notebook', label: '交互笔记本', description: 'Notebook 风格实验。' },
@@ -267,6 +264,7 @@ export function LearningAssetGenerateDialog({
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([])
   const [materialSearch, setMaterialSearch] = useState('')
   const [materialLibraryExpanded, setMaterialLibraryExpanded] = useState(false)
+  const [languageOptionsOpen, setLanguageOptionsOpen] = useState(false)
   const showMaterialLibrary = materialOptions.length > 0
   const selectedMaterials = useMemo(
     () => materialOptions.filter((material) => selectedMaterialIds.includes(material.id)),
@@ -421,20 +419,37 @@ export function LearningAssetGenerateDialog({
             <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
               <section className="space-y-3">
                 <h3 className="text-base font-semibold">输出语言</h3>
-                <Select
-                  value={detailConfig.language || targetLanguage}
-                  onValueChange={(value) => updateDetail({ language: value })}
-                  disabled={isGenerating}
-                >
-                  <SelectTrigger className="h-12 w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from(new Set([targetLanguage, ...OUTPUT_LANGUAGE_OPTIONS])).map((item) => (
-                      <SelectItem key={item} value={item}>{item}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-12 w-full justify-between"
+                    disabled={isGenerating}
+                    onClick={() => setLanguageOptionsOpen((open) => !open)}
+                  >
+                    <span>{formatOutputLanguageLabel(detailConfig.language || targetLanguage)}</span>
+                    <ChevronDown className={cn('h-4 w-4 transition-transform', languageOptionsOpen && 'rotate-180')} />
+                  </Button>
+                  {languageOptionsOpen && (
+                    <div className="grid grid-cols-3 gap-2 rounded-lg border bg-background p-2">
+                      {Array.from(new Set([targetLanguage, ...OUTPUT_LANGUAGE_OPTIONS])).map((item) => (
+                        <Button
+                          key={item}
+                          type="button"
+                          variant={(detailConfig.language || targetLanguage) === item ? 'default' : 'outline'}
+                          className="h-10"
+                          disabled={isGenerating}
+                          onClick={() => {
+                            updateDetail({ language: item })
+                            setLanguageOptionsOpen(false)
+                          }}
+                        >
+                          {formatOutputLanguageLabel(item)}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <p className="text-xs leading-5 text-muted-foreground">
                   默认跟随系统语言，也可以为本次生成单独选择输出语言。
                 </p>

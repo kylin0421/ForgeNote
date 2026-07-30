@@ -130,6 +130,12 @@ DEEPSEEK_MODEL_TYPES = {
     "language": ["deepseek-chat", "deepseek-reasoner", "deepseek-coder"],
 }
 
+DEEPSEEK_CURATED_MODELS = [
+    "deepseek-chat",
+    "deepseek-reasoner",
+    "deepseek-coder",
+]
+
 XAI_MODEL_TYPES = {
     "language": ["grok"],
 }
@@ -148,11 +154,36 @@ DEEPGRAM_MODEL_TYPES = {
 }
 
 DASHSCOPE_MODEL_TYPES = {
-    "language": ["qwen"],
-    "speech_to_text": ["qwen3-asr", "qwen-asr"],
-    "text_to_speech": ["qwen3-tts", "qwen-tts", "cosyvoice"],
+    "language": ["qwen", "qwq", "qvq"],
+    "embedding": ["text-embedding", "multimodal-embedding"],
+    "speech_to_text": ["qwen3-asr", "qwen-asr", "paraformer"],
+    "text_to_speech": ["qwen3-tts", "qwen-tts", "cosyvoice", "sambert"],
     "image": ["qwen-image", "wanx", "flux", "stable-diffusion"],
 }
+
+DASHSCOPE_CURATED_MODELS = [
+    "qwen-max",
+    "qwen-plus",
+    "qwen-turbo",
+    "qwen-long",
+    "qwen3-max",
+    "qwen3-plus",
+    "qwen3-turbo",
+    "qwen3-coder-plus",
+    "qwq-plus",
+    "qvq-plus",
+    "text-embedding-v4",
+    "text-embedding-v3",
+    "multimodal-embedding-v1",
+    "qwen-image",
+    "wanx2.1-t2i-turbo",
+    "wanx2.1-t2i-plus",
+    "qwen3-tts-flash",
+    "qwen3-tts-plus",
+    "cosyvoice-v2",
+    "qwen3-asr-flash",
+    "paraformer-realtime-v2",
+]
 
 MIMO_MODEL_TYPES = {
     "text_to_speech": ["mimo-v2.5-tts", "mimo-tts"],
@@ -423,6 +454,23 @@ async def discover_deepseek_models() -> List[DiscoveredModel]:
         return []
 
     models = []
+    seen = set()
+
+    def add_model(model_id: str) -> None:
+        if not model_id:
+            return
+        key = model_id.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        models.append(
+            DiscoveredModel(
+                name=model_id,
+                provider="deepseek",
+                model_type=classify_model_type(model_id, "deepseek"),
+            )
+        )
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -435,17 +483,12 @@ async def discover_deepseek_models() -> List[DiscoveredModel]:
 
             for model in data.get("data", []):
                 model_id = model.get("id", "")
-                if model_id:
-                    model_type = classify_model_type(model_id, "deepseek")
-                    models.append(
-                        DiscoveredModel(
-                            name=model_id,
-                            provider="deepseek",
-                            model_type=model_type,
-                        )
-                    )
+                add_model(model_id)
     except Exception as e:
         logger.warning(f"Failed to discover DeepSeek models: {e}")
+
+    for model_id in DEEPSEEK_CURATED_MODELS:
+        add_model(model_id)
 
     return models
 
@@ -605,6 +648,24 @@ async def discover_dashscope_models() -> List[DiscoveredModel]:
         return []
 
     models = []
+    seen = set()
+
+    def add_model(model_id: str, description: str | None = None) -> None:
+        if not model_id:
+            return
+        key = model_id.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        models.append(
+            DiscoveredModel(
+                name=model_id,
+                provider="dashscope",
+                model_type=classify_model_type(model_id, "dashscope"),
+                description=description,
+            )
+        )
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -617,17 +678,12 @@ async def discover_dashscope_models() -> List[DiscoveredModel]:
 
             for model in data.get("data", []):
                 model_id = model.get("id", "")
-                if model_id:
-                    model_type = classify_model_type(model_id, "dashscope")
-                    models.append(
-                        DiscoveredModel(
-                            name=model_id,
-                            provider="dashscope",
-                            model_type=model_type,
-                        )
-                    )
+                add_model(model_id, model.get("name"))
     except Exception as e:
         logger.warning(f"Failed to discover DashScope models: {e}")
+
+    for model_id in DASHSCOPE_CURATED_MODELS:
+        add_model(model_id, "Built-in DashScope/Bailian model")
 
     return models
 

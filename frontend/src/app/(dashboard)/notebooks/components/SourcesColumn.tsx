@@ -31,6 +31,14 @@ import {
   Brain,
   ExternalLink,
   PlayCircle,
+  Activity,
+  Compass,
+  Route,
+  Target,
+  BookOpenCheck,
+  Gauge,
+  AlertTriangle,
+  Sparkles,
 } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -149,6 +157,71 @@ const DEFAULT_LEARNING_PROFILE_FORM: LearningProfileForm = {
   motivation: '尚未明确。',
   eventsText: '',
 }
+
+const PROFILE_DIMENSIONS: Array<{
+  key: keyof Omit<LearningProfileForm, 'eventsText'>
+  label: string
+  accent: string
+  icon: ReactNode
+  placeholder: string
+}> = [
+  {
+    key: 'major',
+    label: '专业背景',
+    accent: 'border-sky-200 bg-sky-50/80 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300',
+    icon: <BookOpenCheck className="h-4 w-4" />,
+    placeholder: '例如：计算机大二，学过高数和 Python。',
+  },
+  {
+    key: 'knowledge',
+    label: '知识基础',
+    accent: 'border-cyan-200 bg-cyan-50/80 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-300',
+    icon: <Gauge className="h-4 w-4" />,
+    placeholder: '例如：理解基本概念，但公式推导和独立应用不稳。',
+  },
+  {
+    key: 'goal',
+    label: '学习目标',
+    accent: 'border-violet-200 bg-violet-50/80 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/30 dark:text-violet-300',
+    icon: <Target className="h-4 w-4" />,
+    placeholder: '例如：读完 D2L 并能独立复现核心模型。',
+  },
+  {
+    key: 'cognitiveStyle',
+    label: '认知风格',
+    accent: 'border-fuchsia-200 bg-fuchsia-50/80 text-fuchsia-700 dark:border-fuchsia-900/60 dark:bg-fuchsia-950/30 dark:text-fuchsia-300',
+    icon: <Brain className="h-4 w-4" />,
+    placeholder: '例如：先看结构图，再用例题和代码验证理解。',
+  },
+  {
+    key: 'pace',
+    label: '学习节奏',
+    accent: 'border-amber-200 bg-amber-50/80 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300',
+    icon: <Activity className="h-4 w-4" />,
+    placeholder: '例如：工作日每天 30 分钟，周末集中复盘。',
+  },
+  {
+    key: 'risks',
+    label: '易错点',
+    accent: 'border-rose-200 bg-rose-50/80 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300',
+    icon: <AlertTriangle className="h-4 w-4" />,
+    placeholder: '例如：容易混淆损失函数、优化器和评价指标。',
+  },
+  {
+    key: 'preference',
+    label: '资源偏好',
+    accent: 'border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300',
+    icon: <Compass className="h-4 w-4" />,
+    placeholder: '例如：优先使用已采纳来源和用户上传资料。',
+  },
+  {
+    key: 'motivation',
+    label: '学习动机',
+    accent: 'border-orange-200 bg-orange-50/80 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/30 dark:text-orange-300',
+    icon: <Sparkles className="h-4 w-4" />,
+    placeholder: '例如：三周后通过期末考试，并能完成课程项目。',
+  },
+]
 
 function extractLearningProfileEvents(content?: string | null) {
   return (content || '')
@@ -618,6 +691,32 @@ export function SourcesColumn({
   const adaptiveLearningSummary = useMemo(
     () => buildAdaptiveLearningSummary(profileForm, displaySources.length),
     [displaySources.length, profileForm]
+  )
+  const profileInsightCards = useMemo(
+    () => [
+      {
+        title: '学习效果评估',
+        body: adaptiveLearningSummary.evaluation,
+        icon: <Activity className="h-5 w-5" />,
+        tone: 'border-sky-200 bg-sky-50/80 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300',
+        bar: 'bg-sky-500',
+      },
+      {
+        title: '资源推送策略',
+        body: adaptiveLearningSummary.strategy,
+        icon: <Compass className="h-5 w-5" />,
+        tone: 'border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300',
+        bar: 'bg-emerald-500',
+      },
+      {
+        title: '下一步学习计划',
+        body: adaptiveLearningSummary.plan,
+        icon: <Route className="h-5 w-5" />,
+        tone: 'border-violet-200 bg-violet-50/80 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/30 dark:text-violet-300',
+        bar: 'bg-violet-500',
+      },
+    ],
+    [adaptiveLearningSummary]
   )
 
   useEffect(() => {
@@ -1229,12 +1328,12 @@ export function SourcesColumn({
       />
 
       <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
-        <DialogContent className="max-h-[90vh] sm:max-w-3xl">
+        <DialogContent className="max-h-[90vh] sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle>编辑学习画像</DialogTitle>
           </DialogHeader>
           <div className="max-h-[68vh] space-y-4 overflow-y-auto pr-1">
-            <div className="rounded-xl border bg-muted/20 p-4">
+            <div className="overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-50 via-background to-violet-50 p-4 dark:from-sky-950/20 dark:via-background dark:to-violet-950/20">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-base font-semibold">智能评估与动态调整</h3>
@@ -1246,7 +1345,7 @@ export function SourcesColumn({
                   {adaptiveLearningSummary.metrics.map((metric) => (
                     <span
                       key={metric}
-                      className="rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground"
+                      className="rounded-full border bg-background/85 px-2.5 py-1 text-xs text-muted-foreground shadow-sm"
                     >
                       {metric}
                     </span>
@@ -1254,115 +1353,45 @@ export function SourcesColumn({
                 </div>
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <div className="rounded-lg border bg-background p-3">
-                  <p className="text-sm font-medium">学习效果评估</p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    {adaptiveLearningSummary.evaluation}
-                  </p>
-                </div>
-                <div className="rounded-lg border bg-background p-3">
-                  <p className="text-sm font-medium">资源推送策略</p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    {adaptiveLearningSummary.strategy}
-                  </p>
-                </div>
-                <div className="rounded-lg border bg-background p-3">
-                  <p className="text-sm font-medium">下一步学习计划</p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    {adaptiveLearningSummary.plan}
-                  </p>
-                </div>
+                {profileInsightCards.map((card) => (
+                  <div key={card.title} className={cn('relative overflow-hidden rounded-xl border p-4 shadow-sm', card.tone)}>
+                    <div className={cn('absolute inset-x-0 top-0 h-1', card.bar)} />
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-background/80 shadow-sm">
+                        {card.icon}
+                      </span>
+                      <p className="text-sm font-semibold">{card.title}</p>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-foreground/80">
+                      {card.body}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1.5">
-                <span className="text-sm font-medium">专业背景</span>
-                <Textarea
-                  value={profileForm.major}
-                  onChange={(event) =>
-                    setProfileForm((previous) => ({ ...previous, major: event.target.value }))
-                  }
-                  className="min-h-24 resize-y text-sm leading-6"
-                  placeholder="例如：计算机大二，学过高数和 Python。"
-                />
-              </label>
-              <label className="space-y-1.5">
-                <span className="text-sm font-medium">知识基础</span>
-                <Textarea
-                  value={profileForm.knowledge}
-                  onChange={(event) =>
-                    setProfileForm((previous) => ({ ...previous, knowledge: event.target.value }))
-                  }
-                  className="min-h-24 resize-y text-sm leading-6"
-                  placeholder="例如：理解基本概念，但公式推导和独立应用不稳。"
-                />
-              </label>
-              <label className="space-y-1.5">
-                <span className="text-sm font-medium">学习目标</span>
-                <Textarea
-                  value={profileForm.goal}
-                  onChange={(event) =>
-                    setProfileForm((previous) => ({ ...previous, goal: event.target.value }))
-                  }
-                  className="min-h-24 resize-y text-sm leading-6"
-                  placeholder="例如：读完 D2L 并能独立复现核心模型。"
-                />
-              </label>
-              <label className="space-y-1.5">
-                <span className="text-sm font-medium">认知风格</span>
-                <Textarea
-                  value={profileForm.cognitiveStyle}
-                  onChange={(event) =>
-                    setProfileForm((previous) => ({ ...previous, cognitiveStyle: event.target.value }))
-                  }
-                  className="min-h-24 resize-y text-sm leading-6"
-                  placeholder="例如：先看结构图，再用例题和代码验证理解。"
-                />
-              </label>
-              <label className="space-y-1.5">
-                <span className="text-sm font-medium">学习节奏</span>
-                <Textarea
-                  value={profileForm.pace}
-                  onChange={(event) =>
-                    setProfileForm((previous) => ({ ...previous, pace: event.target.value }))
-                  }
-                  className="min-h-24 resize-y text-sm leading-6"
-                  placeholder="例如：工作日每天 30 分钟，周末集中复盘。"
-                />
-              </label>
-              <label className="space-y-1.5">
-                <span className="text-sm font-medium">易错点</span>
-                <Textarea
-                  value={profileForm.risks}
-                  onChange={(event) =>
-                    setProfileForm((previous) => ({ ...previous, risks: event.target.value }))
-                  }
-                  className="min-h-24 resize-y text-sm leading-6"
-                  placeholder="例如：容易混淆损失函数、优化器和评价指标。"
-                />
-              </label>
-              <label className="space-y-1.5">
-                <span className="text-sm font-medium">资源偏好</span>
-                <Textarea
-                  value={profileForm.preference}
-                  onChange={(event) =>
-                    setProfileForm((previous) => ({ ...previous, preference: event.target.value }))
-                  }
-                  className="min-h-24 resize-y text-sm leading-6"
-                  placeholder="例如：优先使用已采纳来源和用户上传资料。"
-                />
-              </label>
-              <label className="space-y-1.5">
-                <span className="text-sm font-medium">学习动机</span>
-                <Textarea
-                  value={profileForm.motivation}
-                  onChange={(event) =>
-                    setProfileForm((previous) => ({ ...previous, motivation: event.target.value }))
-                  }
-                  className="min-h-24 resize-y text-sm leading-6"
-                  placeholder="例如：三周后通过期末考试，并能完成课程项目。"
-                />
-              </label>
+              {PROFILE_DIMENSIONS.map((dimension) => (
+                <label
+                  key={dimension.key}
+                  className="space-y-2 rounded-xl border bg-background p-3 shadow-sm transition-colors focus-within:border-primary/50"
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold">{dimension.label}</span>
+                    <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs', dimension.accent)}>
+                      {dimension.icon}
+                      画像维度
+                    </span>
+                  </span>
+                  <Textarea
+                    value={profileForm[dimension.key]}
+                    onChange={(event) =>
+                      setProfileForm((previous) => ({ ...previous, [dimension.key]: event.target.value }))
+                    }
+                    className="min-h-24 resize-y border-0 bg-muted/30 p-3 text-sm leading-6 shadow-none focus-visible:ring-1"
+                    placeholder={dimension.placeholder}
+                  />
+                </label>
+              ))}
             </div>
             <p className="text-xs leading-5 text-muted-foreground">
               最近学习信号只用于后台更新上面的画像字段，不在这里单独展示。

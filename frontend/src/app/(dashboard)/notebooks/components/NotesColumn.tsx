@@ -143,6 +143,12 @@ const PODCAST_STUDIO_OPTION: StudioAssetOption = {
   description: '调用 TTS 模型生成音频播客。',
 }
 
+const STUDIO_HIDDEN_ASSET_KINDS = new Set<LearningOutputKind>(['assessment'])
+
+function isPodcastEpisodeReady(episode: PodcastEpisode) {
+  return episode.job_status === 'completed' || Boolean(episode.audio_url || episode.audio_file)
+}
+
 const stripLearningAssetTitlePrefix = (title: string | null | undefined) => {
   if (!title) {
     return ''
@@ -199,7 +205,7 @@ const inferLearningAssetKind = (
 }
 
 const STUDIO_ASSET_OPTIONS: StudioAssetOption[] = [
-  ...LEARNING_ASSET_OPTIONS,
+  ...LEARNING_ASSET_OPTIONS.filter((option) => !STUDIO_HIDDEN_ASSET_KINDS.has(option.kind)),
   PODCAST_STUDIO_OPTION,
 ]
 
@@ -236,14 +242,13 @@ type StudioCategoryFilter = StudioAssetKind | 'all'
 const STUDIO_CATEGORY_OPTIONS: Array<{ id: StudioCategoryFilter; label: string }> = [
   { id: 'all', label: '全部' },
   { id: 'study_guide', label: '讲解文档' },
-  { id: 'blog', label: '博客讲解' },
+  { id: 'blog', label: '图文讲解' },
   { id: 'quiz', label: '测验' },
   { id: 'flashcards', label: '知识闪卡' },
   { id: 'mind_map', label: '思维导图' },
-  { id: 'reading', label: '阅读材料' },
-  { id: 'code_lab', label: '代码实验' },
+  { id: 'reading', label: '拓展阅读' },
+  { id: 'code_lab', label: '代码实验室' },
   { id: 'visual_aid', label: '辅助图片' },
-  { id: 'assessment', label: '学习评估' },
   { id: 'learning_path', label: '学习路径' },
   { id: 'podcast', label: '播客' },
 ]
@@ -1700,7 +1705,9 @@ export function NotesColumn({
   const [podcastJobs, setPodcastJobs] = useState<PodcastJobTracker[]>([])
   const [handledPodcastJobIds, setHandledPodcastJobIds] = useState<string[]>([])
   const [podcastLanguage, setPodcastLanguage] = useState('中文')
+  const [podcastLanguageOptionsOpen, setPodcastLanguageOptionsOpen] = useState(false)
   const [podcastSubtitleMode, setPodcastSubtitleMode] = useState<PodcastSubtitleMode>('single_line')
+  const [podcastSubtitleOptionsOpen, setPodcastSubtitleOptionsOpen] = useState(false)
   const [podcastGenerateVideo, setPodcastGenerateVideo] = useState(false)
   const [podcastEpisodeName, setPodcastEpisodeName] = useState('')
   const [podcastGenerateDialogOpen, setPodcastGenerateDialogOpen] = useState(false)
@@ -1750,14 +1757,14 @@ export function NotesColumn({
   const notebookPodcastEpisodes = useMemo(() => {
     const legacyEpisodeName = `${notebookName || '学习记录'} 播客`
     return podcastEpisodesQuery.episodes.filter((episode) => {
+      if (!isPodcastEpisodeReady(episode)) {
+        return false
+      }
       if (sameRecordId(episode.notebook_id, notebookId)) {
         return true
       }
-      const isCompletedLegacyEpisode =
-        episode.job_status === 'completed' || Boolean(episode.audio_url)
       return (
         !episode.notebook_id &&
-        isCompletedLegacyEpisode &&
         (episode.name === legacyEpisodeName || episode.name.startsWith(`${legacyEpisodeName} `))
       )
     })
@@ -1873,6 +1880,23 @@ export function NotesColumn({
     ))
   }, [materialOptions, podcastMaterialSearch])
   const isAssetListLoading = isLoading || podcastEpisodesQuery.isLoading
+  const assessmentNotes = useMemo(
+    () => (notes ?? []).filter((note) => {
+      const asset = parseLearningAssetNote(note.content)
+      const kind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
+      return kind === 'assessment'
+    }),
+    [notes]
+  )
+  const latestAssessmentNote = assessmentNotes[0]
+  const studioAssetNotes = useMemo(
+    () => (notes ?? []).filter((note) => {
+      const asset = parseLearningAssetNote(note.content)
+      const kind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
+      return Boolean(kind && !STUDIO_HIDDEN_ASSET_KINDS.has(kind))
+    }),
+    [notes]
+  )
   const studioCategoryCounts = useMemo(() => {
     const counts = STUDIO_CATEGORY_OPTIONS.reduce<Record<StudioCategoryFilter, number>>(
       (accumulator, option) => {
@@ -1882,16 +1906,16 @@ export function NotesColumn({
       {} as Record<StudioCategoryFilter, number>
     )
     counts.podcast = notebookPodcastEpisodes.length
-    for (const note of notes ?? []) {
+    for (const note of studioAssetNotes) {
       const asset = parseLearningAssetNote(note.content)
       const kind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
       if (kind && counts[kind] !== undefined) {
         counts[kind] += 1
       }
     }
-    counts.all = notebookPodcastEpisodes.length + (notes?.length ?? 0)
+    counts.all = notebookPodcastEpisodes.length + studioAssetNotes.length
     return counts
-  }, [notebookPodcastEpisodes.length, notes])
+  }, [notebookPodcastEpisodes.length, studioAssetNotes])
   const visibleNotebookPodcastEpisodes = useMemo(
     () => (
       studioCategoryFilter === 'all' || studioCategoryFilter === 'podcast'
@@ -1901,7 +1925,7 @@ export function NotesColumn({
     [notebookPodcastEpisodes, studioCategoryFilter]
   )
   const visibleStudioNotes = useMemo(
-    () => (notes ?? []).filter((note) => {
+    () => studioAssetNotes.filter((note) => {
       if (studioCategoryFilter === 'all') {
         return true
       }
@@ -1912,7 +1936,7 @@ export function NotesColumn({
       const kind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
       return kind === studioCategoryFilter
     }),
-    [notes, studioCategoryFilter]
+    [studioAssetNotes, studioCategoryFilter]
   )
   const [isBuildingPodcast, setIsBuildingPodcast] = useState(false)
 
@@ -2684,10 +2708,53 @@ export function NotesColumn({
               </Button>
             </div>
 
+            <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-3 dark:border-teal-900/60 dark:bg-teal-950/25">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4 text-teal-700 dark:text-teal-300" />
+                    <p className="text-sm font-semibold">学习效果评估</p>
+                    {assessmentNotes.length > 0 && (
+                      <Badge variant="outline" className="border-teal-300 bg-background/70 text-xs text-teal-700 dark:border-teal-800 dark:text-teal-300">
+                        {assessmentNotes.length}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    评估属于画像反馈，不混入生成资源分类；用于更新掌握度、风险和下一步策略。
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 bg-background/80"
+                  disabled={isGeneratingStudioAsset}
+                  onClick={() => handleQuickGenerateAsset('assessment')}
+                >
+                  {latestAssessmentNote ? '更新评估' : '生成评估'}
+                </Button>
+              </div>
+              {latestAssessmentNote && (
+                <button
+                  type="button"
+                  className="mt-3 w-full rounded-lg border bg-background/75 p-3 text-left text-sm transition-colors hover:border-teal-400"
+                  onClick={() => {
+                    setOpenNoteFullscreen(false)
+                    setEditingNote(latestAssessmentNote)
+                  }}
+                >
+                  <span className="font-medium">{stripLearningAssetTitlePrefix(latestAssessmentNote.title) || '最近一次学习效果评估'}</span>
+                  <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
+                    {getVisibleLearningAssetContent(latestAssessmentNote.content).slice(0, 180)}
+                  </span>
+                </button>
+              )}
+            </div>
+
             {studioCategoryCounts.all > 0 && (
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {STUDIO_CATEGORY_OPTIONS
-                  .filter((option) => option.id === 'all' || studioCategoryCounts[option.id] > 0)
                   .map((option) => {
                     const active = studioCategoryFilter === option.id
                     return (
@@ -2717,7 +2784,7 @@ export function NotesColumn({
                 <div className="flex items-center justify-center py-8">
                   <LoadingSpinner />
                 </div>
-              ) : (!notes || notes.length === 0) && notebookPodcastEpisodes.length === 0 ? (
+              ) : studioAssetNotes.length === 0 && notebookPodcastEpisodes.length === 0 ? (
                 <EmptyState
                   icon={Sparkles}
                   title="生成内容会保存在这里"
@@ -3030,32 +3097,85 @@ export function NotesColumn({
             </div>
             <div className="space-y-2">
               <Label htmlFor="podcast-generation-language">语音语言</Label>
-              <Select value={podcastLanguage} onValueChange={setPodcastLanguage}>
-                <SelectTrigger id="podcast-generation-language">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="中文">中文</SelectItem>
-                  <SelectItem value="English">English</SelectItem>
-                  <SelectItem value="中英双语">中英双语</SelectItem>
-                </SelectContent>
-              </Select>
+              <div id="podcast-generation-language" className="space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 w-full justify-between"
+                  disabled={isGeneratingStudioAsset}
+                  onClick={() => setPodcastLanguageOptionsOpen((open) => !open)}
+                >
+                  <span>{podcastLanguage === '中文' ? '简体中文' : podcastLanguage}</span>
+                  <ChevronDown className={cn('h-4 w-4 transition-transform', podcastLanguageOptionsOpen && 'rotate-180')} />
+                </Button>
+                {podcastLanguageOptionsOpen && (
+                  <div className="grid grid-cols-3 gap-2 rounded-lg border bg-background p-2">
+                    {([
+                      { value: '中文', label: '简体中文' },
+                      { value: 'English', label: 'English' },
+                      { value: '中英双语', label: '中英双语' },
+                    ] as const).map((option) => (
+                      <Button
+                        key={option.value}
+                        type="button"
+                        size="sm"
+                        variant={podcastLanguage === option.value ? 'default' : 'outline'}
+                        disabled={isGeneratingStudioAsset}
+                        onClick={() => {
+                          setPodcastLanguage(option.value)
+                          setPodcastLanguageOptionsOpen(false)
+                        }}
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="podcast-generation-subtitles">字幕类型</Label>
-              <Select
-                value={podcastSubtitleMode}
-                onValueChange={(value) => setPodcastSubtitleMode(value as PodcastSubtitleMode)}
-              >
-                <SelectTrigger id="podcast-generation-subtitles">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="single_line">逐句单行字幕</SelectItem>
-                  <SelectItem value="bilingual">中英双语字幕</SelectItem>
-                  <SelectItem value="none">不显示字幕</SelectItem>
-                </SelectContent>
-              </Select>
+              <div id="podcast-generation-subtitles" className="space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 w-full justify-between"
+                  disabled={isGeneratingStudioAsset}
+                  onClick={() => setPodcastSubtitleOptionsOpen((open) => !open)}
+                >
+                  <span>
+                    {{
+                      single_line: '逐句单行字幕',
+                      bilingual: '中英双语字幕',
+                      none: '不显示字幕',
+                    }[podcastSubtitleMode]}
+                  </span>
+                  <ChevronDown className={cn('h-4 w-4 transition-transform', podcastSubtitleOptionsOpen && 'rotate-180')} />
+                </Button>
+                {podcastSubtitleOptionsOpen && (
+                  <div className="grid gap-2 rounded-lg border bg-background p-2 sm:grid-cols-3">
+                    {([
+                      { value: 'single_line', label: '逐句单行字幕' },
+                      { value: 'bilingual', label: '中英双语字幕' },
+                      { value: 'none', label: '不显示字幕' },
+                    ] as const).map((option) => (
+                      <Button
+                        key={option.value}
+                        type="button"
+                        size="sm"
+                        variant={podcastSubtitleMode === option.value ? 'default' : 'outline'}
+                        disabled={isGeneratingStudioAsset}
+                        onClick={() => {
+                          setPodcastSubtitleMode(option.value as PodcastSubtitleMode)
+                          setPodcastSubtitleOptionsOpen(false)
+                        }}
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <label
               htmlFor="podcast-generation-video"

@@ -87,6 +87,52 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   minimax: 'MiniMax',
 }
 
+const PROVIDER_SEARCH_ALIASES: Record<string, string[]> = {
+  dashscope: [
+    'bailian',
+    'aliyun',
+    'aliyun bailian',
+    'dashscope',
+    'qwen',
+    'tongyi',
+    '百炼',
+    '阿里云',
+    '通义',
+    '千问',
+    '通义千问',
+    '语音',
+    '图片',
+    '向量',
+  ],
+}
+
+const PROVIDER_DISCOVERY_NOTES: Record<string, string> = {
+  deepseek: 'DeepSeek 官方 API 只提供语言模型；embedding、语音和图片请使用百炼、Voyage、OpenAI、ElevenLabs 或 Deepgram 等 provider。',
+  dashscope: '百炼/DashScope 支持通义千问语言模型、text-embedding、Qwen Image、Qwen/CosyVoice TTS 和 Qwen/Paraformer ASR。请在模型类型下拉框里切换查看。',
+}
+
+const MODEL_TYPE_SEARCH_ALIASES: Record<ModelType, string[]> = {
+  language: ['chat', 'llm', 'text', '语言', '文本', '对话', '推理'],
+  embedding: ['embed', 'embedding', '向量', '嵌入', '检索'],
+  text_to_speech: ['tts', 'speech', 'voice', '语音合成', '文本转语音', '配音'],
+  speech_to_text: ['stt', 'asr', 'transcribe', '语音识别', '语音转文字', '转写'],
+  image: ['image', 'vision', '图片', '图像', '绘图', '生图'],
+}
+
+function modelSearchText(model: DiscoveredModel) {
+  return [
+    model.name,
+    model.provider,
+    model.description,
+    model.model_type,
+    ...(PROVIDER_SEARCH_ALIASES[model.provider] || []),
+    ...(model.model_type ? MODEL_TYPE_SEARCH_ALIASES[model.model_type as ModelType] || [] : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
 // All providers in display order
 const ALL_PROVIDERS = [
   'openai', 'anthropic', 'google', 'groq', 'mistral', 'deepseek',
@@ -492,9 +538,14 @@ function DiscoverModelsDialog({
   const [discoveryError, setDiscoveryError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [customModelSelected, setCustomModelSelected] = useState(false)
+  const providerKey = credential.provider.replace(/-/g, '_')
+  const supportedModalities = useMemo(
+    () => PROVIDER_MODALITIES[providerKey] || credential.modalities as ModelType[],
+    [credential.modalities, providerKey]
+  )
   // Model type selector - default to credential's first modality
   const [selectedType, setSelectedType] = useState<ModelType>(
-    (credential.modalities[0] as ModelType) || 'language'
+    supportedModalities[0] || 'language'
   )
 
   useEffect(() => {
@@ -526,7 +577,7 @@ function DiscoverModelsDialog({
       setDiscoveryError(null)
       setSearchQuery('')
       setCustomModelSelected(false)
-      setSelectedType((credential.modalities[0] as ModelType) || 'language')
+      setSelectedType(supportedModalities[0] || 'language')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only fires on open/close
   }, [open])
@@ -547,7 +598,7 @@ function DiscoverModelsDialog({
     )
     if (!searchQuery.trim()) return typeFiltered
     const q = searchQuery.toLowerCase()
-    return typeFiltered.filter(m => m.name.toLowerCase().includes(q))
+    return typeFiltered.filter(m => modelSearchText(m).includes(q))
   }, [discoveredModels, searchQuery, selectedType])
 
   // Show custom model option when search doesn't exactly match any discovered model
@@ -634,22 +685,28 @@ function DiscoverModelsDialog({
             {/* Model type selector */}
             <div className="space-y-2">
               <Label>{t('models.modelType')}</Label>
-              <Select value={selectedType} onValueChange={(v) => setSelectedType(v as ModelType)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(PROVIDER_MODALITIES[credential.provider] || credential.modalities as ModelType[]).map(type => (
-                    <SelectItem key={type} value={type}>
-                      <div className="flex items-center gap-2">
-                        {TYPE_ICONS[type]}
-                        {TYPE_LABELS[type]}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {supportedModalities.map(type => (
+                  <Button
+                    key={type}
+                    type="button"
+                    variant={selectedType === type ? 'default' : 'outline'}
+                    size="sm"
+                    className="justify-start gap-2"
+                    onClick={() => setSelectedType(type)}
+                  >
+                    {TYPE_ICONS[type]}
+                    {TYPE_LABELS[type]}
+                  </Button>
+                ))}
+              </div>
               <p className="text-xs text-muted-foreground">{t('models.modelTypeHint')}</p>
+              {PROVIDER_DISCOVERY_NOTES[providerKey] && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{PROVIDER_DISCOVERY_NOTES[providerKey]}</AlertDescription>
+                </Alert>
+              )}
             </div>
 
             {/* Search input */}

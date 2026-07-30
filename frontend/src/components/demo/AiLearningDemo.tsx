@@ -22,6 +22,7 @@ import {
   Loader2,
   Map,
   Network,
+  Pause,
   Play,
   Radio,
   RotateCcw,
@@ -85,6 +86,47 @@ function EmptyState({ icon, children }: { icon: ReactNode; children: ReactNode }
       <span className="mb-3 text-muted-foreground/60">{icon}</span>
       {children}
     </div>
+  )
+}
+
+function TypewriterText({
+  text,
+  active = true,
+  speed = 18,
+}: {
+  text: string
+  active?: boolean
+  speed?: number
+}) {
+  const [visibleLength, setVisibleLength] = useState(active ? 0 : text.length)
+
+  useEffect(() => {
+    if (!active) {
+      setVisibleLength(text.length)
+      return
+    }
+
+    setVisibleLength(0)
+    const timer = window.setInterval(() => {
+      setVisibleLength((current) => {
+        if (current >= text.length) {
+          window.clearInterval(timer)
+          return current
+        }
+        return current + 1
+      })
+    }, speed)
+
+    return () => window.clearInterval(timer)
+  }, [active, speed, text])
+
+  return (
+    <>
+      {text.slice(0, visibleLength)}
+      {active && visibleLength < text.length && (
+        <span className="ml-0.5 inline-block h-4 w-1 translate-y-0.5 animate-pulse rounded bg-current" />
+      )}
+    </>
   )
 }
 
@@ -193,7 +235,7 @@ function NotebookScene({ step }: { step: number }) {
             {step >= 2 && (
               <>
                 <div className="ml-auto max-w-[82%] rounded-2xl rounded-tr-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground">
-                  {AI_LEARNING_DEMO.profileAnswer}
+                  <TypewriterText text={AI_LEARNING_DEMO.profileAnswer} active={step === 2} speed={16} />
                 </div>
                 <div className="max-w-[88%] rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
@@ -209,7 +251,7 @@ function NotebookScene({ step }: { step: number }) {
 
             {step >= 3 && (
               <div className="ml-auto max-w-[82%] rounded-2xl rounded-tr-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground">
-                {AI_LEARNING_DEMO.userQuestion}
+                <TypewriterText text={AI_LEARNING_DEMO.userQuestion} active={step === 3} speed={18} />
               </div>
             )}
 
@@ -297,7 +339,7 @@ function SearchScene({ step }: { step: number }) {
         <p className="text-xs font-medium text-muted-foreground">搜索目标</p>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row">
           <div className="flex h-10 flex-1 items-center rounded-lg border bg-background px-3 text-sm">
-            {AI_LEARNING_DEMO.searchQuery}
+            <TypewriterText text={AI_LEARNING_DEMO.searchQuery} active={step === 5} speed={22} />
           </div>
           <Button className="gap-2">
             <Search className="h-4 w-4" />
@@ -1007,9 +1049,13 @@ function StudioScene({ step }: { step: number }) {
 
 function DemoControl({
   step,
+  autoPlay,
+  onAutoPlayChange,
   onRestart,
 }: {
   step: number
+  autoPlay: boolean
+  onAutoPlayChange: (enabled: boolean) => void
   onRestart: () => void
 }) {
   const complete = step >= AI_LEARNING_DEMO_TOTAL_STEPS
@@ -1017,6 +1063,16 @@ function DemoControl({
 
   return (
     <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full border bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 rounded-full"
+        onClick={() => onAutoPlayChange(!autoPlay)}
+        aria-label={autoPlay ? '暂停自动演示' : '自动演示'}
+      >
+        {autoPlay ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+      </Button>
       {complete ? (
         <>
           <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -1059,6 +1115,7 @@ export function AiLearningDemo() {
     ? Math.min(requestedStep, AI_LEARNING_DEMO_TOTAL_STEPS)
     : defaultDemoStepForPath(pathname)
   const [step, setStep] = useState(initialStep)
+  const [autoPlay, setAutoPlay] = useState(searchParams?.get('autoplay') === '1')
 
   useEffect(() => {
     setStep(initialStep)
@@ -1069,6 +1126,24 @@ export function AiLearningDemo() {
       scrollContainerRef.current.scrollTop = 0
     }
   }, [step])
+
+  useEffect(() => {
+    if (!autoPlay) return
+    if (step >= AI_LEARNING_DEMO_TOTAL_STEPS) {
+      setAutoPlay(false)
+      return
+    }
+
+    const typingSteps = new Set([2, 3, 5])
+    const delay = typingSteps.has(step) ? 3200 : step === 6 || step === 9 || step === 11 ? 2600 : 1800
+    const timer = window.setTimeout(() => {
+      const next = Math.min(step + 1, AI_LEARNING_DEMO_TOTAL_STEPS)
+      setStep(next)
+      router.push(demoStepHref(next))
+    }, delay)
+
+    return () => window.clearTimeout(timer)
+  }, [autoPlay, router, step])
 
   useEffect(() => {
     const advance = (event: KeyboardEvent) => {
@@ -1100,7 +1175,10 @@ export function AiLearningDemo() {
       {scene === 'studio' && <StudioScene step={step} />}
       <DemoControl
         step={step}
+        autoPlay={autoPlay}
+        onAutoPlayChange={setAutoPlay}
         onRestart={() => {
+          setAutoPlay(false)
           setStep(0)
           router.push(demoStepHref(0))
         }}
