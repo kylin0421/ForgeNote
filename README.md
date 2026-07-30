@@ -55,28 +55,97 @@ powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1
 
 输出位于 `dist/windows/ForgeNote-Setup-0.1.5.exe`，打包与数据目录说明见 [Windows 打包文档](desktop/windows/README.md)。
 
-### 源码运行（开发）
+### 浏览器运行（Docker，推荐）
+
+如果希望在 Chrome、Edge、Safari 等浏览器中使用 ForgeNote，而不是安装 Windows 桌面版，最简单的方式是用 Docker 同时启动数据库、API、后台任务 worker 和 Web 前端。
+
+1. 在项目根目录准备配置。复制示例文件后，至少修改 `FORGENOTE_ENCRYPTION_KEY`、`SURREAL_USER` 和 `SURREAL_PASSWORD`；这些值投入使用后应保持不变。
 
 ```powershell
-uv sync
-uv run python run_api.py
+Copy-Item .env.example .env
 ```
 
-另开终端启动前端：
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-### Docker（可选）
+2. 构建并启动服务：
 
 ```powershell
 docker compose up -d --build
+docker compose ps
 ```
 
-Docker 构建依赖 Docker Hub、Debian 和 npm 等外部源；网络受限的 Windows 环境建议直接使用桌面安装包。
+3. 等待 `forgenote` 和 `surrealdb` 进入运行状态，然后打开：
+
+- Web 界面：`http://localhost:8502`
+- API 文档（仅调试时需要）：`http://localhost:5055/docs`
+
+查看启动日志或停止服务：
+
+```powershell
+docker compose logs -f forgenote
+docker compose down
+```
+
+上传内容和应用数据分别保存在项目根目录的 `notebook_data/` 与 `surreal_data/`，普通的 `docker compose down` 不会删除它们。Docker 构建依赖 Docker Hub、Debian 和 npm 等外部源；网络受限的 Windows 环境建议使用桌面安装包。
+
+#### 从其他设备访问
+
+- 局域网直连：访问 `http://<服务器 IP>:8502`，并在防火墙中只向可信网络开放 `8502` 和 `5055`。数据库端口 `8000` 不应对外开放。
+- 公网或 HTTPS：推荐只把反向代理的 `443` 端口暴露到公网，并将流量转发到 `127.0.0.1:8502`。在 `.env` 中设置同源地址：
+
+```dotenv
+API_URL=https://forgenote.example.com
+INTERNAL_API_URL=http://localhost:5055
+```
+
+`API_URL` 是浏览器访问的公开地址；`INTERNAL_API_URL` 是 Next.js 在容器内部访问 API 的地址。这样浏览器请求 `/api/*` 时会由 Web 服务转发到内部 API，无需公开 `5055`。反向代理需要保留 `Host` 和 `X-Forwarded-Proto` 请求头；长时间生成与流式响应建议关闭代理缓冲并延长读取超时。示例 Nginx 站点配置如下，TLS 证书部分请按实际环境补充：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name forgenote.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8502;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+公网部署前务必使用随机且稳定的加密密钥、强数据库密码，并通过防火墙或安全组阻止外部访问 `5055` 和 `8000`。更多配置项见 [部署与演示](docs/deployment-and-demo.md) 和 [配置指南](docs/configuration-guide.md)。
+
+### 源码运行（浏览器开发）
+
+源码开发需要分别运行数据库、API、后台 worker 和前端。先准备依赖与数据库：
+
+```powershell
+Copy-Item .env.example .env
+# 源码运行时将 .env 中的 SURREAL_URL 改为 ws://localhost:8000/rpc
+uv sync
+docker compose up -d surrealdb
+cd frontend
+npm ci
+cd ..
+```
+
+然后分别打开三个终端：
+
+```powershell
+# 终端 1：API
+uv run --env-file .env python run_api.py
+
+# 终端 2：后台任务 worker
+uv run --env-file .env surreal-commands-worker --import-modules commands
+
+# 终端 3：Web 前端
+cd frontend
+npm run dev
+```
+
+开发模式的 Web 界面位于 `http://localhost:3000`，API 位于 `http://localhost:5055`。只启动 API 和前端时，解析、生成、播客等后台任务不会执行，因此不要省略 worker。
 
 ## 技术组成
 

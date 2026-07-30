@@ -598,7 +598,9 @@ def run_desktop(stack: ForgeNoteStack) -> int:
         maximized=True,
         background_color="#f7faff",
         text_select=True,
-        zoomable=True,
+        # Keep the desktop shell at its designed scale. WebView document zoom
+        # can otherwise leave the SPA horizontally clipped after Ctrl+wheel.
+        zoomable=False,
     )
     if window is None:
         raise RuntimeError("Could not create the desktop application window")
