@@ -8,11 +8,8 @@ import {
   Archive,
   ArchiveRestore,
   BookOpen,
-  Keyboard,
   MoreVertical,
-  Play,
   Plus,
-  Sparkles,
   Trash2,
 } from 'lucide-react'
 
@@ -213,35 +210,44 @@ function DemoNotebookTile() {
   const openDemo = () => router.push('/notebooks/ai-learning-demo')
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={openDemo}
-      className="group relative flex aspect-[1.26] min-h-56 overflow-hidden rounded-xl border border-violet-400/50 bg-gradient-to-br from-violet-500/20 via-primary/10 to-cyan-400/10 p-7 text-left text-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-lg"
-      aria-label="打开 ai学习 演示记录"
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          openDemo()
+        }
+      }}
+      className={cn(
+        'group relative flex aspect-[1.26] min-h-56 cursor-pointer flex-col rounded-xl border p-7 text-slate-950 transition-colors hover:border-primary/50',
+        CARD_STYLES[0]
+      )}
+      aria-label="打开学习记录 ai学习"
     >
-      <span className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-violet-500/15 blur-2xl transition-transform group-hover:scale-125" />
-      <span className="relative flex w-full flex-col">
-        <span className="flex items-start justify-between gap-4">
-          <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-violet-600 text-white shadow-md">
-            <Sparkles className="h-7 w-7" />
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-400/30 bg-background/80 px-2.5 py-1 text-xs font-medium text-violet-700 backdrop-blur dark:text-violet-300">
-            <Play className="h-3 w-3 fill-current" />
-            演示模式
-          </span>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-white/70 text-primary shadow-sm">
+          <BookOpen className="h-7 w-7" />
+        </div>
+
+        <span
+          className="flex h-9 w-9 items-center justify-center rounded-full text-slate-700 opacity-80"
+          aria-hidden="true"
+        >
+          <MoreVertical className="h-5 w-5" />
         </span>
-        <span className="mt-auto pt-7">
-          <span className="block text-2xl font-semibold leading-tight">ai学习</span>
-          <span className="mt-2 block text-sm leading-5 text-muted-foreground">
-            画像、对话、资料、生成与 Quiz 的完整学习闭环
-          </span>
-          <span className="mt-4 flex items-center gap-2 text-xs font-medium text-primary">
-            <Keyboard className="h-3.5 w-3.5" />
-            进入后按空格逐步展示
-          </span>
-        </span>
-      </span>
-    </button>
+      </div>
+
+      <div className="mt-auto space-y-4">
+        <h2 className="line-clamp-2 text-2xl font-semibold leading-tight tracking-normal text-slate-950">
+          ai学习
+        </h2>
+        <p className="text-sm font-medium text-slate-700">
+          {format(new Date(), 'd MMM yyyy')} · 4 个来源
+        </p>
+      </div>
+    </div>
   )
 }
 
@@ -364,13 +370,13 @@ export default function NotebooksPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
-              {!showArchived && <DemoNotebookTile />}
               {!showArchived && <CreateNotebookTile onClick={() => setCreateDialogOpen(true)} />}
+              {!showArchived && <DemoNotebookTile />}
               {sortedNotebooks.map((notebook, index) => (
                 <NotebookTile
                   key={notebook.id}
                   notebook={notebook}
-                  index={index}
+                  index={index + (!showArchived ? 1 : 0)}
                 />
               ))}
             </div>
