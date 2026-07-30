@@ -34,6 +34,7 @@ interface AppShellProps {
   children: React.ReactNode
   title?: React.ReactNode
   titleActions?: React.ReactNode
+  runtimeStatus?: boolean
 }
 
 const NAV_ITEMS = [
@@ -46,7 +47,12 @@ const NAV_ITEMS = [
   { href: '/advanced', label: '高级', icon: Wrench },
 ]
 
-export function AppShell({ children, title, titleActions }: AppShellProps) {
+export function AppShell({
+  children,
+  title,
+  titleActions,
+  runtimeStatus = true,
+}: AppShellProps) {
   const pathname = usePathname()
   const { t } = useTranslation()
   const { showNotebookDialog, openSourceDialog } = useCreateDialogs()
@@ -148,10 +154,10 @@ export function AppShell({ children, title, titleActions }: AppShellProps) {
       </header>
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <SetupBanner />
+        {runtimeStatus && <SetupBanner />}
         {children}
       </main>
-      <JobsFloatingPanel />
+      {runtimeStatus && <JobsFloatingPanel />}
     </div>
   )
 }

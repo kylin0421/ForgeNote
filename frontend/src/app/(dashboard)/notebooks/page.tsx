@@ -8,8 +8,11 @@ import {
   Archive,
   ArchiveRestore,
   BookOpen,
+  Keyboard,
   MoreVertical,
+  Play,
   Plus,
+  Sparkles,
   Trash2,
 } from 'lucide-react'
 
@@ -205,6 +208,43 @@ function CreateNotebookTile({ onClick }: { onClick: () => void }) {
   )
 }
 
+function DemoNotebookTile() {
+  const router = useRouter()
+  const openDemo = () => router.push('/notebooks/ai-learning-demo')
+
+  return (
+    <button
+      type="button"
+      onClick={openDemo}
+      className="group relative flex aspect-[1.26] min-h-56 overflow-hidden rounded-xl border border-violet-400/50 bg-gradient-to-br from-violet-500/20 via-primary/10 to-cyan-400/10 p-7 text-left text-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-lg"
+      aria-label="打开 ai学习 演示记录"
+    >
+      <span className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-violet-500/15 blur-2xl transition-transform group-hover:scale-125" />
+      <span className="relative flex w-full flex-col">
+        <span className="flex items-start justify-between gap-4">
+          <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-violet-600 text-white shadow-md">
+            <Sparkles className="h-7 w-7" />
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-400/30 bg-background/80 px-2.5 py-1 text-xs font-medium text-violet-700 backdrop-blur dark:text-violet-300">
+            <Play className="h-3 w-3 fill-current" />
+            演示模式
+          </span>
+        </span>
+        <span className="mt-auto pt-7">
+          <span className="block text-2xl font-semibold leading-tight">ai学习</span>
+          <span className="mt-2 block text-sm leading-5 text-muted-foreground">
+            画像、对话、资料、生成与 Quiz 的完整学习闭环
+          </span>
+          <span className="mt-4 flex items-center gap-2 text-xs font-medium text-primary">
+            <Keyboard className="h-3.5 w-3.5" />
+            进入后按空格逐步展示
+          </span>
+        </span>
+      </span>
+    </button>
+  )
+}
+
 export default function NotebooksPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -291,7 +331,7 @@ export default function NotebooksPage() {
             <div className="flex min-h-[50vh] items-center justify-center">
               <LoadingSpinner size="lg" />
             </div>
-          ) : sortedNotebooks.length === 0 ? (
+          ) : showArchived && sortedNotebooks.length === 0 ? (
             <div
               className="notebooks-empty-state rounded-xl border bg-card text-center"
               style={NOTEBOOK_PAGE_STYLES.emptyState}
@@ -324,6 +364,7 @@ export default function NotebooksPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+              {!showArchived && <DemoNotebookTile />}
               {!showArchived && <CreateNotebookTile onClick={() => setCreateDialogOpen(true)} />}
               {sortedNotebooks.map((notebook, index) => (
                 <NotebookTile

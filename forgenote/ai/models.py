@@ -18,6 +18,24 @@ from forgenote.exceptions import ConfigurationError
 ModelType = Union[LanguageModel, EmbeddingModel, SpeechToTextModel, TextToSpeechModel]
 
 
+def _apply_provider_runtime_defaults(model: "Model", config: dict) -> dict:
+    """Apply safe provider defaults without overriding an explicit caller choice."""
+    if (
+        model.type == "language"
+        and model.provider.lower() == "deepseek"
+        and model.name.lower() == "deepseek-v4-flash"
+    ):
+        configured = dict(config)
+        extra_body = dict(configured.get("extra_body") or {})
+        # DeepSeek V4 enables thinking by default. ForgeNote uses Flash for
+        # latency-sensitive interactive text tasks, so keep it in fast mode
+        # unless a specific call explicitly opts back into thinking.
+        extra_body.setdefault("thinking", {"type": "disabled"})
+        configured["extra_body"] = extra_body
+        return configured
+    return config
+
+
 class Model(ObjectModel):
     table_name: ClassVar[str] = "model"
     nullable_fields: ClassVar[set[str]] = {"credential"}
@@ -165,6 +183,7 @@ class ModelManager:
 
         # Merge any additional kwargs (e.g. temperature)
         config.update(kwargs)
+        config = _apply_provider_runtime_defaults(model, config)
 
         register_runtime_ai_providers()
         spec = build_model_runtime_spec(
