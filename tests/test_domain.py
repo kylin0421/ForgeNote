@@ -531,6 +531,22 @@ class TestPodcastService:
 class TestPodcastEpisode:
     """Test podcast episode database record links."""
 
+    def test_video_request_intent_is_persisted_with_episode(self):
+        regular_episode = PodcastEpisode(
+            name="Audio only",
+            episode_profile={},
+            speaker_profile={},
+            briefing="Test briefing",
+            content="Test content",
+        )
+        video_episode = regular_episode.model_copy(
+            update={"name": "Explainer", "video_requested": True}
+        )
+
+        assert regular_episode.video_requested is False
+        assert video_episode.video_requested is True
+        assert video_episode._prepare_save_data()["video_requested"] is True
+
     def test_prepare_save_data_converts_notebook_id_to_record_id(self):
         episode = PodcastEpisode(
             name="Test episode",

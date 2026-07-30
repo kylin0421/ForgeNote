@@ -33,6 +33,7 @@ import {
   TimerReset,
   Trash2,
   User,
+  Video,
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -61,8 +62,13 @@ import {
   getVisibleLearningAssetContent,
   mindMapContentToSvg,
   parseLearningAssetNote,
+  type LearningAssetInteractionEvent,
   type MindMapMaterial,
 } from '@/components/learning/LearningAssetPreview'
+import {
+  isExplainerVideoEpisode,
+  NotebookVideoAssetCard,
+} from '@/components/podcasts/NotebookVideoAssetCard'
 import { chatApi } from '@/lib/api/chat'
 import { commandsApi } from '@/lib/api/commands'
 import { learningApi } from '@/lib/api/learning'
@@ -75,6 +81,7 @@ import {
   useDeletePodcastEpisode,
   useGeneratePodcast,
   usePodcastEpisodes,
+  useRetryPodcastEpisode,
   useSpeakerProfiles,
 } from '@/lib/hooks/use-podcasts'
 import { useDeleteSource } from '@/lib/hooks/use-sources'
@@ -127,12 +134,12 @@ type PodcastJobTracker = {
   jobId: string
 }
 
-type StudioAssetKind = LearningOutputKind | 'podcast'
+type StudioAssetKind = LearningOutputKind | 'podcast' | 'video'
 
 type StudioAssetOption =
   | (typeof LEARNING_ASSET_OPTIONS)[number]
   | {
-      kind: 'podcast'
+      kind: 'podcast' | 'video'
       label: string
       description: string
     }
@@ -145,8 +152,20 @@ const PODCAST_STUDIO_OPTION: StudioAssetOption = {
 
 const STUDIO_HIDDEN_ASSET_KINDS = new Set<LearningOutputKind>(['assessment'])
 
-function isPodcastEpisodeReady(episode: PodcastEpisode) {
-  return episode.job_status === 'completed' || Boolean(episode.audio_url || episode.audio_file)
+export function shouldShowPodcastEpisodeInStudio(episode: PodcastEpisode) {
+  const status = episode.job_status ?? 'unknown'
+  return (
+    status === 'completed' ||
+    FAILED_EPISODE_STATUSES.includes(status) ||
+    Boolean(episode.audio_url || episode.audio_file) ||
+    isExplainerVideoEpisode(episode)
+  )
+}
+
+const VIDEO_STUDIO_OPTION: StudioAssetOption = {
+  kind: 'video',
+  label: '讲解视频',
+  description: '生成配音、关键画面和字幕，并按真实语音时间轴合成为 MP4。',
 }
 
 const stripLearningAssetTitlePrefix = (title: string | null | undefined) => {
@@ -204,9 +223,18 @@ const inferLearningAssetKind = (
   return null
 }
 
+export function shouldShowNoteInStudio(
+  note: Pick<NoteResponse, 'content' | 'title'>
+) {
+  const asset = parseLearningAssetNote(note.content)
+  const kind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
+  return !kind || !STUDIO_HIDDEN_ASSET_KINDS.has(kind)
+}
+
 const STUDIO_ASSET_OPTIONS: StudioAssetOption[] = [
   ...LEARNING_ASSET_OPTIONS.filter((option) => !STUDIO_HIDDEN_ASSET_KINDS.has(option.kind)),
   PODCAST_STUDIO_OPTION,
+  VIDEO_STUDIO_OPTION,
 ]
 
 const STUDIO_ASSET_ICONS: Record<StudioAssetKind, typeof FileText> = {
@@ -221,6 +249,7 @@ const STUDIO_ASSET_ICONS: Record<StudioAssetKind, typeof FileText> = {
   assessment: ClipboardList,
   learning_path: Network,
   podcast: Headphones,
+  video: Video,
 }
 
 const STUDIO_ASSET_STYLES: Record<StudioAssetKind, string> = {
@@ -235,6 +264,7 @@ const STUDIO_ASSET_STYLES: Record<StudioAssetKind, string> = {
   assessment: 'border-teal-300 bg-teal-50 hover:border-teal-500 hover:bg-teal-100 dark:border-teal-500/70 dark:bg-teal-950/35 dark:hover:border-teal-400 dark:hover:bg-teal-950/50',
   learning_path: 'border-lime-300 bg-lime-50 hover:border-lime-500 hover:bg-lime-100 dark:border-lime-500/70 dark:bg-lime-950/35 dark:hover:border-lime-400 dark:hover:bg-lime-950/50',
   podcast: 'border-indigo-300 bg-indigo-50 hover:border-indigo-500 hover:bg-indigo-100 dark:border-indigo-500/70 dark:bg-indigo-950/35 dark:hover:border-indigo-400 dark:hover:bg-indigo-950/50',
+  video: 'border-purple-300 bg-purple-50 hover:border-purple-500 hover:bg-purple-100 dark:border-purple-500/70 dark:bg-purple-950/35 dark:hover:border-purple-400 dark:hover:bg-purple-950/50',
 }
 
 type StudioCategoryFilter = StudioAssetKind | 'all'
@@ -251,6 +281,7 @@ const STUDIO_CATEGORY_OPTIONS: Array<{ id: StudioCategoryFilter; label: string }
   { id: 'visual_aid', label: '辅助图片' },
   { id: 'learning_path', label: '学习路径' },
   { id: 'podcast', label: '播客' },
+  { id: 'video', label: '讲解视频' },
 ]
 
 const QUIZ_MISTAKE_BOOK_STORAGE_KEY = 'learning-quiz-mistake-book:v1'
@@ -302,6 +333,10 @@ type StudioExportTarget =
       type: 'podcast'
       episode: PodcastEpisode
     }
+  | {
+      type: 'video'
+      episode: PodcastEpisode
+    }
 
 type StudioExportFormat = 'default' | 'mind_map_md' | 'mind_map_png'
 
@@ -323,8 +358,8 @@ type StudioExportMistakeBookItem = {
 }
 
 function getStudioAssetTitle(target: StudioExportTarget) {
-  if (target.type === 'podcast') {
-    return target.episode.name || '未命名播客'
+  if (target.type === 'podcast' || target.type === 'video') {
+    return target.episode.name || (target.type === 'video' ? '未命名讲解视频' : '未命名播客')
   }
   return (
     target.asset?.title ||
@@ -337,6 +372,9 @@ function getStudioAssetTitle(target: StudioExportTarget) {
 function isStudioTargetExportable(target: StudioExportTarget) {
   if (target.type === 'podcast') {
     return Boolean(target.episode.audio_url || target.episode.audio_file)
+  }
+  if (target.type === 'video') {
+    return Boolean(target.episode.video_url || target.episode.video_file)
   }
   if (!target.asset) {
     return false
@@ -358,6 +396,9 @@ function isStudioTargetExportable(target: StudioExportTarget) {
 function getStudioExportLabel(target: StudioExportTarget) {
   if (target.type === 'podcast') {
     return '导出 WAV'
+  }
+  if (target.type === 'video') {
+    return '导出 MP4'
   }
   if (!target.asset) {
     return '导出'
@@ -951,6 +992,8 @@ type NotebookPodcastAssetCardProps = {
   onOpenStudio?: (episode: PodcastEpisode) => void
   onBack?: () => void
   onExport?: (episode: PodcastEpisode) => void
+  onRetry?: (episode: PodcastEpisode) => void
+  isRetrying?: boolean
   onDelete?: (episode: PodcastEpisode) => void
   playbackSnapshot?: PodcastPlaybackSnapshot
   onPlaybackChange?: (patch: PodcastPlaybackSnapshot) => void
@@ -961,12 +1004,14 @@ type NotebookPodcastAssetCardProps = {
   queuePosition?: number
 }
 
-function NotebookPodcastAssetCard({
+export function NotebookPodcastAssetCard({
   episode,
   displayMode = 'card',
   onOpenStudio,
   onBack,
   onExport,
+  onRetry,
+  isRetrying = false,
   onDelete,
   playbackSnapshot,
   onPlaybackChange,
@@ -1438,6 +1483,25 @@ function NotebookPodcastAssetCard({
           </main>
         ) : audioError ? (
           <p className="p-6 text-sm text-destructive">{audioError}</p>
+        ) : isFailed ? (
+          <div className="space-y-3 p-6">
+            <p className="text-sm text-destructive">
+              {episode.error_message || '播客生成失败'}
+            </p>
+            {onRetry ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isRetrying}
+                onClick={() => onRetry(episode)}
+                aria-label="重试生成播客"
+              >
+                {isRetrying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isRetrying ? '正在重试' : '重试生成'}
+              </Button>
+            ) : null}
+          </div>
         ) : (
           <p className="p-6 text-sm text-muted-foreground">
             {isActive ? '播客正在生成，完成后这里会出现播放器。' : episode.error_message || '播客暂不可播放'}
@@ -1655,9 +1719,24 @@ function NotebookPodcastAssetCard({
       ) : isActive ? (
         <p className="p-3 text-sm text-muted-foreground">播客正在生成，完成后这里会出现播放器。</p>
       ) : isFailed ? (
-        <p className="p-3 text-sm text-destructive">
-          {episode.error_message || '播客生成失败'}
-        </p>
+        <div className="space-y-2 p-3">
+          <p className="text-sm text-destructive">
+            {episode.error_message || '播客生成失败'}
+          </p>
+          {onRetry ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isRetrying}
+              onClick={() => onRetry(episode)}
+              aria-label="重试生成播客"
+            >
+              {isRetrying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {isRetrying ? '正在重试' : '重试生成'}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )
@@ -1674,6 +1753,12 @@ interface NotesColumnProps {
   onBulkContextModeChange?: (action: NoteContextDefault) => void
   profileOptions?: LearningProfileOptions
   onProfileOptionsChange?: (options: LearningProfileOptions) => void
+  cachedStudioState?: {
+    episodes: PodcastEpisode[]
+    isGenerating?: boolean
+    openNoteId?: string | null
+    onLearningEvent?: (event: LearningAssetInteractionEvent) => void
+  }
 }
 
 export function NotesColumn({
@@ -1687,6 +1772,7 @@ export function NotesColumn({
   onBulkContextModeChange,
   profileOptions = { autoUpdateProfile: true, useProfileSource: true },
   onProfileOptionsChange = () => {},
+  cachedStudioState,
 }: NotesColumnProps) {
   const { t, language } = useTranslation()
   const { data: modelDefaults } = useModelDefaults()
@@ -1715,13 +1801,16 @@ export function NotesColumn({
   const [podcastMaterialSearch, setPodcastMaterialSearch] = useState('')
   const [selectedPodcastMaterialIds, setSelectedPodcastMaterialIds] = useState<string[]>([])
   const [studioPodcastEpisode, setStudioPodcastEpisode] = useState<PodcastEpisode | null>(null)
+  const [studioVideoEpisode, setStudioVideoEpisode] = useState<PodcastEpisode | null>(null)
   const [studioCategoryFilter, setStudioCategoryFilter] = useState<StudioCategoryFilter>('all')
   const [isExportingStudioAsset, setIsExportingStudioAsset] = useState(false)
   const [podcastPlaybackById, setPodcastPlaybackById] = useState<Record<string, PodcastPlaybackSnapshot>>({})
   const [podcastQueue, setPodcastQueue] = useState<string[]>([])
+  const [cachedNotes, setCachedNotes] = useState<NoteResponse[]>(notes ?? [])
   const deleteNote = useDeleteNote()
   const deleteSource = useDeleteSource()
   const deletePodcastEpisode = useDeletePodcastEpisode()
+  const retryPodcastEpisode = useRetryPodcastEpisode()
   const episodeProfilesQuery = useEpisodeProfiles()
   const episodeProfiles = useMemo(
     () => episodeProfilesQuery.data ?? [],
@@ -1733,6 +1822,15 @@ export function NotesColumn({
     [speakerProfilesQuery.data]
   )
   const generatePodcast = useGeneratePodcast()
+  useEffect(() => {
+    if (cachedStudioState) {
+      setCachedNotes(notes ?? [])
+    }
+  }, [cachedStudioState, notes])
+  const displayedNotes = cachedStudioState ? cachedNotes : notes
+  const isCachedStudio = Boolean(cachedStudioState)
+  const cachedOpenNoteId = cachedStudioState?.openNoteId
+
   useEffect(() => {
     const nextLanguage = getGenerationLanguageFromLocale(language)
     setPodcastLanguage((current) => (
@@ -1753,11 +1851,16 @@ export function NotesColumn({
       return changed ? next : current
     })
   }, [language])
-  const podcastEpisodesQuery = usePodcastEpisodes()
+  const podcastEpisodesQuery = usePodcastEpisodes({
+    autoRefresh: !cachedStudioState,
+    enabled: !cachedStudioState,
+  })
+  const availablePodcastEpisodes =
+    cachedStudioState?.episodes ?? podcastEpisodesQuery.episodes
   const notebookPodcastEpisodes = useMemo(() => {
     const legacyEpisodeName = `${notebookName || '学习记录'} 播客`
-    return podcastEpisodesQuery.episodes.filter((episode) => {
-      if (!isPodcastEpisodeReady(episode)) {
+    return availablePodcastEpisodes.filter((episode) => {
+      if (!shouldShowPodcastEpisodeInStudio(episode)) {
         return false
       }
       if (sameRecordId(episode.notebook_id, notebookId)) {
@@ -1768,7 +1871,15 @@ export function NotesColumn({
         (episode.name === legacyEpisodeName || episode.name.startsWith(`${legacyEpisodeName} `))
       )
     })
-  }, [notebookId, notebookName, podcastEpisodesQuery.episodes])
+  }, [availablePodcastEpisodes, notebookId, notebookName])
+  const notebookVideoEpisodes = useMemo(
+    () => notebookPodcastEpisodes.filter(isExplainerVideoEpisode),
+    [notebookPodcastEpisodes]
+  )
+  const notebookAudioEpisodes = useMemo(
+    () => notebookPodcastEpisodes.filter((episode) => !isExplainerVideoEpisode(episode)),
+    [notebookPodcastEpisodes]
+  )
   const podcastEpisodeById = useMemo(
     () => new Map(notebookPodcastEpisodes.map((episode) => [episode.id, episode])),
     [notebookPodcastEpisodes]
@@ -1805,7 +1916,7 @@ export function NotesColumn({
       }
     })
 
-    const noteMaterials = (notes ?? [])
+    const noteMaterials = (displayedNotes ?? [])
       .map((note) => {
         const asset = parseLearningAssetNote(note.content)
         const content = asset?.content || getVisibleLearningAssetContent(note.content)
@@ -1850,7 +1961,7 @@ export function NotesColumn({
       .filter(Boolean) as LearningAssetMaterialOption[]
 
     return [...sourceMaterials, ...noteMaterials, ...podcastMaterials]
-  }, [contentSources, notebookPodcastEpisodes, notes])
+  }, [contentSources, displayedNotes, notebookPodcastEpisodes])
   const mindMapMaterials = useMemo<MindMapMaterial[]>(
     () => materialOptions.map((material) => ({
       id: material.id,
@@ -1879,23 +1990,20 @@ export function NotesColumn({
         .includes(keyword)
     ))
   }, [materialOptions, podcastMaterialSearch])
-  const isAssetListLoading = isLoading || podcastEpisodesQuery.isLoading
+  const isAssetListLoading =
+    isLoading || (!cachedStudioState && podcastEpisodesQuery.isLoading)
   const assessmentNotes = useMemo(
-    () => (notes ?? []).filter((note) => {
+    () => (displayedNotes ?? []).filter((note) => {
       const asset = parseLearningAssetNote(note.content)
       const kind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
       return kind === 'assessment'
     }),
-    [notes]
+    [displayedNotes]
   )
   const latestAssessmentNote = assessmentNotes[0]
   const studioAssetNotes = useMemo(
-    () => (notes ?? []).filter((note) => {
-      const asset = parseLearningAssetNote(note.content)
-      const kind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
-      return Boolean(kind && !STUDIO_HIDDEN_ASSET_KINDS.has(kind))
-    }),
-    [notes]
+    () => (displayedNotes ?? []).filter(shouldShowNoteInStudio),
+    [displayedNotes]
   )
   const studioCategoryCounts = useMemo(() => {
     const counts = STUDIO_CATEGORY_OPTIONS.reduce<Record<StudioCategoryFilter, number>>(
@@ -1905,7 +2013,8 @@ export function NotesColumn({
       },
       {} as Record<StudioCategoryFilter, number>
     )
-    counts.podcast = notebookPodcastEpisodes.length
+    counts.podcast = notebookAudioEpisodes.length
+    counts.video = notebookVideoEpisodes.length
     for (const note of studioAssetNotes) {
       const asset = parseLearningAssetNote(note.content)
       const kind = asset?.kind ?? inferLearningAssetKind(note.content, note.title)
@@ -1915,21 +2024,34 @@ export function NotesColumn({
     }
     counts.all = notebookPodcastEpisodes.length + studioAssetNotes.length
     return counts
-  }, [notebookPodcastEpisodes.length, studioAssetNotes])
+  }, [
+    notebookAudioEpisodes.length,
+    notebookPodcastEpisodes.length,
+    notebookVideoEpisodes.length,
+    studioAssetNotes,
+  ])
   const visibleNotebookPodcastEpisodes = useMemo(
     () => (
       studioCategoryFilter === 'all' || studioCategoryFilter === 'podcast'
-        ? notebookPodcastEpisodes
+        ? notebookAudioEpisodes
         : []
     ),
-    [notebookPodcastEpisodes, studioCategoryFilter]
+    [notebookAudioEpisodes, studioCategoryFilter]
+  )
+  const visibleNotebookVideoEpisodes = useMemo(
+    () => (
+      studioCategoryFilter === 'all' || studioCategoryFilter === 'video'
+        ? notebookVideoEpisodes
+        : []
+    ),
+    [notebookVideoEpisodes, studioCategoryFilter]
   )
   const visibleStudioNotes = useMemo(
     () => studioAssetNotes.filter((note) => {
       if (studioCategoryFilter === 'all') {
         return true
       }
-      if (studioCategoryFilter === 'podcast') {
+      if (studioCategoryFilter === 'podcast' || studioCategoryFilter === 'video') {
         return false
       }
       const asset = parseLearningAssetNote(note.content)
@@ -1951,7 +2073,10 @@ export function NotesColumn({
     ? assetDetails[detailAssetKind] ?? getDefaultLearningAssetDetail(detailAssetKind)
     : getDefaultLearningAssetDetail('study_guide')
   const isGeneratingStudioAsset =
-    isSubmittingAssets || isBuildingPodcast || generatePodcast.isPending
+    Boolean(cachedStudioState?.isGenerating) ||
+    isSubmittingAssets ||
+    isBuildingPodcast ||
+    generatePodcast.isPending
   const assetJobStatuses = useQueries({
     queries: assetJobs.map((job) => ({
       queryKey: ['commands', 'job', job.jobId],
@@ -1978,6 +2103,13 @@ export function NotesColumn({
 
   const recordLearningEvent = async (eventType: string, summary: string) => {
     if (!profileOptions.autoUpdateProfile) return
+    if (cachedStudioState) {
+      cachedStudioState.onLearningEvent?.({
+        eventType,
+        summary,
+      })
+      return
+    }
     try {
       await learningApi.recordProfileEvent({
         learning_record_id: notebookId,
@@ -2002,15 +2134,37 @@ export function NotesColumn({
 
     try {
       if (target.type === 'podcast') {
-        const exportUrl = await resolvePodcastAssetUrl(`/api/podcasts/episodes/${encodeURIComponent(target.episode.id)}/audio/wav`)
+        const exportUrl = await resolvePodcastAssetUrl(
+          cachedStudioState && target.episode.audio_file
+            ? target.episode.audio_file
+            : `/api/podcasts/episodes/${encodeURIComponent(target.episode.id)}/audio/wav`
+        )
         if (!exportUrl) {
           toast.error('当前播客没有可导出的音频')
           return
         }
         await downloadRemoteAsset(
           exportUrl,
-          `${safeExportFilename(title, 'podcast')}.wav`,
-          getAuthenticatedDownloadHeaders()
+          `${safeExportFilename(title, 'podcast')}.${cachedStudioState ? 'mp3' : 'wav'}`,
+          cachedStudioState ? undefined : getAuthenticatedDownloadHeaders()
+        )
+        return
+      }
+
+      if (target.type === 'video') {
+        const exportUrl = await resolvePodcastAssetUrl(
+          (cachedStudioState ? target.episode.video_file : target.episode.video_url)
+          ?? target.episode.video_url
+          ?? `/api/podcasts/episodes/${encodeURIComponent(target.episode.id)}/video`
+        )
+        if (!exportUrl || (!target.episode.video_url && !target.episode.video_file)) {
+          toast.error('当前讲解视频还没有可导出的 MP4')
+          return
+        }
+        await downloadRemoteAsset(
+          exportUrl,
+          `${safeExportFilename(title, 'explainer-video')}.mp4`,
+          cachedStudioState ? undefined : getAuthenticatedDownloadHeaders()
         )
         return
       }
@@ -2193,6 +2347,14 @@ export function NotesColumn({
   }, [handledPodcastJobIds, podcastJobStatuses, podcastJobs, queryClient])
 
   const handleGenerateAssets = async (config: LearningAssetGenerationConfig) => {
+    if (cachedStudioState) {
+      const firstOutput = config.outputs[0]
+      if (firstOutput) {
+        handleQuickGenerateAsset(firstOutput)
+      }
+      toast.success('已打开预缓存产物；演示学习记录不会提交新的生成任务')
+      return
+    }
     if (config.outputs.length === 0) {
       toast.error('请至少选择一种要生成的学习资产')
       return
@@ -2346,6 +2508,21 @@ export function NotesColumn({
     selectedMaterialIds?: string[]
     generateVideo?: boolean
   }) => {
+    if (cachedStudioState) {
+      const cachedEpisode = options?.generateVideo
+        ? notebookVideoEpisodes[0]
+        : notebookAudioEpisodes[0]
+      if (cachedEpisode) {
+        if (options?.generateVideo) {
+          setStudioVideoEpisode(cachedEpisode)
+        } else {
+          setStudioPodcastEpisode(cachedEpisode)
+        }
+      }
+      setPodcastGenerateDialogOpen(false)
+      toast.success('已打开预缓存产物；演示学习记录不会提交新的生成任务')
+      return
+    }
     const selectedMaterialIds = options?.selectedMaterialIds
     const selectedMaterialSet = new Set(selectedMaterialIds ?? [])
     const selectedMaterials = selectedMaterialIds
@@ -2427,12 +2604,15 @@ export function NotesColumn({
     }
   }, [
     buildPodcastContent,
+    cachedStudioState,
     episodeProfiles,
     episodeProfilesQuery.isLoading,
     generatePodcast,
     materialOptions,
     nextPodcastEpisodeName,
     notebookId,
+    notebookAudioEpisodes,
+    notebookVideoEpisodes,
     podcastLanguage,
     podcastGenerateVideo,
     podcastSubtitleMode,
@@ -2441,9 +2621,50 @@ export function NotesColumn({
     speakerProfilesQuery.isLoading,
   ])
 
+  const openPodcastGenerationDialog = (generateVideo: boolean) => {
+    setPodcastGenerateVideo(generateVideo)
+    setPodcastGenerateDialogOpen(true)
+  }
+
+  useEffect(() => {
+    if (!isCachedStudio) return
+    if (!cachedOpenNoteId) {
+      setEditingNote(null)
+      setOpenNoteFullscreen(false)
+      return
+    }
+    const requestedNote = displayedNotes?.find(
+      (note) => note.id === cachedOpenNoteId
+    )
+    if (!requestedNote) return
+    setOpenNoteFullscreen(false)
+    setEditingNote(requestedNote)
+  }, [cachedOpenNoteId, displayedNotes, isCachedStudio])
+
   const handleQuickGenerateAsset = (kind: StudioAssetKind) => {
-    if (kind === 'podcast') {
-      setPodcastGenerateDialogOpen(true)
+    if (cachedStudioState) {
+      if (kind === 'video') {
+        const episode = notebookVideoEpisodes[0]
+        if (episode) setStudioVideoEpisode(episode)
+        return
+      }
+      if (kind === 'podcast') {
+        const episode = notebookAudioEpisodes[0]
+        if (episode) setStudioPodcastEpisode(episode)
+        return
+      }
+      const note = displayedNotes?.find((candidate) => {
+        const asset = parseLearningAssetNote(candidate.content)
+        return (asset?.kind ?? inferLearningAssetKind(candidate.content, candidate.title)) === kind
+      })
+      if (note) {
+        setOpenNoteFullscreen(false)
+        setEditingNote(note)
+      }
+      return
+    }
+    if (kind === 'podcast' || kind === 'video') {
+      openPodcastGenerationDialog(kind === 'video')
       return
     }
 
@@ -2458,6 +2679,10 @@ export function NotesColumn({
   }
 
   const handleGenerateSimilarQuiz = (resource: LearningResource) => {
+    if (cachedStudioState) {
+      toast.success(`已保留「${resource.title}」的缓存练习状态`)
+      return
+    }
     const quizContent = [
       resource.content,
       resource.payload ? JSON.stringify(resource.payload, null, 2) : '',
@@ -2492,6 +2717,13 @@ export function NotesColumn({
 
   const handleDeleteConfirm = async () => {
     if (!noteToDelete) return
+    if (cachedStudioState) {
+      setCachedNotes((current) => current.filter((note) => note.id !== noteToDelete))
+      setDeleteDialogOpen(false)
+      setNoteToDelete(null)
+      toast.success('已从本次演示视图移除；重新打开会恢复缓存资产')
+      return
+    }
 
     try {
       await deleteNote.mutateAsync(noteToDelete)
@@ -2512,7 +2744,6 @@ export function NotesColumn({
     )
     setPodcastMaterialSearch('')
     setPodcastMaterialLibraryExpanded(false)
-    setPodcastGenerateVideo(false)
   }, [materialOptions, nextPodcastEpisodeName, podcastGenerateDialogOpen])
 
   const updatePodcastPlayback = useCallback((episodeId: string, patch: PodcastPlaybackSnapshot) => {
@@ -2541,6 +2772,13 @@ export function NotesColumn({
 
   const handleDeleteMaterial = async (material: LearningAssetMaterialOption) => {
     if (!material.deleteId || !material.deleteType) return
+    if (cachedStudioState) {
+      if (material.deleteType === 'note') {
+        setCachedNotes((current) => current.filter((note) => note.id !== material.deleteId))
+      }
+      toast.success('演示中的改动只保留在当前页面，重新打开会恢复缓存内容')
+      return
+    }
 
     if (material.deleteType === 'source') {
       await deleteSource.mutateAsync(material.deleteId)
@@ -2562,11 +2800,27 @@ export function NotesColumn({
   }
 
   const handleDeletePodcastEpisode = async (episode: PodcastEpisode) => {
-    const confirmed = window.confirm(`确定删除播客「${episode.name}」吗？`)
+    if (cachedStudioState) {
+      if (studioPodcastEpisode?.id === episode.id) {
+        setStudioPodcastEpisode(null)
+      }
+      if (studioVideoEpisode?.id === episode.id) {
+        setStudioVideoEpisode(null)
+      }
+      toast.success('演示学习记录会在下次打开时恢复全部缓存资产')
+      return
+    }
+    const mediaLabel = isExplainerVideoEpisode(episode)
+      ? '播客音频和讲解视频'
+      : '播客'
+    const confirmed = window.confirm(`确定删除${mediaLabel}「${episode.name}」吗？`)
     if (!confirmed) return
     await deletePodcastEpisode.mutateAsync(episode.id)
     if (studioPodcastEpisode?.id === episode.id) {
       setStudioPodcastEpisode(null)
+    }
+    if (studioVideoEpisode?.id === episode.id) {
+      setStudioVideoEpisode(null)
     }
     setPodcastPlaybackById((current) => {
       const next = { ...current }
@@ -2590,7 +2844,7 @@ export function NotesColumn({
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-lg">Studio</CardTitle>
               <div className="flex items-center gap-2">
-                {onBulkContextModeChange && notes && notes.length > 0 && (
+                {onBulkContextModeChange && displayedNotes && displayedNotes.length > 0 && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="sm" title={t('sources.bulkContext')}>
@@ -2616,15 +2870,33 @@ export function NotesColumn({
           <CardContent
             className={cn(
               'flex-1 min-h-0 space-y-4',
-              studioPodcastEpisode ? 'overflow-hidden' : 'overflow-y-auto'
+              studioPodcastEpisode || studioVideoEpisode ? 'overflow-hidden' : 'overflow-y-auto'
             )}
           >
-            {studioPodcastEpisode ? (
+            {studioVideoEpisode ? (
+              <NotebookVideoAssetCard
+                episode={studioVideoEpisode}
+                displayMode="studio"
+                onBack={() => setStudioVideoEpisode(null)}
+                onExport={(episode) => void handleExportStudioTarget({ type: 'video', episode })}
+                onRetry={cachedStudioState ? undefined : (episode) => {
+                  retryPodcastEpisode.mutate(episode.id)
+                }}
+                isRetrying={retryPodcastEpisode.isPending}
+                onDelete={(episode) => {
+                  void handleDeletePodcastEpisode(episode)
+                }}
+              />
+            ) : studioPodcastEpisode ? (
               <NotebookPodcastAssetCard
                 episode={studioPodcastEpisode}
                 displayMode="studio"
                 onBack={() => setStudioPodcastEpisode(null)}
                 onExport={(episode) => void handleExportStudioTarget({ type: 'podcast', episode })}
+                onRetry={cachedStudioState ? undefined : (episode) => {
+                  retryPodcastEpisode.mutate(episode.id)
+                }}
+                isRetrying={retryPodcastEpisode.isPending}
                 onDelete={(episode) => {
                   void handleDeletePodcastEpisode(episode)
                 }}
@@ -2662,7 +2934,7 @@ export function NotesColumn({
                     >
                       <Icon className="h-5 w-5 shrink-0 opacity-85" />
                       <span className="min-w-0 whitespace-normal break-words text-base font-semibold leading-5">
-                        {option.kind === 'podcast'
+                        {option.kind === 'podcast' || option.kind === 'video'
                           ? option.label
                           : getLearningAssetKindLabel(option.kind, t)}
                       </span>
@@ -2673,16 +2945,20 @@ export function NotesColumn({
                       size="icon"
                       className="h-11 w-11 shrink-0 rounded-full bg-background/45 hover:bg-background/80"
                       onClick={() => {
-                        if (option.kind === 'podcast') {
-                          setPodcastGenerateDialogOpen(true)
+                        if (cachedStudioState) {
+                          handleQuickGenerateAsset(option.kind)
+                          return
+                        }
+                        if (option.kind === 'podcast' || option.kind === 'video') {
+                          openPodcastGenerationDialog(option.kind === 'video')
                         } else {
                           setDetailAssetKind(option.kind)
                         }
                       }}
                       disabled={isGeneratingStudioAsset}
                       aria-label={
-                        option.kind === 'podcast'
-                          ? '生成播客'
+                        option.kind === 'podcast' || option.kind === 'video'
+                          ? `自定义生成${option.label}`
                           : `自定义 ${getLearningAssetKindLabel(option.kind, t)}`
                       }
                     >
@@ -2790,7 +3066,11 @@ export function NotesColumn({
                   title="生成内容会保存在这里"
                   description="添加来源后，点击上方按钮生成讲解文档、测验、知识闪卡等资产。"
                 />
-              ) : visibleStudioNotes.length === 0 && visibleNotebookPodcastEpisodes.length === 0 ? (
+              ) : (
+                visibleStudioNotes.length === 0
+                && visibleNotebookPodcastEpisodes.length === 0
+                && visibleNotebookVideoEpisodes.length === 0
+              ) ? (
                 <EmptyState
                   icon={Sparkles}
                   title="当前分类暂无内容"
@@ -2798,12 +3078,34 @@ export function NotesColumn({
                 />
               ) : (
                 <>
+                  {visibleNotebookVideoEpisodes.map((episode) => (
+                    <NotebookVideoAssetCard
+                      key={`video:${episode.id}`}
+                      episode={episode}
+                      onOpenStudio={setStudioVideoEpisode}
+                      onRetry={cachedStudioState ? undefined : (videoEpisode) => {
+                        retryPodcastEpisode.mutate(videoEpisode.id)
+                      }}
+                      isRetrying={retryPodcastEpisode.isPending}
+                      onExport={(videoEpisode) => void handleExportStudioTarget({
+                        type: 'video',
+                        episode: videoEpisode,
+                      })}
+                      onDelete={(videoEpisode) => {
+                        void handleDeletePodcastEpisode(videoEpisode)
+                      }}
+                    />
+                  ))}
                   {visibleNotebookPodcastEpisodes.map((episode) => (
                     <NotebookPodcastAssetCard
                       key={episode.id}
                       episode={episode}
                       onOpenStudio={setStudioPodcastEpisode}
                       onExport={(podcastEpisode) => void handleExportStudioTarget({ type: 'podcast', episode: podcastEpisode })}
+                      onRetry={cachedStudioState ? undefined : (podcastEpisode) => {
+                        retryPodcastEpisode.mutate(podcastEpisode.id)
+                      }}
+                      isRetrying={retryPodcastEpisode.isPending}
                       onDelete={(podcastEpisode) => {
                         void handleDeletePodcastEpisode(podcastEpisode)
                       }}
@@ -3066,9 +3368,13 @@ export function NotesColumn({
           <DialogHeader className="shrink-0">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <DialogTitle className="text-lg">生成播客</DialogTitle>
+                <DialogTitle className="text-lg">
+                  {podcastGenerateVideo ? '生成讲解视频' : '生成播客'}
+                </DialogTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  选择这次播客的语音语言和字幕类型。
+                  {podcastGenerateVideo
+                    ? '生成配套播客音频、关键画面和字幕，并在本地合成为可播放 MP4。'
+                    : '选择这次播客的语音语言和字幕类型。'}
                 </p>
               </div>
               <Button
@@ -3335,10 +3641,12 @@ export function NotesColumn({
             >
               {isGeneratingStudioAsset ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : podcastGenerateVideo ? (
+                <Video className="mr-2 h-4 w-4" />
               ) : (
                 <Headphones className="mr-2 h-4 w-4" />
               )}
-              生成
+              {podcastGenerateVideo ? '生成视频' : '生成播客'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3359,6 +3667,26 @@ export function NotesColumn({
         note={editingNote ?? undefined}
         initialFullscreen={openNoteFullscreen}
         mindMapMaterials={mindMapMaterials}
+        useProvidedNote={Boolean(cachedStudioState)}
+        onProvidedNoteSave={(savedNote) => {
+          const now = new Date().toISOString()
+          const savedId = savedNote.id ?? `note:demo-local-${Date.now()}`
+          setCachedNotes((current) => {
+            const existing = current.find((note) => note.id === savedId)
+            const nextNote: NoteResponse = {
+              id: savedId,
+              title: savedNote.title,
+              content: savedNote.content,
+              note_type: savedNote.note_type,
+              created: existing?.created ?? now,
+              updated: now,
+            }
+            return existing
+              ? current.map((note) => (note.id === savedId ? nextNote : note))
+              : [nextNote, ...current]
+          })
+          toast.success('已保存到本次演示视图；重新打开会恢复预缓存版本')
+        }}
         onLearningEvent={(event) => {
           void recordLearningEvent(event.eventType, event.summary)
         }}

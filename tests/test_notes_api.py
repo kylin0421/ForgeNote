@@ -99,6 +99,34 @@ class TestNoteCreation:
         mock_sleep.assert_awaited_once()
 
 
+class TestNoteListing:
+    """Test suite for notebook-scoped note listing."""
+
+    @patch("forgenote.domain.notebook.Notebook.get", new_callable=AsyncMock)
+    def test_notebook_notes_include_content(self, mock_notebook_get, client):
+        """Studio must receive the body used to recognize generated assets."""
+        note = AsyncMock()
+        note.id = "note:blog123"
+        note.title = "Generated Blog"
+        note.content = '<!-- learning-asset\n{"kind":"blog"}\n-->\n\n# Blog'
+        note.note_type = "ai"
+        note.created = "2026-01-01T00:00:00Z"
+        note.updated = "2026-01-01T00:00:00Z"
+
+        notebook = AsyncMock()
+        notebook.get_notes.return_value = [note]
+        mock_notebook_get.return_value = notebook
+
+        response = client.get(
+            "/api/notes",
+            params={"notebook_id": "notebook:studio"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()[0]["content"] == note.content
+        notebook.get_notes.assert_awaited_once_with(include_content=True)
+
+
 class TestNoteUpdate:
     """Test suite for Note update endpoint."""
 

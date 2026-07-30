@@ -31,9 +31,17 @@ import type {
 } from '@/lib/types/learning'
 import { cn } from '@/lib/utils'
 
-type InterviewTurn = {
+export type ProfileInterviewTurn = {
   question: LearningProfileInterviewQuestion
   answer: string
+}
+
+export type CachedProfileOnboardingState = {
+  turns: ProfileInterviewTurn[]
+  interview: LearningProfileInterviewResponse | null
+  initialInterview?: LearningProfileInterviewResponse | null
+  nextInterview?: LearningProfileInterviewResponse | null
+  isLoadingQuestion?: boolean
 }
 
 function compactProfileValue(value?: string) {
@@ -80,8 +88,8 @@ const PROFILE_VISUAL_META: Record<string, { label: string; short: string; accent
 }
 
 function profileConfidenceScore(value?: string, confidence = 0) {
-  if (!value?.trim()) return 8
-  return Math.max(18, Math.min(100, Math.round(confidence * 100)))
+  if (!value?.trim()) return 0
+  return Math.max(0, Math.min(100, Math.round(confidence * 100)))
 }
 
 function ProfileRadar({
@@ -190,7 +198,7 @@ function ProfileDimensionCard({
   )
 }
 
-function toApiTurns(turns: InterviewTurn[]): LearningProfileInterviewTurn[] {
+function toApiTurns(turns: ProfileInterviewTurn[]): LearningProfileInterviewTurn[] {
   return turns.map(({ question, answer }) => ({
     question_id: question.id,
     dimension: question.dimension,
@@ -203,14 +211,16 @@ interface ProfileOnboardingDialogProps {
   open: boolean
   notebook: NotebookResponse | null
   onCompleted: (resourceSearchGoal: string) => void
+  cachedState?: CachedProfileOnboardingState
 }
 
 export function ProfileOnboardingDialog({
   open,
   notebook,
   onCompleted,
+  cachedState,
 }: ProfileOnboardingDialogProps) {
-  const [turns, setTurns] = useState<InterviewTurn[]>([])
+  const [turns, setTurns] = useState<ProfileInterviewTurn[]>([])
   const [interview, setInterview] = useState<LearningProfileInterviewResponse | null>(null)
   const [draft, setDraft] = useState('')
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false)
@@ -239,9 +249,10 @@ export function ProfileOnboardingDialog({
     : 0
 
   const requestNextQuestion = async (
-    nextTurns: InterviewTurn[],
+    nextTurns: ProfileInterviewTurn[],
     options?: { silentReset?: boolean }
   ) => {
+    if (cachedState) return
     if (!notebookId) return
     if (!options?.silentReset) {
       setQuestionError('')
@@ -267,6 +278,17 @@ export function ProfileOnboardingDialog({
 
   useEffect(() => {
     if (!open || !notebookId) return
+
+    if (cachedState) {
+      setTurns(cachedState.turns)
+      setInterview(cachedState.interview)
+      setDraft('')
+      setIsSaving(false)
+      setQuestionError('')
+      setIsLoadingQuestion(Boolean(cachedState.isLoadingQuestion))
+      return
+    }
+
     let cancelled = false
 
     setTurns([])
@@ -295,10 +317,12 @@ export function ProfileOnboardingDialog({
     return () => {
       cancelled = true
     }
-  }, [notebookContext, notebookId, open])
+  }, [cachedState, notebookContext, notebookId, open])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [interview, isLoadingQuestion, turns])
 
   const submitAnswer = async () => {
@@ -309,18 +333,34 @@ export function ProfileOnboardingDialog({
     setTurns(nextTurns)
     setInterview(null)
     setDraft('')
+
+    if (cachedState) {
+      setInterview(cachedState.nextInterview ?? cachedState.interview)
+      return
+    }
+
     await requestNextQuestion(nextTurns)
   }
 
   const restartInterview = () => {
     setTurns([])
-    setInterview(null)
     setDraft('')
+    if (cachedState) {
+      setInterview(cachedState.initialInterview ?? cachedState.interview)
+      return
+    }
+    setInterview(null)
     void requestNextQuestion([])
   }
 
   const saveProfile = async () => {
     if (!notebook || !interview?.complete || isSaving) return
+
+    if (cachedState) {
+      onCompleted(interview.search_goal || notebook.name)
+      return
+    }
+
     setIsSaving(true)
 
     const dimensionSummary = interview.profile
@@ -361,6 +401,9 @@ export function ProfileOnboardingDialog({
       <DialogContent
         showCloseButton={false}
         className="h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 p-0 sm:h-[min(94dvh,900px)] sm:w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-2rem)] 2xl:max-w-[1800px]"
+        onOpenAutoFocus={(event) => {
+          if (cachedState) event.preventDefault()
+        }}
         onEscapeKeyDown={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => event.preventDefault()}
       >
@@ -505,6 +548,7 @@ export function ProfileOnboardingDialog({
                     <Textarea
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
+                      aria-label="学习画像回答输入框"
                       placeholder={
                         isLoadingQuestion
                           ? '正在生成下一问…'
@@ -513,7 +557,7 @@ export function ProfileOnboardingDialog({
                             : '像聊天一样详细说说…'
                       }
                       className="min-h-20 resize-none"
-                      autoFocus
+                      autoFocus={!cachedState}
                       disabled={!currentQuestion || isLoadingQuestion || Boolean(questionError)}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' && !event.shiftKey) {

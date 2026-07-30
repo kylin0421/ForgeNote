@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { useNotebookChat } from '@/lib/hooks/useNotebookChat'
 import { useNotes } from '@/lib/hooks/use-notes'
@@ -12,7 +12,12 @@ import { Card, CardContent } from '@/components/ui/card'
 import { AlertCircle, CheckCircle2, Hammer, Loader2, XCircle } from 'lucide-react'
 import { ContextSelections } from '../[id]/page'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { SourceListResponse } from '@/lib/types/api'
+import type {
+  BaseChatSession,
+  SourceChatContextIndicator,
+  SourceChatMessage,
+  SourceListResponse,
+} from '@/lib/types/api'
 import type { LearningOutputKind } from '@/lib/types/learning'
 import { commandsApi } from '@/lib/api/commands'
 import { learningApi } from '@/lib/api/learning'
@@ -34,6 +39,109 @@ type AssetToolProgress = {
   percent?: number
   current_agent_name?: string | null
   current_task?: string
+}
+
+type NotebookChatContextStats = {
+  sourcesInsights: number
+  sourcesFull: number
+  notesCount: number
+  tokenCount?: number
+  charCount?: number
+}
+
+interface NotebookChatSurfaceProps {
+  messages: SourceChatMessage[]
+  isStreaming: boolean
+  contextIndicators: SourceChatContextIndicator | null
+  onSendMessage: (message: string, modelOverride?: string) => void
+  modelOverride?: string
+  onModelChange: (model?: string) => void
+  sessions: BaseChatSession[]
+  currentSessionId: string | null
+  onCreateSession: (title: string) => void
+  onSelectSession: (sessionId: string) => void
+  onUpdateSession: (sessionId: string, title: string) => void
+  onDeleteSession: (sessionId: string) => void
+  loadingSessions: boolean
+  notebookContextStats: NotebookChatContextStats
+  notebookId?: string
+  composerActivity?: ReactNode
+  showMessageActions?: boolean
+  onSaveMessageToNote?: (content: string) => void | Promise<void>
+  inputAriaLabel?: string
+}
+
+export function NotebookChatSurface({
+  messages,
+  isStreaming,
+  contextIndicators,
+  onSendMessage,
+  modelOverride,
+  onModelChange,
+  sessions,
+  currentSessionId,
+  onCreateSession,
+  onSelectSession,
+  onUpdateSession,
+  onDeleteSession,
+  loadingSessions,
+  notebookContextStats,
+  notebookId,
+  composerActivity,
+  showMessageActions,
+  onSaveMessageToNote,
+  inputAriaLabel,
+}: NotebookChatSurfaceProps) {
+  const { t } = useTranslation()
+
+  return (
+    <ChatPanel
+      title={t('chat.chatWithNotebook')}
+      contextType="notebook"
+      messages={messages}
+      isStreaming={isStreaming}
+      contextIndicators={contextIndicators}
+      modelOverride={modelOverride}
+      onModelChange={onModelChange}
+      sessions={sessions}
+      currentSessionId={currentSessionId}
+      onCreateSession={onCreateSession}
+      onSelectSession={onSelectSession}
+      onUpdateSession={onUpdateSession}
+      onDeleteSession={onDeleteSession}
+      loadingSessions={loadingSessions}
+      notebookContextStats={notebookContextStats}
+      notebookId={notebookId}
+      composerActivity={composerActivity}
+      showMessageActions={showMessageActions}
+      onSaveMessageToNote={onSaveMessageToNote}
+      inputAriaLabel={inputAriaLabel}
+      onSendMessage={onSendMessage}
+    />
+  )
+}
+
+export function resolveToolCallProgress(
+  status: string | undefined,
+  progressPercent: number | undefined
+) {
+  if (status === 'completed') {
+    return { percent: 100, label: '100%' }
+  }
+  if (typeof progressPercent === 'number' && Number.isFinite(progressPercent)) {
+    const percent = Math.max(0, Math.min(progressPercent, 100))
+    return { percent, label: `${Math.round(percent)}%` }
+  }
+  if (status === 'failed') {
+    return { percent: null, label: '失败' }
+  }
+  if (status === 'canceled') {
+    return { percent: null, label: '已取消' }
+  }
+  return {
+    percent: null,
+    label: status === 'running' ? '进行中' : '等待开始',
+  }
 }
 
 function isLearningProfileSource(source: SourceListResponse) {
@@ -249,10 +357,10 @@ export function ChatColumn({
   const activeToolProgress = assetToolJobStatuses[visibleToolJobIndex]?.data?.progress as
     | AssetToolProgress
     | undefined
-  const activeToolPercent =
-    activeToolStatus === 'completed'
-      ? 100
-      : activeToolProgress?.percent ?? (activeToolStatus === 'running' ? 35 : 8)
+  const activeToolProgressDisplay = resolveToolCallProgress(
+    activeToolStatus,
+    activeToolProgress?.percent
+  )
   const toolCallActivity = activeToolJob ? (
     <div className="rounded-xl border border-primary/20 bg-primary/5 p-2.5 text-xs">
       <div className="flex items-start gap-2">
@@ -269,17 +377,21 @@ export function ChatColumn({
           <div className="flex items-center justify-between gap-2">
             <span className="truncate font-medium">工具调用 · {activeToolJob.label}</span>
             <span className="shrink-0 tabular-nums text-muted-foreground">
-              {Math.round(activeToolPercent)}%
+              {activeToolProgressDisplay.label}
             </span>
           </div>
           <p className="mt-0.5 line-clamp-2 text-muted-foreground">
             {activeToolProgress?.current_task || activeToolJob.reason}
           </p>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-primary/10">
-            <div
-              className="h-full rounded-full bg-primary transition-[width] duration-300"
-              style={{ width: `${Math.max(4, Math.min(activeToolPercent, 100))}%` }}
-            />
+            {activeToolProgressDisplay.percent === null ? (
+              <div className="h-full w-1/3 animate-pulse rounded-full bg-primary/70" />
+            ) : (
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-300"
+                style={{ width: `${activeToolProgressDisplay.percent}%` }}
+              />
+            )}
           </div>
           {assetToolJobs.length > 1 && (
             <p className="mt-1.5 text-[11px] text-muted-foreground">
@@ -318,9 +430,7 @@ export function ChatColumn({
   }
 
   return (
-    <ChatPanel
-      title={t('chat.chatWithNotebook')}
-      contextType="notebook"
+    <NotebookChatSurface
       messages={chat.messages}
       isStreaming={chat.isSending}
       contextIndicators={null}

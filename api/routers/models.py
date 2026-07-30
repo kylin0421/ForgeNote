@@ -7,27 +7,27 @@ from fastapi import APIRouter, HTTPException, Query
 from loguru import logger
 from pydantic import BaseModel
 
+from api.model_sync_service import (
+    sync_episode_profiles_to_podcast_model,
+    sync_speaker_profiles_to_tts,
+)
 from api.models import (
     DefaultModelsResponse,
     ModelCreate,
     ModelResponse,
     ProviderAvailabilityResponse,
 )
-from api.model_sync_service import (
-    sync_episode_profiles_to_podcast_model,
-    sync_speaker_profiles_to_tts,
-)
 from forgenote.ai.connection_tester import test_individual_model
 from forgenote.ai.key_provider import provision_provider_keys
-from forgenote.ai.model_specs import build_model_runtime_spec
-from forgenote.ai.provider_registration import register_runtime_ai_providers
 from forgenote.ai.model_discovery import (
     discover_provider_models,
     get_provider_model_count,
     sync_all_providers,
     sync_provider_models,
 )
+from forgenote.ai.model_specs import build_model_runtime_spec
 from forgenote.ai.models import DefaultModels, Model
+from forgenote.ai.provider_registration import register_runtime_ai_providers
 from forgenote.domain.credential import Credential
 from forgenote.exceptions import InvalidInputError, NotFoundError
 
@@ -352,6 +352,7 @@ def _default_models_response(defaults: DefaultModels) -> DefaultModelsResponse:
         default_resource_search_model=resource_search_model,
         default_learning_asset_model=learning_asset_model,
         default_study_guide_model=getattr(defaults, "default_study_guide_model", None),
+        default_blog_model=getattr(defaults, "default_blog_model", None),
         default_quiz_model=getattr(defaults, "default_quiz_model", None),
         default_flashcards_model=getattr(defaults, "default_flashcards_model", None),
         default_mind_map_model=getattr(defaults, "default_mind_map_model", None),
@@ -399,6 +400,7 @@ async def update_default_models(defaults_data: DefaultModelsResponse):
             "default_resource_search_model",
             "default_learning_asset_model",
             "default_study_guide_model",
+            "default_blog_model",
             "default_quiz_model",
             "default_flashcards_model",
             "default_mind_map_model",
@@ -832,6 +834,7 @@ async def auto_assign_defaults():
             ("default_resource_search_model", "language", getattr(defaults, "default_resource_search_model", None) or defaults.default_tools_model),  # type: ignore[attr-defined]
             ("default_learning_asset_model", "language", getattr(defaults, "default_learning_asset_model", None) or defaults.default_transformation_model),  # type: ignore[attr-defined]
             ("default_study_guide_model", "language", getattr(defaults, "default_study_guide_model", None)),
+            ("default_blog_model", "language", getattr(defaults, "default_blog_model", None)),
             ("default_quiz_model", "language", getattr(defaults, "default_quiz_model", None)),
             ("default_flashcards_model", "language", getattr(defaults, "default_flashcards_model", None)),
             ("default_mind_map_model", "language", getattr(defaults, "default_mind_map_model", None)),

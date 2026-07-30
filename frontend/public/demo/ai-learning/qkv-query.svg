@@ -1,0 +1,60 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="80" y1="50" x2="1500" y2="850" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#06152D"/>
+      <stop offset="0.55" stop-color="#111A43"/>
+      <stop offset="1" stop-color="#251044"/>
+    </linearGradient>
+    <linearGradient id="q" x1="110" y1="300" x2="440" y2="610" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="430" y1="450" x2="1030" y2="450" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8" stop-opacity=".7"/>
+      <stop offset="1" stop-color="#A78BFA" stop-opacity=".08"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="22" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#020617" flood-opacity=".5"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" rx="44" fill="url(#bg)"/>
+  <circle cx="130" cy="90" r="250" fill="#0EA5E9" fill-opacity=".08"/>
+  <circle cx="1490" cy="810" r="310" fill="#D946EF" fill-opacity=".1"/>
+
+  <text x="104" y="104" fill="#BAE6FD" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="5">STEP 01 · QUERY</text>
+  <text x="104" y="176" fill="white" font-family="Microsoft YaHei, Arial, sans-serif" font-size="50" font-weight="700">先把“我在找什么”变成查询向量</text>
+  <text x="104" y="226" fill="#CBD5E1" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24">Query 像一束搜索光，把当前问题投向所有候选信息</text>
+
+  <g filter="url(#shadow)">
+    <rect x="116" y="334" width="330" height="300" rx="38" fill="url(#q)"/>
+  </g>
+  <text x="281" y="470" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="104" font-weight="700">Q</text>
+  <text x="281" y="530" text-anchor="middle" fill="#E0F2FE" font-family="Microsoft YaHei, Arial, sans-serif" font-size="28" font-weight="700">当前问题</text>
+  <text x="281" y="574" text-anchor="middle" fill="#E0F2FE" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20">“哪条信息最相关？”</text>
+
+  <path d="M430 378L1090 272V632L430 578V378Z" fill="url(#beam)"/>
+  <path d="M442 474H1060" stroke="#67E8F9" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
+
+  <g font-family="Microsoft YaHei, Arial, sans-serif" filter="url(#shadow)">
+    <rect x="1040" y="274" width="410" height="112" rx="28" fill="#172554" stroke="#6366F1" stroke-opacity=".55"/>
+    <circle cx="1098" cy="330" r="28" fill="#312E81"/><text x="1098" y="340" text-anchor="middle" fill="#C7D2FE" font-size="26" font-weight="700">K₁</text>
+    <rect x="1150" y="311" width="220" height="14" rx="7" fill="#64748B"/><rect x="1150" y="339" width="150" height="10" rx="5" fill="#334155"/>
+
+    <rect x="1010" y="416" width="440" height="126" rx="30" fill="#312E81" stroke="#A78BFA" stroke-width="3" filter="url(#glow)"/>
+    <circle cx="1072" cy="479" r="31" fill="#7C3AED"/><text x="1072" y="489" text-anchor="middle" fill="white" font-size="27" font-weight="700">K₂</text>
+    <rect x="1130" y="456" width="245" height="16" rx="8" fill="#C4B5FD"/><rect x="1130" y="489" width="185" height="11" rx="6" fill="#8B5CF6"/>
+    <text x="1387" y="487" text-anchor="end" fill="#EDE9FE" font-size="21" font-weight="700">最匹配</text>
+
+    <rect x="1040" y="572" width="410" height="112" rx="28" fill="#172554" stroke="#6366F1" stroke-opacity=".55"/>
+    <circle cx="1098" cy="628" r="28" fill="#312E81"/><text x="1098" y="638" text-anchor="middle" fill="#C7D2FE" font-size="26" font-weight="700">K₃</text>
+    <rect x="1150" y="609" width="210" height="14" rx="7" fill="#64748B"/><rect x="1150" y="637" width="130" height="10" rx="5" fill="#334155"/>
+  </g>
+
+  <rect x="104" y="758" width="1392" height="1" fill="white" fill-opacity=".12"/>
+  <text x="104" y="812" fill="#94A3B8" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20">Query 不是答案，它只是描述“本轮检索的意图”</text>
+  <text x="1496" y="812" text-anchor="end" fill="#C4B5FD" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="700">下一步：计算 Q 与每个 K 的相似度</text>
+</svg>

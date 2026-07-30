@@ -1,0 +1,2 @@
+REMOVE FIELD IF EXISTS updated ON TABLE command;
+REMOVE FIELD IF EXISTS created ON TABLE command;

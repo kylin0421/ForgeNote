@@ -95,6 +95,7 @@ class DefaultModels(RecordModel):
     default_resource_search_model: Optional[str] = None
     default_learning_asset_model: Optional[str] = None
     default_study_guide_model: Optional[str] = None
+    default_blog_model: Optional[str] = None
     default_quiz_model: Optional[str] = None
     default_flashcards_model: Optional[str] = None
     default_mind_map_model: Optional[str] = None
@@ -379,8 +380,15 @@ class ModelManager:
                 "default_transformation_model",
                 "default_chat_model",
             )
+        elif model_type == "asset_blog":
+            model_id = self._first_model_id(
+                defaults,
+                "default_blog_model",
+                "default_learning_asset_model",
+                "default_transformation_model",
+                "default_chat_model",
+            )
         elif model_type in {
-            "asset_blog",
             "asset_assessment",
             "asset_learning_path",
         }:

@@ -7,12 +7,12 @@ frontend:
 	cd frontend && npm run dev
 
 worker:
-	uv run --env-file .env surreal-commands-worker --import-modules commands
+	uv run --env-file .env surreal-commands-worker --import-modules commands.worker
 
 dev:
 	docker compose up -d surrealdb
 	uv run --env-file .env run_api.py &
-	uv run --env-file .env surreal-commands-worker --import-modules commands &
+	uv run --env-file .env surreal-commands-worker --import-modules commands.worker &
 	cd frontend && npm run dev
 
 test:

@@ -1,0 +1,65 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="background" x1="160" y1="70" x2="1480" y2="850" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#07162E"/>
+      <stop offset="0.52" stop-color="#111B45"/>
+      <stop offset="1" stop-color="#281146"/>
+    </linearGradient>
+    <linearGradient id="query" x1="250" y1="280" x2="510" y2="560" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="key" x1="670" y1="280" x2="930" y2="560" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="value" x1="1090" y1="280" x2="1350" y2="560" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F472B6"/>
+      <stop offset="1" stop-color="#C026D3"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#020617" flood-opacity="0.46"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0 0L12 6L0 12V0Z" fill="#A5B4FC"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="900" rx="44" fill="url(#background)"/>
+  <circle cx="136" cy="115" r="260" fill="#0EA5E9" fill-opacity="0.1"/>
+  <circle cx="1485" cy="815" r="330" fill="#D946EF" fill-opacity="0.11"/>
+
+  <text x="110" y="112" fill="#BAE6FD" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="5">FORGENOTE · AI 学习</text>
+  <text x="110" y="190" fill="white" font-family="Microsoft YaHei, Arial, sans-serif" font-size="54" font-weight="700">一次注意力计算是怎样完成的？</text>
+  <text x="110" y="242" fill="#CBD5E1" font-family="Microsoft YaHei, Arial, sans-serif" font-size="25">Q 发出问题，K 负责匹配，V 提供真正被聚合的信息</text>
+
+  <g filter="url(#shadow)">
+    <rect x="150" y="310" width="330" height="260" rx="36" fill="url(#query)"/>
+    <rect x="635" y="310" width="330" height="260" rx="36" fill="url(#key)"/>
+    <rect x="1120" y="310" width="330" height="260" rx="36" fill="url(#value)"/>
+  </g>
+
+  <text x="315" y="423" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="90" font-weight="700">Q</text>
+  <text x="315" y="476" text-anchor="middle" fill="#E0F2FE" font-family="Microsoft YaHei, Arial, sans-serif" font-size="28" font-weight="700">Query · 查询</text>
+  <text x="315" y="522" text-anchor="middle" fill="#E0F2FE" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20">我此刻想找什么？</text>
+
+  <text x="800" y="423" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="90" font-weight="700">K</text>
+  <text x="800" y="476" text-anchor="middle" fill="#EDE9FE" font-family="Microsoft YaHei, Arial, sans-serif" font-size="28" font-weight="700">Key · 索引</text>
+  <text x="800" y="522" text-anchor="middle" fill="#EDE9FE" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20">我能怎样被匹配？</text>
+
+  <text x="1285" y="423" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="90" font-weight="700">V</text>
+  <text x="1285" y="476" text-anchor="middle" fill="#FAE8FF" font-family="Microsoft YaHei, Arial, sans-serif" font-size="28" font-weight="700">Value · 内容</text>
+  <text x="1285" y="522" text-anchor="middle" fill="#FAE8FF" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20">我真正携带什么信息？</text>
+
+  <path d="M486 440H615" stroke="#A5B4FC" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M971 440H1100" stroke="#A5B4FC" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <text x="551" y="410" text-anchor="middle" fill="#C7D2FE" font-family="Arial, sans-serif" font-size="23" font-weight="700">QKᵀ</text>
+  <text x="1035" y="410" text-anchor="middle" fill="#C7D2FE" font-family="Arial, sans-serif" font-size="20" font-weight="700">softmax</text>
+
+  <rect x="188" y="660" width="1224" height="115" rx="30" fill="white" fill-opacity="0.07" stroke="white" stroke-opacity="0.12"/>
+  <text x="800" y="713" text-anchor="middle" fill="white" font-family="Microsoft YaHei, Arial, sans-serif" font-size="29" font-weight="700">Attention(Q,K,V) = softmax(QKᵀ / √dₖ) V</text>
+  <text x="800" y="753" text-anchor="middle" fill="#CBD5E1" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20">相似度决定权重，权重决定每条信息对当前输出的贡献</text>
+
+  <text x="110" y="845" fill="#94A3B8" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18">来源：Attention Is All You Need · PyTorch MultiheadAttention</text>
+  <text x="1490" y="845" text-anchor="end" fill="#94A3B8" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18">画像适配：图解 + 类比 + 代码</text>
+</svg>

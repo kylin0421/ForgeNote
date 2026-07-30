@@ -1,5 +1,5 @@
-import { AiLearningDemoPage } from '@/components/demo/AiLearningDemo'
+import { redirect } from 'next/navigation'
 
 export default function AiLearningStudioPage() {
-  return <AiLearningDemoPage />
+  redirect('/notebooks/ai-learning-demo?step=12')
 }

@@ -855,6 +855,8 @@ export const enUS = {
     learningAssetModelDesc: "Fallback model for all generated study assets.",
     studyGuideModelLabel: "Study Guide",
     studyGuideModelDesc: "Generates long-form Markdown explanations.",
+    blogModelLabel: "Teaching Blog",
+    blogModelDesc: "Generates polished, source-grounded long-form teaching articles.",
     quizModelLabel: "Quiz",
     quizModelDesc: "Generates diagnostic and practice questions.",
     flashcardsModelLabel: "Flashcards",

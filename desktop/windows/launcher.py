@@ -59,6 +59,35 @@ def ensure_config(data_root: Path) -> Path:
     config_path = data_root / "config.env"
     data_root.mkdir(parents=True, exist_ok=True)
     if config_path.exists():
+        values = read_env_file(config_path)
+        migrate_encryption_key = bool(
+            values.get("OPEN_NOTEBOOK_ENCRYPTION_KEY")
+            and not values.get("FORGENOTE_ENCRYPTION_KEY")
+        )
+        if migrate_encryption_key:
+            # Older desktop profiles used the upstream namespace and encryption
+            # variable name. Preserve the secret value while moving that key to
+            # the name ForgeNote now reads. Do not silently rename an existing
+            # Surreal namespace/database: doing so would point the user at a new
+            # empty database while leaving their existing records behind.
+            lines = config_path.read_text(encoding="utf-8").splitlines()
+            migrated = []
+            for line in lines:
+                stripped = line.strip()
+                if (
+                    migrate_encryption_key
+                    and stripped.startswith("OPEN_NOTEBOOK_ENCRYPTION_KEY=")
+                ):
+                    migrated.append(
+                        line.replace(
+                            "OPEN_NOTEBOOK_ENCRYPTION_KEY=",
+                            "FORGENOTE_ENCRYPTION_KEY=",
+                            1,
+                        )
+                    )
+                else:
+                    migrated.append(line)
+            config_path.write_text("\n".join(migrated) + "\n", encoding="utf-8")
         return config_path
 
     config_path.write_text(

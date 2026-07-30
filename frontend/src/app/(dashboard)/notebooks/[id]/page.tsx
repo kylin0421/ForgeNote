@@ -13,6 +13,7 @@ import { useNotebook, useUpdateNotebook } from '@/lib/hooks/use-notebooks'
 import { useNotebookSources } from '@/lib/hooks/use-sources'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { NotebookProfileBanner } from '@/components/notebooks/NotebookProfileBanner'
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
 import { useIsDesktop } from '@/lib/hooks/use-media-query'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -20,12 +21,10 @@ import { cn } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import {
-  ArrowRight,
   BookMarked,
   Brain,
   FileText,
   MessageSquare,
-  Sparkles,
   StickyNote,
   TrendingUp,
 } from 'lucide-react'
@@ -386,54 +385,12 @@ export default function NotebookPage() {
             {notebookActionButtons('h-9 flex-1 px-3')}
           </div>
 
-          <button
-            type="button"
+          <NotebookProfileBanner
+            sourceCount={sources?.length ?? 0}
+            assetCount={notes?.length ?? 0}
             onClick={openLearningProfile}
-            className="mb-3 flex w-full shrink-0 flex-col gap-3 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-background px-3 py-2.5 text-left transition-colors hover:border-primary/40 xl:flex-row xl:items-center"
-          >
-            <span className="flex min-w-0 items-center gap-3">
-              <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                <Brain className="h-5 w-5" />
-                <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-background" />
-              </span>
-              <span className="min-w-0">
-                <span className="flex items-center gap-2 font-semibold">
-                  8 维动态学生画像
-                  <Sparkles className="h-4 w-4 text-primary" />
-                </span>
-                <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                  正在用于个性化对话、资料推荐和难度调整；每次对话、Quiz 与资料选择后自动更新。
-                </span>
-              </span>
-            </span>
-            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground xl:justify-center">
-              {[
-                ['画像', '已启用', true],
-                ['资料', sources?.length ? `${sources.length} 项` : '待检索', Boolean(sources?.length)],
-                ['资产', notes?.length ? `${notes.length} 项` : '待生成', Boolean(notes?.length)],
-                ['评估', 'Quiz 后回写', false],
-              ].map(([label, value, ready], index, items) => (
-                <span key={String(label)} className="flex items-center gap-1.5">
-                  <span
-                    className={cn(
-                      'rounded-full border bg-background px-2.5 py-1',
-                      ready && 'border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
-                    )}
-                  >
-                    <span className="font-medium text-foreground">{label}</span>
-                    <span className="mx-1 text-muted-foreground">·</span>
-                    {value}
-                  </span>
-                  {index < items.length - 1 && (
-                    <ArrowRight className="hidden h-3 w-3 text-muted-foreground/50 sm:block" />
-                  )}
-                </span>
-              ))}
-            </span>
-            <span className="shrink-0 rounded-full border bg-background px-2.5 py-1 text-[11px] font-medium text-primary">
-              查看画像证据 / 编辑
-            </span>
-          </button>
+            className="mb-3"
+          />
 
           {/* Mobile: Tabbed interface - only render on mobile to avoid double-mounting */}
           {!isDesktop && (

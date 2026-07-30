@@ -55,7 +55,10 @@ async def get_notes(
             from forgenote.domain.notebook import Notebook
 
             notebook = await Notebook.get(notebook_id)
-            notes = await notebook.get_notes()
+            # Notebook.get_notes() defaults to a lightweight projection that
+            # omits the body. Studio needs the body to recognize and render
+            # generated assets such as blogs, quizzes, and mind maps.
+            notes = await notebook.get_notes(include_content=True)
         else:
             # Get all notes
             notes = await Note.get_all(order_by="updated desc")

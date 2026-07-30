@@ -244,7 +244,7 @@ function DemoNotebookTile() {
           ai学习
         </h2>
         <p className="text-sm font-medium text-slate-700">
-          {format(new Date(), 'd MMM yyyy')} · 4 个来源
+          {format(new Date(), 'd MMM yyyy')} · 0 个来源
         </p>
       </div>
     </div>

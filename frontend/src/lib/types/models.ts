@@ -40,6 +40,7 @@ export interface ModelDefaults {
   default_resource_search_model?: string | null
   default_learning_asset_model?: string | null
   default_study_guide_model?: string | null
+  default_blog_model?: string | null
   default_quiz_model?: string | null
   default_flashcards_model?: string | null
   default_mind_map_model?: string | null

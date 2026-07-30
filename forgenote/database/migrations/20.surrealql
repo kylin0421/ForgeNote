@@ -1,0 +1,18 @@
+-- Migration 20: Timestamp background commands without patching surreal-commands.
+--
+-- `created` is preserved after insertion, while `updated` is refreshed by every
+-- command record write (queueing, progress, completion, failure, cancellation).
+
+DEFINE TABLE IF NOT EXISTS command SCHEMALESS;
+DEFINE FIELD IF NOT EXISTS created ON TABLE command
+    TYPE option<datetime>
+    DEFAULT time::now()
+    VALUE $before OR time::now();
+DEFINE FIELD IF NOT EXISTS updated ON TABLE command
+    TYPE option<datetime>
+    DEFAULT time::now()
+    VALUE time::now();
+
+-- Backfill jobs created before these fields existed. The VALUE clauses above
+-- keep `created` stable and stamp `updated` as this migration writes each row.
+UPDATE command SET created = created OR updated OR time::now();

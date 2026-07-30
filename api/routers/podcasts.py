@@ -28,6 +28,8 @@ class PodcastEpisodeResponse(BaseModel):
     audio_url: Optional[str] = None
     video_file: Optional[str] = None
     video_url: Optional[str] = None
+    video_subtitle_url: Optional[str] = None
+    video_requested: bool = False
     keyframes: Optional[List[dict]] = None
     video_error: Optional[str] = None
     transcript: Optional[dict] = None
@@ -127,10 +129,15 @@ async def list_podcast_episodes():
                     audio_url = f"/api/podcasts/episodes/{episode.id}/audio"
 
             video_url = None
+            video_subtitle_url = None
             if episode.video_file:
                 video_path = _resolve_audio_path(episode.video_file)
                 if video_path.exists():
                     video_url = f"/api/podcasts/episodes/{episode.id}/video"
+                    if video_path.with_suffix(".vtt").exists():
+                        video_subtitle_url = (
+                            f"/api/podcasts/episodes/{episode.id}/video/subtitles"
+                        )
 
             response_episodes.append(
                 PodcastEpisodeResponse(
@@ -144,6 +151,8 @@ async def list_podcast_episodes():
                     audio_url=audio_url,
                     video_file=episode.video_file,
                     video_url=video_url,
+                    video_subtitle_url=video_subtitle_url,
+                    video_requested=episode.video_requested,
                     keyframes=episode.keyframes,
                     video_error=episode.video_error,
                     transcript=episode.transcript,
@@ -188,10 +197,15 @@ async def get_podcast_episode(episode_id: str):
                 audio_url = f"/api/podcasts/episodes/{episode.id}/audio"
 
         video_url = None
+        video_subtitle_url = None
         if episode.video_file:
             video_path = _resolve_audio_path(episode.video_file)
             if video_path.exists():
                 video_url = f"/api/podcasts/episodes/{episode.id}/video"
+                if video_path.with_suffix(".vtt").exists():
+                    video_subtitle_url = (
+                        f"/api/podcasts/episodes/{episode.id}/video/subtitles"
+                    )
 
         return PodcastEpisodeResponse(
             id=str(episode.id),
@@ -204,6 +218,8 @@ async def get_podcast_episode(episode_id: str):
             audio_url=audio_url,
             video_file=episode.video_file,
             video_url=video_url,
+            video_subtitle_url=video_subtitle_url,
+            video_requested=episode.video_requested,
             keyframes=episode.keyframes,
             video_error=episode.video_error,
             transcript=episode.transcript,
@@ -326,15 +342,42 @@ async def stream_podcast_episode_video(episode_id: str):
     )
 
 
+@router.get("/podcasts/episodes/{episode_id}/video/subtitles")
+async def stream_podcast_episode_video_subtitles(episode_id: str):
+    """Serve the WebVTT track generated beside an explainer video."""
+    try:
+        episode = await PodcastService.get_episode(episode_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching podcast episode for subtitles: {str(e)}")
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    if not episode.video_file:
+        raise HTTPException(status_code=404, detail="Episode has no explainer video")
+
+    subtitle_path = _resolve_audio_path(episode.video_file).with_suffix(".vtt")
+    if not subtitle_path.exists():
+        raise HTTPException(status_code=404, detail="Video subtitles not found on disk")
+
+    return FileResponse(
+        subtitle_path,
+        media_type="text/vtt; charset=utf-8",
+        filename=subtitle_path.name,
+    )
+
+
 @router.post("/podcasts/episodes/{episode_id}/retry")
 async def retry_podcast_episode(episode_id: str):
     """Retry a failed podcast episode by deleting it and submitting a new job"""
     try:
         episode = await PodcastService.get_episode(episode_id)
 
-        # Validate episode is in a failed state
+        # A video may fail after the podcast audio has already completed. In
+        # that case the command is completed but the episode still needs an
+        # explicit full retry (audio + video).
         detail = await episode.get_job_detail()
-        if detail["status"] not in ("failed", "error"):
+        if detail["status"] not in ("failed", "error") and not episode.video_error:
             raise HTTPException(
                 status_code=400,
                 detail=f"Episode is not in a failed state (current: {detail['status']})",
@@ -372,7 +415,10 @@ async def retry_podcast_episode(episode_id: str):
             notebook_id=episode.notebook_id,
             content=content,
             generate_video=bool(
-                episode.video_file or episode.keyframes or episode.video_error
+                episode.video_requested
+                or episode.video_file
+                or episode.keyframes
+                or episode.video_error
             ),
         )
 
@@ -410,6 +456,17 @@ async def delete_podcast_episode(episode_id: str):
                     logger.info(f"Deleted video file: {video_path}")
                 except Exception as e:
                     logger.warning(f"Failed to delete video file {video_path}: {e}")
+            for subtitle_path in (
+                video_path.with_suffix(".vtt"),
+                video_path.with_suffix(".srt"),
+            ):
+                if subtitle_path.exists():
+                    try:
+                        subtitle_path.unlink()
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to delete video subtitle {subtitle_path}: {e}"
+                        )
 
         for keyframe in episode.keyframes or []:
             image_file = (

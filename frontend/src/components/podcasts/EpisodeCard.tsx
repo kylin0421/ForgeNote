@@ -37,7 +37,7 @@ import type { TFunction } from 'i18next'
 
 interface EpisodeCardProps {
   episode: PodcastEpisode
-  onDelete: (episodeId: string) => Promise<void> | void
+  onDelete?: (episodeId: string) => Promise<void> | void
   deleting?: boolean
   onRetry?: (episodeId: string) => Promise<void> | void
   retrying?: boolean
@@ -273,7 +273,7 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
     : null
 
   const handleDelete = () => {
-    void onDelete(episode.id)
+    void onDelete?.(episode.id)
   }
 
   const handleRetry = () => {
@@ -294,7 +294,7 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                 {episode.name}
               </h3>
               <StatusBadge status={episode.job_status} />
-              {episode.video_url || episode.video_file ? (
+              {episode.video_requested || episode.video_url || episode.video_file ? (
                 <Badge variant="secondary">{t('podcasts.explainerVideo')}</Badge>
               ) : null}
             </div>
@@ -325,7 +325,13 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                     <p className="text-sm text-destructive">{videoError}</p>
                   ) : null}
                   {audioSrc ? (
-                    <audio controls preload="none" src={audioSrc} className="w-full" />
+                    <audio
+                      controls
+                      preload="none"
+                      src={audioSrc}
+                      className="w-full"
+                      aria-label={`${episode.name} 音频`}
+                    />
                   ) : audioError ? (
                     <p className="text-sm text-destructive">{audioError}</p>
                   ) : null}
@@ -471,33 +477,41 @@ export function EpisodeCard({ episode, onDelete, deleting, onRetry, retrying }: 
                 {retrying ? t('podcasts.retrying') : t('podcasts.retry')}
               </Button>
             ) : null}
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-destructive">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {t('podcasts.delete')}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t('podcasts.deleteEpisodeTitle')}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('podcasts.deleteEpisodeDesc').replace('{name}', episode.name)}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} disabled={deleting}>
-                    {deleting ? t('podcasts.deleting') : t('podcasts.delete')}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            {onDelete ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="text-destructive">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {t('podcasts.delete')}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{t('podcasts.deleteEpisodeTitle')}</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t('podcasts.deleteEpisodeDesc').replace('{name}', episode.name)}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDelete} disabled={deleting}>
+                      {deleting ? t('podcasts.deleting') : t('podcasts.delete')}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : null}
           </div>
         </div>
 
         {audioSrc ? (
-          <audio controls preload="none" src={audioSrc} className="w-full" />
+          <audio
+            controls
+            preload="none"
+            src={audioSrc}
+            className="w-full"
+            aria-label={`${episode.name} 音频`}
+          />
         ) : audioError ? (
           <p className="text-sm text-destructive">{audioError}</p>
         ) : null}

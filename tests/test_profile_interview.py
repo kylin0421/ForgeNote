@@ -8,9 +8,11 @@ from api.learning_service import (
     _LEARNING_WORKFLOW_TIMERS,
     _explicit_profile_evidence,
     _update_learning_workflow_progress,
+    _workflow_agent_ids_for_request,
     generate_learning_profile_interview,
 )
 from api.models import (
+    LearningOrchestrationRequest,
     LearningProfileInterviewRequest,
     LearningProfileInterviewTurn,
 )
@@ -187,4 +189,113 @@ async def test_workflow_progress_records_each_step_duration(monkeypatch):
         step["duration_seconds"] is not None
         for step in final_progress["steps"]
     )
+    assert command_id not in _LEARNING_WORKFLOW_TIMERS
+
+
+@pytest.mark.parametrize(
+    ("requested_outputs", "expected_primary_agent"),
+    [
+        (["study_guide"], "resource-agent"),
+        (["blog"], "tutor-agent"),
+        (["quiz"], "practice-agent"),
+        (["assessment"], "evaluation-agent"),
+        (["learning_path"], "path-agent"),
+    ],
+)
+def test_generate_workflow_shape_selects_only_the_real_primary_agent(
+    requested_outputs,
+    expected_primary_agent,
+):
+    request = LearningOrchestrationRequest(
+        message="生成学习资产",
+        course="机器学习",
+        mode="generate",
+        requested_outputs=requested_outputs,
+        accepted_resource_ids=["source:paper"],
+    )
+
+    assert _workflow_agent_ids_for_request(request) == [
+        "profile-agent",
+        expected_primary_agent,
+        "safety-agent",
+    ]
+
+
+def test_generate_workflow_shape_adds_collection_only_when_it_runs():
+    request = LearningOrchestrationRequest(
+        message="先搜索资料，再生成讲解",
+        course="机器学习",
+        mode="generate",
+        requested_outputs=["study_guide"],
+    )
+
+    assert _workflow_agent_ids_for_request(request) == [
+        "profile-agent",
+        "curriculum-agent",
+        "collector-agent",
+        "resource-agent",
+        "safety-agent",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_generate_progress_persists_only_explicit_real_steps(monkeypatch):
+    updates = []
+
+    async def fake_repo_query(_query, params):
+        updates.append(params["progress"])
+        return []
+
+    monkeypatch.setattr("api.learning_service.repo_query", fake_repo_query)
+    command_id = "command:truthful-generate-workflow"
+    _LEARNING_WORKFLOW_TIMERS.pop(command_id, None)
+    step_agent_ids = [
+        "profile-agent",
+        "resource-agent",
+        "safety-agent",
+    ]
+
+    await _update_learning_workflow_progress(
+        command_id,
+        "generate",
+        "profile-agent",
+        "读取画像",
+        6,
+        step_agent_ids=step_agent_ids,
+    )
+    await asyncio.sleep(0.01)
+    await _update_learning_workflow_progress(
+        command_id,
+        "generate",
+        "resource-agent",
+        "生成资产",
+        54,
+        {"profile-agent"},
+    )
+    await asyncio.sleep(0.01)
+    await _update_learning_workflow_progress(
+        command_id,
+        "generate",
+        "safety-agent",
+        "安全校验",
+        93,
+        {"profile-agent", "resource-agent"},
+    )
+    await asyncio.sleep(0.01)
+    await _update_learning_workflow_progress(
+        command_id,
+        "generate",
+        None,
+        "完成",
+        100,
+        set(step_agent_ids),
+    )
+
+    assert all(
+        [step["id"] for step in progress["steps"]] == step_agent_ids
+        for progress in updates
+    )
+    final_steps = updates[-1]["steps"]
+    assert all(step["status"] == "completed" for step in final_steps)
+    assert all(step["duration_seconds"] is not None for step in final_steps)
     assert command_id not in _LEARNING_WORKFLOW_TIMERS

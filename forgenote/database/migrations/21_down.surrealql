@@ -1,0 +1,1 @@
+REMOVE FIELD IF EXISTS video_requested ON TABLE episode;

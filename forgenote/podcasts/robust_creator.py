@@ -44,6 +44,25 @@ THINKING_NO_OPEN_PATTERN = re.compile(
     re.DOTALL | re.IGNORECASE,
 )
 
+NARRATION_AND_VISUAL_GUIDANCE = """
+Spoken-delivery requirements:
+- Write for listening, not for silent reading. Prefer short, complete sentences
+  with natural pauses and concrete examples.
+- Explain symbols as spoken language. Introduce English technical terms after
+  their Chinese meaning, and avoid dense formulas or punctuation that a speech
+  model could pronounce ambiguously.
+- Keep each turn focused on one idea and make speaker hand-offs sound natural.
+
+Explainer-visual requirements:
+- Add visual_prompt to the first important turn and then roughly every two to
+  four turns when the concept, example, comparison, or process stage changes.
+- Each visual_prompt must describe a concrete 16:9 composition, focal object,
+  relationship, and visual metaphor. Maintain the same premium editorial
+  infographic art direction across the segment.
+- Use null when the current visual should remain. Do not ask the image model to
+  render paragraphs, subtitles, formulas, logos, watermarks, or tiny labels.
+""".strip()
+
 
 class VisualDialogue(BaseModel):
     """One spoken turn plus an optional visual cue for explainer video output."""
@@ -177,6 +196,10 @@ Rules:
 - Every object must contain string fields "speaker" and "dialogue".
 - Every object may contain "visual_prompt": a complete 16:9 educational image prompt, or null.
 - Preserve useful visual_prompt values from the invalid output when possible.
+- Dialogue must sound natural when spoken aloud: short sentences, explicit
+  verbal explanations for symbols, and unambiguous pronunciation.
+- Provide a concrete visual_prompt every two to four turns when the idea changes;
+  use null to intentionally hold the previous visual.
 - speaker must be one of: {speakers}
 - Remove or regenerate any incomplete turn. Do not leave partial objects.
 
@@ -367,6 +390,9 @@ async def generate_transcript_node_with_repair(
                 "transcript": transcript,
                 "language": state.get("language"),
             }
+        )
+        transcript_prompt_rendered = (
+            f"{transcript_prompt_rendered}\n\n{NARRATION_AND_VISUAL_GUIDANCE}"
         )
         result = await _invoke_and_parse(transcript_prompt_rendered, segment.name)
         limited_dialogue = limit_transcript_turns(result.transcript, turns)

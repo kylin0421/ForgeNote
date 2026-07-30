@@ -60,6 +60,8 @@ export interface PodcastEpisode {
   audio_url?: string | null
   video_file?: string | null
   video_url?: string | null
+  video_subtitle_url?: string | null
+  video_requested?: boolean
   keyframes?: Array<{
     index: number
     turn_index: number

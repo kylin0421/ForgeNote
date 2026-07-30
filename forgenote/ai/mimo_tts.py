@@ -1,14 +1,15 @@
 """Xiaomi MiMo text-to-speech provider for Esperanto."""
 
 import base64
+import io
 import os
+import re
+import wave
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import httpx
-
 from esperanto.providers.tts.base import AudioResponse, Model, TextToSpeechModel, Voice
-
 
 MIMO_DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1"
 
@@ -113,6 +114,7 @@ class MiMoTextToSpeechModel(TextToSpeechModel):
     DEFAULT_MODEL = "mimo-v2.5-tts"
     DEFAULT_VOICE = "mimo_default"
     DEFAULT_FORMAT = "wav"
+    DEFAULT_MAX_AUDIO_ATTEMPTS = 2
 
     def __init__(
         self,
@@ -280,6 +282,39 @@ class MiMoTextToSpeechModel(TextToSpeechModel):
         }.get(audio_format, f"audio/{audio_format}")
         return base64.b64decode(encoded_audio), content_type
 
+    def _estimate_audio_duration(
+        self, audio_bytes: bytes, content_type: str
+    ) -> Optional[float]:
+        if "wav" not in (content_type or "").lower() and not audio_bytes.startswith(b"RIFF"):
+            return None
+        try:
+            with wave.open(io.BytesIO(audio_bytes), "rb") as wav_file:
+                frame_rate = wav_file.getframerate()
+                if not frame_rate:
+                    return None
+                return wav_file.getnframes() / float(frame_rate)
+        except Exception:
+            return None
+
+    def _minimum_expected_duration(self, text: str) -> float:
+        cjk_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
+        latin_words = len(re.findall(r"[A-Za-z0-9]+", text))
+        expected_seconds = cjk_chars * 0.10 + latin_words * 0.22
+        return max(0.5, expected_seconds * 0.55)
+
+    def _validate_complete_audio(
+        self, text: str, audio_bytes: bytes, content_type: str
+    ) -> Optional[float]:
+        duration = self._estimate_audio_duration(audio_bytes, content_type)
+        minimum = self._minimum_expected_duration(text)
+        if duration is not None and duration < minimum:
+            raise RuntimeError(
+                "MiMo TTS returned truncated audio "
+                f"({duration:.2f}s; expected at least {minimum:.2f}s). "
+                "Retry the task or select another text-to-speech model."
+            )
+        return duration
+
     def _post_generation(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         response = self.client.post(
             self._generation_url(),
@@ -311,9 +346,11 @@ class MiMoTextToSpeechModel(TextToSpeechModel):
         content_type: str,
         voice: Optional[str],
         metadata: Dict[str, Any],
+        duration: Optional[float] = None,
     ) -> AudioResponse:
         return AudioResponse(
             audio_data=audio_bytes,
+            duration=duration,
             content_type=content_type,
             model=self.model_name,
             voice=self._resolve_voice(voice),
@@ -330,15 +367,50 @@ class MiMoTextToSpeechModel(TextToSpeechModel):
     ) -> AudioResponse:
         try:
             self.validate_parameters(text, voice or self.DEFAULT_VOICE, self.model_name)
-            payload = self._build_payload(text, voice, dict(kwargs))
-            data = self._post_generation(payload)
-            audio_bytes, content_type = self._audio_from_response(data)
+            options = dict(kwargs)
+            max_attempts = max(
+                1,
+                int(
+                    options.pop(
+                        "max_audio_attempts",
+                        self._config.get(
+                            "max_audio_attempts", self.DEFAULT_MAX_AUDIO_ATTEMPTS
+                        ),
+                    )
+                ),
+            )
+            payload = self._build_payload(text, voice, options)
+            last_error: Optional[RuntimeError] = None
+            for _ in range(max_attempts):
+                data = self._post_generation(payload)
+                audio_bytes, content_type = self._audio_from_response(data)
+                try:
+                    duration = self._validate_complete_audio(
+                        text, audio_bytes, content_type
+                    )
+                    break
+                except RuntimeError as exc:
+                    last_error = exc
+            else:
+                assert last_error is not None
+                raise last_error
             self._save_output(output_file, audio_bytes)
             return self._response(
                 audio_bytes,
                 content_type,
                 voice,
-                {"request": payload, "response": data},
+                {
+                    "request": payload,
+                    "response": data,
+                    "audio_validation": {
+                        "duration_seconds": duration,
+                        "minimum_expected_seconds": self._minimum_expected_duration(
+                            text
+                        ),
+                        "attempts": max_attempts,
+                    },
+                },
+                duration,
             )
         except RuntimeError:
             raise
@@ -354,15 +426,50 @@ class MiMoTextToSpeechModel(TextToSpeechModel):
     ) -> AudioResponse:
         try:
             self.validate_parameters(text, voice or self.DEFAULT_VOICE, self.model_name)
-            payload = self._build_payload(text, voice, dict(kwargs))
-            data = await self._apost_generation(payload)
-            audio_bytes, content_type = self._audio_from_response(data)
+            options = dict(kwargs)
+            max_attempts = max(
+                1,
+                int(
+                    options.pop(
+                        "max_audio_attempts",
+                        self._config.get(
+                            "max_audio_attempts", self.DEFAULT_MAX_AUDIO_ATTEMPTS
+                        ),
+                    )
+                ),
+            )
+            payload = self._build_payload(text, voice, options)
+            last_error: Optional[RuntimeError] = None
+            for _ in range(max_attempts):
+                data = await self._apost_generation(payload)
+                audio_bytes, content_type = self._audio_from_response(data)
+                try:
+                    duration = self._validate_complete_audio(
+                        text, audio_bytes, content_type
+                    )
+                    break
+                except RuntimeError as exc:
+                    last_error = exc
+            else:
+                assert last_error is not None
+                raise last_error
             self._save_output(output_file, audio_bytes)
             return self._response(
                 audio_bytes,
                 content_type,
                 voice,
-                {"request": payload, "response": data},
+                {
+                    "request": payload,
+                    "response": data,
+                    "audio_validation": {
+                        "duration_seconds": duration,
+                        "minimum_expected_seconds": self._minimum_expected_duration(
+                            text
+                        ),
+                        "attempts": max_attempts,
+                    },
+                },
+                duration,
             )
         except RuntimeError:
             raise

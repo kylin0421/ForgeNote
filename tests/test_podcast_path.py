@@ -9,6 +9,9 @@ spaces and special characters (GitHub issue #663).
 import uuid
 from pathlib import PurePosixPath
 
+import pytest
+
+from api.routers.podcasts import retry_podcast_episode
 from commands.podcast_commands import (
     build_episode_output_dir,
     build_podcast_error_message,
@@ -160,3 +163,50 @@ def test_build_timestamped_transcript_uses_clip_durations(monkeypatch):
     assert timestamped[1]["start"] == 1.25
     assert timestamped[1]["end"] == 3.75
     assert timestamped[1]["duration"] == 2.5
+
+
+@pytest.mark.asyncio
+async def test_retry_accepts_completed_episode_when_only_video_failed(monkeypatch):
+    class Episode:
+        episode_profile = {"name": "study"}
+        speaker_profile = {"name": "solo"}
+        name = "QKV 讲解"
+        content = "source-grounded content"
+        notebook_id = "notebook:test"
+        audio_file = None
+        video_requested = True
+        video_file = None
+        keyframes = None
+        video_error = "ffmpeg failed"
+        deleted = False
+
+        async def get_job_detail(self):
+            return {"status": "completed"}
+
+        async def delete(self):
+            self.deleted = True
+
+    episode = Episode()
+    submitted = {}
+
+    async def get_episode(_episode_id):
+        return episode
+
+    async def submit_generation_job(**kwargs):
+        submitted.update(kwargs)
+        return "command:retry-video"
+
+    monkeypatch.setattr(
+        "api.routers.podcasts.PodcastService.get_episode",
+        get_episode,
+    )
+    monkeypatch.setattr(
+        "api.routers.podcasts.PodcastService.submit_generation_job",
+        submit_generation_job,
+    )
+
+    response = await retry_podcast_episode("episode:video-failed")
+
+    assert response["job_id"] == "command:retry-video"
+    assert submitted["generate_video"] is True
+    assert episode.deleted is True

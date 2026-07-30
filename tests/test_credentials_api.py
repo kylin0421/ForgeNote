@@ -515,6 +515,60 @@ class TestModelRuntimeSpecs:
         assert response.audio_data == audio
         assert response.content_type == "audio/wav"
 
+    def test_mimo_adapter_rejects_silently_truncated_audio(self):
+        import base64
+        import io
+        import wave
+
+        from forgenote.ai.mimo_tts import MiMoTextToSpeechModel
+
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(24000)
+            wav_file.writeframes(b"\x00\x00" * 2400)
+        short_audio = buffer.getvalue()
+
+        class FakeClient:
+            calls = 0
+
+            def post(self, url, headers=None, json=None):
+                self.calls += 1
+                return httpx.Response(
+                    200,
+                    json={
+                        "choices": [
+                            {
+                                "message": {
+                                    "audio": {
+                                        "data": base64.b64encode(short_audio).decode(
+                                            "ascii"
+                                        ),
+                                        "format": "wav",
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                )
+
+        model = MiMoTextToSpeechModel(
+            model_name="mimo-v2.5-tts",
+            api_key="test-key",
+            base_url="https://api.xiaomimimo.com/v1",
+        )
+        fake_client = FakeClient()
+        model.client = fake_client
+
+        with pytest.raises(RuntimeError, match="returned truncated audio"):
+            model.generate_speech(
+                "这是一段明显不可能在零点一秒内完整朗读完的中文教学讲解。",
+                voice="alloy",
+            )
+
+        assert fake_client.calls == model.DEFAULT_MAX_AUDIO_ATTEMPTS
+
     def test_dashscope_realtime_adapter_helpers(self):
         import io
         import wave

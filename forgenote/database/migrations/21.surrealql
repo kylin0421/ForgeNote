@@ -1,0 +1,11 @@
+-- Migration 21: Preserve whether a podcast episode requested explainer video.
+
+DEFINE FIELD IF NOT EXISTS video_requested ON TABLE episode TYPE bool DEFAULT false;
+
+-- Video fields predate this explicit intent flag. Preserve existing generated
+-- and failed video episodes as video assets in Studio.
+UPDATE episode
+SET video_requested = true
+WHERE video_file != NONE
+   OR keyframes != NONE
+   OR video_error != NONE;

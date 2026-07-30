@@ -33,7 +33,13 @@ async def provision_langchain_model(
         selection_reason = f"default for type={default_type}"
         model = await model_manager.get_default_model(default_type, **kwargs)
 
-    logger.debug(f"Using model: {model}")
+    # Some provider model reprs include credential material. Log only the
+    # implementation type so debug output can never disclose an API key.
+    logger.debug(
+        "Provisioned model type={} selection={}",
+        type(model).__name__ if model is not None else "None",
+        selection_reason,
+    )
 
     if model is None:
         logger.error(
@@ -54,7 +60,7 @@ async def provision_langchain_model(
             f"model_id={model_id}, default_type={default_type}."
         )
         raise ConfigurationError(
-            f"Model is not a LanguageModel: {model}. "
+            f"Model is not a LanguageModel: {type(model).__name__}. "
             f"Please check that the model configured for '{default_type}' is a language model, not an embedding or speech model."
         )
 

@@ -28,6 +28,55 @@ def test_ensure_config_creates_and_preserves_encryption_key(tmp_path: Path):
     assert second["FORGENOTE_ENCRYPTION_KEY"] == first["FORGENOTE_ENCRYPTION_KEY"]
 
 
+def test_ensure_config_preserves_legacy_namespace_and_existing_data_location(
+    tmp_path: Path,
+):
+    config_path = tmp_path / "config.env"
+    config_path.write_text(
+        "\n".join(
+            [
+                "FORGENOTE_ENCRYPTION_KEY=keep-this-key",
+                "CUSTOM_SETTING=keep-this-value",
+                "SURREAL_NAMESPACE=open_notebook",
+                "SURREAL_DATABASE=open_notebook",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    ensure_config(tmp_path)
+
+    preserved = read_env_file(config_path)
+    assert preserved["FORGENOTE_ENCRYPTION_KEY"] == "keep-this-key"
+    assert preserved["CUSTOM_SETTING"] == "keep-this-value"
+    assert preserved["SURREAL_NAMESPACE"] == "open_notebook"
+    assert preserved["SURREAL_DATABASE"] == "open_notebook"
+
+
+def test_ensure_config_renames_legacy_encryption_key_without_rotating_it(
+    tmp_path: Path,
+):
+    config_path = tmp_path / "config.env"
+    config_path.write_text(
+        "\n".join(
+            [
+                "OPEN_NOTEBOOK_ENCRYPTION_KEY=keep-legacy-secret",
+                "SURREAL_NAMESPACE=forgenote",
+                "SURREAL_DATABASE=forgenote",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    ensure_config(tmp_path)
+
+    migrated = read_env_file(config_path)
+    assert migrated["FORGENOTE_ENCRYPTION_KEY"] == "keep-legacy-secret"
+    assert "OPEN_NOTEBOOK_ENCRYPTION_KEY" not in migrated
+
+
 def test_read_env_file_ignores_comments_and_supports_quoted_values(tmp_path: Path):
     path = tmp_path / "config.env"
     path.write_text('# note\nA=one\nB="two words"\n', encoding="utf-8")

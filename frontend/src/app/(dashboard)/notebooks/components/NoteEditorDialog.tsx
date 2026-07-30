@@ -162,6 +162,13 @@ interface NoteEditorDialogProps {
   initialFullscreen?: boolean
   mindMapMaterials?: MindMapMaterial[]
   onLearningEvent?: (event: LearningAssetInteractionEvent) => void
+  useProvidedNote?: boolean
+  onProvidedNoteSave?: (note: {
+    id?: string
+    title: string | null
+    content: string
+    note_type: string | null
+  }) => void
 }
 
 export function NoteEditorDialog({
@@ -172,6 +179,8 @@ export function NoteEditorDialog({
   initialFullscreen = false,
   mindMapMaterials = [],
   onLearningEvent,
+  useProvidedNote = false,
+  onProvidedNoteSave,
 }: NoteEditorDialogProps) {
   const { t } = useTranslation()
   const createNote = useCreateNote()
@@ -184,8 +193,14 @@ export function NoteEditorDialog({
     ? (note.id.includes(':') ? note.id : `note:${note.id}`)
     : ''
 
-  const { data: fetchedNote, isLoading: noteLoading } = useNote(noteIdWithPrefix, { enabled: open && !!note?.id })
-  const isSaving = isEditing ? updateNote.isPending : createNote.isPending
+  const { data: fetchedNote, isLoading: noteLoading } = useNote(noteIdWithPrefix, {
+    enabled: open && !!note?.id && !useProvidedNote,
+  })
+  const isSaving = useProvidedNote
+    ? false
+    : isEditing
+      ? updateNote.isPending
+      : createNote.isPending
   const {
     handleSubmit,
     control,
@@ -285,6 +300,19 @@ export function NoteEditorDialog({
 
   const onSubmit = async (data: CreateNoteFormData) => {
     const title = stripLearningAssetTitlePrefix(data.title)
+    if (useProvidedNote) {
+      onProvidedNoteSave?.({
+        id: note?.id,
+        title: title || null,
+        content: data.content,
+        note_type: note?.note_type ?? 'human',
+      })
+      reset()
+      setIsAssetEditing(false)
+      onOpenChange(false)
+      return
+    }
+
     if (note) {
       await updateNote.mutateAsync({
         id: noteIdWithPrefix,

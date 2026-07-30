@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
-import { ChatColumn } from './ChatColumn'
+import { ChatColumn, resolveToolCallProgress } from './ChatColumn'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { useNotebookChat } from '@/lib/hooks/useNotebookChat'
 
@@ -72,5 +72,32 @@ describe('ChatColumn', () => {
 
     // Should show chat panel
     expect(screen.getByTestId('chat-panel')).toBeInTheDocument()
+  })
+
+  it('does not invent a percentage before tool progress is reported', () => {
+    expect(resolveToolCallProgress('new', undefined)).toEqual({
+      percent: null,
+      label: '等待开始',
+    })
+    expect(resolveToolCallProgress('running', undefined)).toEqual({
+      percent: null,
+      label: '进行中',
+    })
+    expect(resolveToolCallProgress('running', 42.4)).toEqual({
+      percent: 42.4,
+      label: '42%',
+    })
+    expect(resolveToolCallProgress('completed', undefined)).toEqual({
+      percent: 100,
+      label: '100%',
+    })
+    expect(resolveToolCallProgress('failed', undefined)).toEqual({
+      percent: null,
+      label: '失败',
+    })
+    expect(resolveToolCallProgress('canceled', undefined)).toEqual({
+      percent: null,
+      label: '已取消',
+    })
   })
 })

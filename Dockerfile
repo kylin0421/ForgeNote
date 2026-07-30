@@ -76,6 +76,7 @@ RUN apt-get -o Acquire::Retries=5 update \
     ffmpeg \
     supervisor \
     curl \
+    fonts-noto-cjk \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get -o Acquire::Retries=5 update \
     && apt-get -o Acquire::Retries=5 install -y nodejs \

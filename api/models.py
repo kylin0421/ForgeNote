@@ -378,6 +378,7 @@ class DefaultModelsResponse(BaseModel):
     default_resource_search_model: Optional[str] = None
     default_learning_asset_model: Optional[str] = None
     default_study_guide_model: Optional[str] = None
+    default_blog_model: Optional[str] = None
     default_quiz_model: Optional[str] = None
     default_flashcards_model: Optional[str] = None
     default_mind_map_model: Optional[str] = None

@@ -1,0 +1,43 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="60" y1="40" x2="1510" y2="860" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#07162E"/><stop offset=".55" stop-color="#171640"/><stop offset="1" stop-color="#30113F"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#38BDF8"/><stop offset="1" stop-color="#2563EB"/></linearGradient>
+    <linearGradient id="bar2" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#A78BFA"/><stop offset="1" stop-color="#7C3AED"/></linearGradient>
+    <linearGradient id="bar3" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#F472B6"/><stop offset="1" stop-color="#DB2777"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#020617" flood-opacity=".48"/></filter>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="16" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1600" height="900" rx="44" fill="url(#bg)"/>
+  <circle cx="1500" cy="70" r="250" fill="#8B5CF6" fill-opacity=".09"/>
+  <circle cx="95" cy="840" r="300" fill="#0EA5E9" fill-opacity=".07"/>
+
+  <text x="104" y="104" fill="#DDD6FE" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="5">STEP 02 · MATCH &amp; SOFTMAX</text>
+  <text x="104" y="176" fill="white" font-family="Microsoft YaHei, Arial, sans-serif" font-size="50" font-weight="700">相似度分数，被转换成可比较的注意力权重</text>
+  <text x="104" y="226" fill="#CBD5E1" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24">权重总和为 1；越相关的信息，获得越大的“发言份额”</text>
+
+  <g filter="url(#shadow)">
+    <rect x="104" y="294" width="596" height="410" rx="38" fill="white" fill-opacity=".055" stroke="white" stroke-opacity=".12"/>
+    <rect x="900" y="294" width="596" height="410" rx="38" fill="white" fill-opacity=".055" stroke="white" stroke-opacity=".12"/>
+  </g>
+  <text x="152" y="354" fill="#BAE6FD" font-family="Microsoft YaHei, Arial, sans-serif" font-size="25" font-weight="700">Q · K 相似度</text>
+  <text x="948" y="354" fill="#E9D5FF" font-family="Microsoft YaHei, Arial, sans-serif" font-size="25" font-weight="700">Softmax 后的权重</text>
+
+  <g font-family="Microsoft YaHei, Arial, sans-serif">
+    <text x="152" y="438" fill="#94A3B8" font-size="23">K₁</text><rect x="214" y="410" width="190" height="42" rx="21" fill="url(#bar1)" opacity=".66"/><text x="430" y="440" fill="#BAE6FD" font-size="22">0.8</text>
+    <text x="152" y="535" fill="#94A3B8" font-size="23">K₂</text><rect x="214" y="507" width="378" height="42" rx="21" fill="url(#bar2)" filter="url(#glow)"/><text x="618" y="537" fill="#DDD6FE" font-size="22" font-weight="700">2.4</text>
+    <text x="152" y="632" fill="#94A3B8" font-size="23">K₃</text><rect x="214" y="604" width="132" height="42" rx="21" fill="url(#bar3)" opacity=".62"/><text x="372" y="634" fill="#FBCFE8" font-size="22">0.3</text>
+
+    <path d="M735 498H838" stroke="#C4B5FD" stroke-width="6" stroke-linecap="round"/><path d="M826 480L855 498L826 516" stroke="#C4B5FD" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="796" y="459" text-anchor="middle" fill="#C4B5FD" font-size="20" font-weight="700">softmax</text>
+
+    <text x="948" y="438" fill="#94A3B8" font-size="23">K₁</text><rect x="1010" y="410" width="126" height="42" rx="21" fill="url(#bar1)" opacity=".7"/><text x="1160" y="440" fill="#BAE6FD" font-size="22">18%</text>
+    <text x="948" y="535" fill="#EDE9FE" font-size="23" font-weight="700">K₂</text><rect x="1010" y="507" width="360" height="42" rx="21" fill="url(#bar2)" filter="url(#glow)"/><text x="1394" y="537" fill="white" font-size="22" font-weight="700">72%</text>
+    <text x="948" y="632" fill="#94A3B8" font-size="23">K₃</text><rect x="1010" y="604" width="72" height="42" rx="21" fill="url(#bar3)" opacity=".65"/><text x="1106" y="634" fill="#FBCFE8" font-size="22">10%</text>
+  </g>
+
+  <rect x="104" y="758" width="1392" height="1" fill="white" fill-opacity=".12"/>
+  <text x="104" y="812" fill="#94A3B8" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20">缩放因子避免分数过尖；Softmax 把相对关系变成稳定权重</text>
+  <text x="1496" y="812" text-anchor="end" fill="#C4B5FD" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="700">18% + 72% + 10% = 100%</text>
+</svg>

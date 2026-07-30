@@ -8,6 +8,7 @@ No video-generation API is required.
 
 from __future__ import annotations
 
+import math
 import mimetypes
 import shutil
 import subprocess
@@ -26,6 +27,8 @@ from forgenote.ai.models import DefaultModels, Model
 
 MAX_KEYFRAMES = 12
 MIN_KEYFRAME_GAP_SECONDS = 3.0
+IDEAL_KEYFRAME_INTERVAL_SECONDS = 16.0
+VIDEO_TRANSITION_SECONDS = 0.45
 
 
 def _as_dict(item: Any) -> dict[str, Any]:
@@ -43,7 +46,14 @@ def build_keyframe_plan(
     max_keyframes: int = MAX_KEYFRAMES,
     min_gap_seconds: float = MIN_KEYFRAME_GAP_SECONDS,
 ) -> list[dict[str, Any]]:
-    """Convert transcript visual anchors to exact, economical time-indexed cues."""
+    """Convert transcript visual anchors to exact, economical time-indexed cues.
+
+    The transcript model is encouraged to add visual prompts, but compatible
+    language models occasionally omit them. A video with one still image for a
+    long narration looks broken even though generation technically succeeded,
+    so sparse plans are filled from the spoken source text at a conservative
+    interval.
+    """
 
     entries = [_as_dict(item) for item in transcript]
     keyframes: list[dict[str, Any]] = []
@@ -69,28 +79,84 @@ def build_keyframe_plan(
                 "turn_index": turn_index,
                 "time_index": round(time_index, 3),
                 "prompt": prompt,
+                "prompt_source": "model",
             }
         )
         seen_prompts.add(prompt)
         if len(keyframes) >= max_keyframes:
             break
 
+    timeline_end = 0.0
+    for entry in entries:
+        for field in ("end_time", "end", "start_time", "start"):
+            try:
+                timeline_end = max(timeline_end, float(entry.get(field) or 0.0))
+            except (TypeError, ValueError):
+                continue
+
+    desired_count = min(
+        max_keyframes,
+        max(1, math.ceil(timeline_end / IDEAL_KEYFRAME_INTERVAL_SECONDS)),
+    )
+
+    def coverage_prompt(entry: dict[str, Any]) -> str:
+        idea = str(entry.get("dialogue") or episode_name).strip()[:500]
+        return (
+            "Create a polished editorial educational visual for this spoken idea: "
+            f"{idea}. Turn the idea into one concrete visual metaphor or process "
+            "diagram with a clear focal object and two to four supporting elements. "
+            "Use shapes, arrows, scale, and color rather than visible prose."
+        )
+
+    if entries and len(keyframes) < desired_count:
+        occupied_turns = {int(item["turn_index"]) for item in keyframes}
+        occupied_times = [float(item["time_index"]) for item in keyframes]
+        candidate_indices = [
+            round(index * (len(entries) - 1) / max(1, desired_count - 1))
+            for index in range(desired_count)
+        ]
+        for turn_index in candidate_indices:
+            if turn_index in occupied_turns:
+                continue
+            entry = entries[turn_index]
+            try:
+                time_index = max(
+                    0.0,
+                    float(entry.get("start_time", entry.get("start", 0.0)) or 0.0),
+                )
+            except (TypeError, ValueError):
+                time_index = 0.0
+            if any(abs(time_index - item_time) < min_gap_seconds for item_time in occupied_times):
+                continue
+            keyframes.append(
+                {
+                    "index": 0,
+                    "turn_index": turn_index,
+                    "time_index": round(time_index, 3),
+                    "prompt": coverage_prompt(entry),
+                    "prompt_source": "coverage",
+                }
+            )
+            occupied_turns.add(turn_index)
+            occupied_times.append(time_index)
+            if len(keyframes) >= desired_count:
+                break
+
     if not keyframes and entries:
-        topic = str(entries[0].get("dialogue") or episode_name).strip()[:500]
         keyframes.append(
             {
                 "index": 1,
                 "turn_index": 0,
                 "time_index": 0.0,
-                "prompt": (
-                    "Create a clean 16:9 educational textbook illustration that introduces "
-                    f"this lesson: {topic}. Use a clear focal concept, ample whitespace, "
-                    "consistent blue accent colors, and no long visible text."
-                ),
+                "prompt": coverage_prompt(entries[0]),
+                "prompt_source": "coverage",
             }
         )
 
     if keyframes:
+        keyframes.sort(key=lambda item: (float(item["time_index"]), int(item["turn_index"])))
+        for index, keyframe in enumerate(keyframes, start=1):
+            keyframe["index"] = index
         keyframes[0]["time_index"] = 0.0
     return keyframes
 
@@ -98,9 +164,15 @@ def build_keyframe_plan(
 def _video_prompt(prompt: str) -> str:
     return (
         f"{prompt.strip()}\n\n"
-        "Output requirements: 16:9 landscape frame for an educational explainer video; "
-        "clean textbook illustration; consistent neutral background and blue accents; "
-        "strong visual hierarchy; no logo, watermark, subtitle, paragraph, or tiny text."
+        "Art direction: premium 16:9 editorial educational explainer frame, built "
+        "for a coherent sequence rather than a generic stock image. Use a clean "
+        "deep-navy or warm-neutral background, restrained cyan/violet accents, "
+        "layered depth, generous safe margins, one unmistakable focal concept, and "
+        "a consistent modern vector/3D-infographic language. Make the relationship "
+        "between objects visually explicit through position, scale, light, arrows, "
+        "or flow. Avoid decorative clutter and photorealistic talking heads. "
+        "Do not render a logo, watermark, subtitle, paragraph, formula, UI chrome, "
+        "or tiny text; captions are added later by ForgeNote."
     )
 
 
@@ -224,6 +296,10 @@ def _srt_timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d},{milliseconds % 1000:03d}"
 
 
+def _vtt_timestamp(seconds: float) -> str:
+    return _srt_timestamp(seconds).replace(",", ".")
+
+
 def build_subtitle_cues(
     transcript: Iterable[Any],
     *,
@@ -325,6 +401,35 @@ def write_srt_subtitles(
     return output_path
 
 
+def write_webvtt_subtitles(
+    transcript: Iterable[Any],
+    *,
+    output_path: Path,
+    total_duration: float,
+) -> Optional[Path]:
+    """Write a browser-ready WebVTT companion track for the burned captions."""
+
+    cues = build_subtitle_cues(transcript, total_duration=total_duration)
+    if not cues:
+        return None
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["WEBVTT", ""]
+    for cue in cues:
+        lines.extend(
+            [
+                (
+                    f"{_vtt_timestamp(float(cue['start_time']))} --> "
+                    f"{_vtt_timestamp(float(cue['end_time']))}"
+                ),
+                str(cue["dialogue"]),
+                "",
+            ]
+        )
+    output_path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    return output_path
+
+
 def _ffmpeg_filter_path(path: Path) -> str:
     escaped = path.resolve().as_posix().replace("'", "\\'")
     if len(escaped) >= 2 and escaped[1] == ":":
@@ -396,23 +501,56 @@ def compose_explainer_video(
         )
     command.extend(["-i", str(audio_path)])
 
+    transition_duration = (
+        min(
+            VIDEO_TRANSITION_SECONDS,
+            max(0.12, min(frame_durations) / 3),
+        )
+        if len(keyframes) > 1
+        else 0.0
+    )
     filters = []
     for index, duration in enumerate(frame_durations):
+        rendered_duration = duration + (
+            transition_duration if index + 1 < len(keyframes) else 0.0
+        )
+        zoom_step = "0.00020" if index % 2 == 0 else "0.00014"
         filters.append(
             f"[{index}:v]"
-            "scale=1280:720:force_original_aspect_ratio=decrease,"
-            "pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=white,"
-            f"fps=30,trim=duration={duration:.3f},setpts=PTS-STARTPTS[v{index}]"
+            "scale=1408:792:force_original_aspect_ratio=increase,"
+            "crop=1408:792,"
+            f"zoompan=z='min(zoom+{zoom_step},1.045)':"
+            "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+            f"d=1:s=1280x720:fps=30,trim=duration={rendered_duration:.3f},"
+            f"setpts=PTS-STARTPTS[v{index}]"
         )
-    filters.append(
-        "".join(f"[v{index}]" for index in range(len(keyframes)))
-        + f"concat=n={len(keyframes)}:v=1:a=0[outv]"
-    )
-    video_output = "[outv]"
+    if len(keyframes) == 1:
+        filters.append("[v0]null[outv]")
+        video_output = "[outv]"
+    else:
+        video_output = "[v0]"
+        transition_offset = frame_durations[0]
+        for index in range(1, len(keyframes)):
+            next_output = f"[outvxf{index}]"
+            filters.append(
+                f"{video_output}[v{index}]xfade=transition=fade:"
+                f"duration={transition_duration:.3f}:"
+                f"offset={transition_offset:.3f}{next_output}"
+            )
+            video_output = next_output
+            transition_offset += frame_durations[index]
+
     font_path = _subtitle_font_path()
     with tempfile.TemporaryDirectory(
         dir=output_path.parent, prefix=".subtitle-text-"
     ) as subtitle_dir:
+        if subtitle_cues:
+            next_output = "[outvscrim]"
+            filters.append(
+                f"{video_output}drawbox=x=0:y=h-154:w=iw:h=154:"
+                f"color=black@0.28:t=fill{next_output}"
+            )
+            video_output = next_output
         for cue_index, cue in enumerate(subtitle_cues or []):
             text_path = Path(subtitle_dir) / f"cue-{cue_index:03d}.txt"
             # FFmpeg treats CRLF as two line breaks in drawtext text files on
@@ -426,16 +564,16 @@ def compose_explainer_video(
             drawtext_options = [
                 f"textfile='{_ffmpeg_filter_path(text_path)}'",
                 "reload=0",
-                "fontsize=34",
+                "fontsize=36",
                 "fontcolor=white",
                 "borderw=2",
                 "bordercolor=black@0.85",
                 "box=1",
-                "boxcolor=black@0.45",
-                "boxborderw=12",
+                "boxcolor=black@0.58",
+                "boxborderw=14",
                 "line_spacing=8",
                 "x=(w-text_w)/2",
-                "y=h-text_h-42",
+                "y=h-text_h-38",
                 (
                     "enable='gte(t,"
                     f"{float(cue['start_time']):.3f})*lt(t,"
@@ -481,6 +619,13 @@ def compose_explainer_video(
                 "aac",
                 "-b:a",
                 "192k",
+                "-af",
+                "highpass=f=65,lowpass=f=14000,"
+                "loudnorm=I=-16:TP=-1.5:LRA=9,aresample=48000",
+                "-ar",
+                "48000",
+                "-ac",
+                "2",
                 "-t",
                 f"{total_duration:.3f}",
                 "-shortest",
@@ -494,7 +639,10 @@ def compose_explainer_video(
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
-            text=True,
+            # FFmpeg can mix UTF-8 media metadata with the Windows process
+            # codepage. Capturing bytes avoids a post-success UnicodeDecodeError
+            # that would otherwise discard an already-created MP4.
+            text=False,
         )
     if not output_path.exists() or output_path.stat().st_size == 0:
         raise RuntimeError("FFmpeg completed without producing a video file")
@@ -529,6 +677,11 @@ async def create_explainer_video(
     write_srt_subtitles(
         transcript_entries,
         output_path=output_dir / "explainer-video.srt",
+        total_duration=total_duration,
+    )
+    write_webvtt_subtitles(
+        transcript_entries,
+        output_path=output_dir / "explainer-video.vtt",
         total_duration=total_duration,
     )
     video_path = compose_explainer_video(

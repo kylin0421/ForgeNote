@@ -854,6 +854,8 @@ export const zhCN = {
     learningAssetModelDesc: "所有学习资产生成的默认兜底模型。",
     studyGuideModelLabel: "学习讲解文档",
     studyGuideModelDesc: "生成长篇 Markdown 讲解。",
+    blogModelLabel: "教学博客",
+    blogModelDesc: "生成有叙事、有例子且严格基于来源的长篇教学文章。",
     quizModelLabel: "测验题",
     quizModelDesc: "生成诊断题和练习题。",
     flashcardsModelLabel: "闪卡",

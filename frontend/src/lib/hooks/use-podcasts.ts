@@ -39,12 +39,13 @@ function hasActiveEpisodes(episodes: PodcastEpisode[]) {
   })
 }
 
-export function usePodcastEpisodes(options?: { autoRefresh?: boolean }) {
-  const { autoRefresh = true } = options ?? {}
+export function usePodcastEpisodes(options?: { autoRefresh?: boolean; enabled?: boolean }) {
+  const { autoRefresh = true, enabled = true } = options ?? {}
 
   const query = useQuery({
     queryKey: QUERY_KEYS.podcastEpisodes,
     queryFn: podcastsApi.listEpisodes,
+    enabled,
     refetchInterval: (current) => {
       if (!autoRefresh) {
         return false

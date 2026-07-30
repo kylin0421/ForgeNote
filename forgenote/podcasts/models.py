@@ -244,6 +244,10 @@ class PodcastEpisode(ObjectModel):
     video_file: Optional[str] = Field(
         default=None, description="Path to locally composed explainer video"
     )
+    video_requested: bool = Field(
+        default=False,
+        description="Whether this episode was submitted with explainer video enabled",
+    )
     keyframes: Optional[List[Dict[str, Any]]] = Field(
         default=None,
         description="Time-indexed visual prompts and generated keyframe files",

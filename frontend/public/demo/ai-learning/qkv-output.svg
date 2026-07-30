@@ -1,0 +1,51 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="80" y1="50" x2="1500" y2="850" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#07172F"/><stop offset=".52" stop-color="#151842"/><stop offset="1" stop-color="#30113F"/>
+    </linearGradient>
+    <linearGradient id="out" x1="1110" y1="300" x2="1470" y2="660" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F472B6"/><stop offset=".5" stop-color="#A855F7"/><stop offset="1" stop-color="#4F46E5"/>
+    </linearGradient>
+    <filter id="shadow" x="-35%" y="-35%" width="170%" height="170%"><feDropShadow dx="0" dy="20" stdDeviation="25" flood-color="#020617" flood-opacity=".5"/></filter>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="18" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <marker id="arrow" markerWidth="13" markerHeight="13" refX="11" refY="6.5" orient="auto"><path d="M0 0L13 6.5L0 13V0Z" fill="#C4B5FD"/></marker>
+  </defs>
+  <rect width="1600" height="900" rx="44" fill="url(#bg)"/>
+  <circle cx="80" cy="110" r="250" fill="#0EA5E9" fill-opacity=".08"/>
+  <circle cx="1510" cy="790" r="330" fill="#EC4899" fill-opacity=".09"/>
+
+  <text x="104" y="104" fill="#F5D0FE" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="5">STEP 03 · WEIGHTED VALUE</text>
+  <text x="104" y="176" fill="white" font-family="Microsoft YaHei, Arial, sans-serif" font-size="50" font-weight="700">权重不搬运索引，而是聚合每条信息真正携带的内容</text>
+  <text x="104" y="226" fill="#CBD5E1" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24">Value 被按注意力权重加权，形成当前查询的上下文输出</text>
+
+  <g font-family="Microsoft YaHei, Arial, sans-serif" filter="url(#shadow)">
+    <rect x="112" y="306" width="560" height="116" rx="30" fill="#0C4A6E" fill-opacity=".72" stroke="#38BDF8" stroke-opacity=".55"/>
+    <circle cx="178" cy="364" r="34" fill="#0284C7"/><text x="178" y="375" text-anchor="middle" fill="white" font-size="29" font-weight="700">V₁</text>
+    <rect x="238" y="343" width="255" height="16" rx="8" fill="#BAE6FD"/><rect x="238" y="375" width="174" height="11" rx="6" fill="#38BDF8"/>
+    <text x="610" y="374" text-anchor="end" fill="#BAE6FD" font-size="24" font-weight="700">× 18%</text>
+
+    <rect x="112" y="462" width="650" height="140" rx="34" fill="#4C1D95" fill-opacity=".82" stroke="#C4B5FD" stroke-width="3" filter="url(#glow)"/>
+    <circle cx="184" cy="532" r="39" fill="#7C3AED"/><text x="184" y="544" text-anchor="middle" fill="white" font-size="31" font-weight="700">V₂</text>
+    <rect x="252" y="505" width="330" height="18" rx="9" fill="#EDE9FE"/><rect x="252" y="542" width="246" height="13" rx="7" fill="#A78BFA"/>
+    <text x="700" y="542" text-anchor="end" fill="white" font-size="26" font-weight="700">× 72%</text>
+
+    <rect x="112" y="642" width="520" height="108" rx="28" fill="#701A75" fill-opacity=".66" stroke="#F472B6" stroke-opacity=".55"/>
+    <circle cx="174" cy="696" r="31" fill="#BE185D"/><text x="174" y="707" text-anchor="middle" fill="white" font-size="27" font-weight="700">V₃</text>
+    <rect x="230" y="677" width="220" height="15" rx="8" fill="#FBCFE8"/><rect x="230" y="708" width="135" height="10" rx="5" fill="#F472B6"/>
+    <text x="572" y="706" text-anchor="end" fill="#FBCFE8" font-size="23" font-weight="700">× 10%</text>
+  </g>
+
+  <path d="M780 528H1020" stroke="#C4B5FD" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <text x="900" y="490" text-anchor="middle" fill="#C4B5FD" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="700">加权求和</text>
+
+  <g filter="url(#shadow)">
+    <rect x="1060" y="342" width="420" height="360" rx="46" fill="url(#out)"/>
+  </g>
+  <circle cx="1270" cy="454" r="63" fill="white" fill-opacity=".15"/>
+  <path d="M1237 456L1261 480L1308 430" stroke="white" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1270" y="564" text-anchor="middle" fill="white" font-family="Microsoft YaHei, Arial, sans-serif" font-size="36" font-weight="700">上下文输出</text>
+  <text x="1270" y="614" text-anchor="middle" fill="#FAE8FF" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22">最相关内容贡献最大</text>
+
+  <text x="104" y="822" fill="#94A3B8" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20">一句话：Q 决定找什么 · K 决定匹配谁 · V 决定最终取出什么</text>
+  <text x="1496" y="822" text-anchor="end" fill="#F5D0FE" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="700">Attention(Q,K,V)</text>
+</svg>

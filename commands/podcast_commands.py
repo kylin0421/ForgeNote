@@ -385,6 +385,7 @@ async def generate_podcast_command(
             transcript=None,
             outline=None,
             video_file=None,
+            video_requested=input_data.generate_video,
             keyframes=None,
             video_error=None,
         )

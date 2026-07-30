@@ -1,10 +1,12 @@
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from api.podcast_service import PodcastGenerationRequest
+from api.routers.podcasts import stream_podcast_episode_video_subtitles
 from commands.podcast_commands import get_audio_duration_seconds
 from forgenote.podcasts.robust_creator import (
     _build_transcript_repair_prompt,
@@ -16,6 +18,7 @@ from forgenote.podcasts.video_creator import (
     compose_explainer_video,
     generate_keyframe_images,
     write_srt_subtitles,
+    write_webvtt_subtitles,
 )
 
 
@@ -99,6 +102,25 @@ def test_keyframe_plan_has_source_text_fallback_when_model_returns_no_cue():
     assert len(plan) == 1
     assert plan[0]["time_index"] == 0.0
     assert "一致性约束" in plan[0]["prompt"]
+    assert plan[0]["prompt_source"] == "coverage"
+
+
+def test_keyframe_plan_fills_long_visual_gaps_from_spoken_source():
+    transcript = [
+        {
+            "start_time": float(index * 10),
+            "end_time": float((index + 1) * 10),
+            "dialogue": f"第 {index + 1} 个概念",
+        }
+        for index in range(6)
+    ]
+
+    plan = build_keyframe_plan(transcript)
+
+    assert len(plan) == 4
+    assert plan[0]["time_index"] == 0.0
+    assert all(item["prompt_source"] == "coverage" for item in plan)
+    assert "visible prose" in plan[0]["prompt"]
 
 
 def test_srt_subtitles_use_real_dialogue_timestamps(tmp_path):
@@ -135,6 +157,26 @@ def test_srt_subtitles_skip_empty_dialogue(tmp_path):
 
     assert result is None
     assert not (tmp_path / "explainer-video.srt").exists()
+
+
+def test_webvtt_subtitles_are_browser_ready(tmp_path):
+    subtitle_path = write_webvtt_subtitles(
+        [
+            {
+                "start_time": 0.0,
+                "end_time": 2.5,
+                "dialogue": "查询决定现在要找什么。",
+            }
+        ],
+        output_path=tmp_path / "explainer-video.vtt",
+        total_duration=2.5,
+    )
+
+    assert subtitle_path is not None
+    content = subtitle_path.read_text(encoding="utf-8")
+    assert content.startswith("WEBVTT\n\n")
+    assert "00:00:00.000 --> 00:00:02.500" in content
+    assert "查询决定现在要找什么。" in content
 
 
 def test_subtitle_cues_wrap_long_dialogue_across_the_turn_duration():
@@ -234,7 +276,9 @@ def test_ffmpeg_composition_uses_keyframe_durations_and_podcast_audio(
     filter_flag = calls[0][0].index("-filter_complex_script")
     assert filter_flag > 0
     filter_graph = calls[0][2]
-    assert "concat=n=2:v=1:a=0[outv]" in filter_graph
+    assert "zoompan=" in filter_graph
+    assert "xfade=transition=fade:duration=0.450:offset=4.250" in filter_graph
+    assert "drawbox=" in filter_graph
     assert "drawtext=" in filter_graph
     assert "enable='gte(t,0.000)*lt(t,10.000)'" in filter_graph
     assert "[outvsub0]" in filter_graph
@@ -244,6 +288,12 @@ def test_ffmpeg_composition_uses_keyframe_durations_and_podcast_audio(
     assert calls[0][0][calls[0][0].index("-profile:v") + 1] == "high"
     assert calls[0][0][calls[0][0].index("-level:v") + 1] == "4.0"
     assert calls[0][0][calls[0][0].index("-tag:v") + 1] == "avc1"
+    assert "loudnorm=I=-16:TP=-1.5:LRA=9" in calls[0][0][
+        calls[0][0].index("-af") + 1
+    ]
+    assert calls[0][0][calls[0][0].index("-ar") + 1] == "48000"
+    assert calls[0][0][calls[0][0].index("-ac") + 1] == "2"
+    assert calls[0][1]["text"] is False
     duration_flag = calls[0][0].index("-t")
     assert calls[0][0][duration_flag + 1] == "10.000"
     assert calls[0][0][-1] == str(output_path)
@@ -322,3 +372,28 @@ def test_podcast_request_keeps_video_generation_opt_in():
 
     assert regular.generate_video is False
     assert explainer.generate_video is True
+
+
+@pytest.mark.asyncio
+async def test_video_subtitle_endpoint_serves_generated_webvtt(tmp_path, monkeypatch):
+    video_path = tmp_path / "explainer-video.mp4"
+    video_path.write_bytes(b"video")
+    subtitle_path = video_path.with_suffix(".vtt")
+    subtitle_path.write_text(
+        "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n字幕\n",
+        encoding="utf-8",
+    )
+
+    async def fake_get_episode(_episode_id):
+        return SimpleNamespace(video_file=str(video_path))
+
+    monkeypatch.setattr(
+        "api.routers.podcasts.PodcastService.get_episode",
+        fake_get_episode,
+    )
+
+    response = await stream_podcast_episode_video_subtitles("episode:test")
+
+    assert Path(response.path) == subtitle_path
+    assert response.media_type == "text/vtt; charset=utf-8"
+    assert response.filename == "explainer-video.vtt"

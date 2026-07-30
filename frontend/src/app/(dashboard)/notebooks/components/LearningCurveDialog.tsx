@@ -17,6 +17,7 @@ type LearningCurveDialogProps = {
   notebookId: string
   sources?: SourceListResponse[]
   notes?: NoteResponse[]
+  profileContent?: string
 }
 
 type TimelinePoint = {
@@ -285,16 +286,17 @@ export function LearningCurveDialog({
   notebookId,
   sources,
   notes,
+  profileContent,
 }: LearningCurveDialogProps) {
   const { data: profile } = useQuery({
     queryKey: ['learning', 'profile-source', notebookId],
     queryFn: () => learningApi.ensureProfileSource(notebookId),
-    enabled: open && Boolean(notebookId),
+    enabled: open && Boolean(notebookId) && !profileContent,
     staleTime: 0,
   })
   const points = useMemo(
-    () => buildTimeline(profile?.content, sources, notes),
-    [notes, profile?.content, sources]
+    () => buildTimeline(profileContent ?? profile?.content, sources, notes),
+    [notes, profile?.content, profileContent, sources]
   )
   const advice = useMemo(() => buildAdvice(points), [points])
   const totals = useMemo(() => {

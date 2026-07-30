@@ -1,6 +1,13 @@
 'use client'
 
-import { useState, useMemo, useRef, useCallback, useEffect, type ReactNode } from 'react'
+import {
+  useState,
+  useMemo,
+  useRef,
+  useCallback,
+  useEffect,
+  type ReactNode,
+} from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { SourceListResponse } from '@/lib/types/api'
 import { Button } from '@/components/ui/button'
@@ -27,10 +34,7 @@ import {
   Loader2,
   ListChecks,
   Search,
-  CheckCircle2,
   Brain,
-  ExternalLink,
-  PlayCircle,
   Activity,
   Compass,
   Route,
@@ -59,19 +63,10 @@ import type { LearningCollectedResource } from '@/lib/types/learning'
 import { toast } from 'sonner'
 import type { LearningProfileSourceResponse } from '@/lib/types/learning'
 import { cn } from '@/lib/utils'
+import { CollectedResourceList } from '@/components/learning/CollectedResourceList'
 
 const LEARNING_PROFILE_TOPIC = 'learning_profile'
 const LEARNING_PROFILE_TITLE = '学习画像'
-const RESOURCE_CONTENT_LABELS: Record<string, string> = {
-  video: '视频',
-  article: '文章',
-  webpage: '网页',
-  paper: '论文',
-  course: '课程',
-  practice: '练习',
-  code: '代码',
-}
-
 const ACTIVE_JOB_STATUSES = new Set(['new', 'queued', 'running'])
 
 function extractCollectedResources(result: Record<string, unknown> | null | undefined) {
@@ -608,6 +603,16 @@ interface SourcesColumnProps {
   initialResourceSearchGoal?: string
   autoCollectInitialResourceSearch?: boolean
   profileOpenSignal?: number
+  cachedResourceSearch?: {
+    expanded?: boolean
+    goal: string
+    status: 'idle' | 'running' | 'completed'
+    resources: LearningCollectedResource[]
+    acceptedResourceUrls?: Record<string, boolean>
+    profileSource?: LearningProfileSourceResponse | null
+    onCollect?: () => void
+    onAccept?: (resource: LearningCollectedResource) => void
+  }
 }
 
 export function SourcesColumn({
@@ -625,6 +630,7 @@ export function SourcesColumn({
   initialResourceSearchGoal = '',
   autoCollectInitialResourceSearch = false,
   profileOpenSignal = 0,
+  cachedResourceSearch,
 }: SourcesColumnProps) {
   const { t } = useTranslation()
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -634,16 +640,25 @@ export function SourcesColumn({
   const [sourceToDelete, setSourceToDelete] = useState<string | null>(null)
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
   const [sourceToRemove, setSourceToRemove] = useState<string | null>(null)
-  const [resourceSearchGoal, setResourceSearchGoal] = useState(initialResourceSearchGoal)
-  const [resourceSearchExpanded, setResourceSearchExpanded] = useState(
-    Boolean(initialResourceSearchGoal.trim())
+  const [cachedHiddenSourceIds, setCachedHiddenSourceIds] = useState<string[]>([])
+  const [resourceSearchGoal, setResourceSearchGoal] = useState(
+    cachedResourceSearch?.goal ?? initialResourceSearchGoal
   )
-  const [collectedResources, setCollectedResources] = useState<LearningCollectedResource[]>([])
-  const [acceptedResourceUrls, setAcceptedResourceUrls] = useState<Record<string, boolean>>({})
+  const [resourceSearchExpanded, setResourceSearchExpanded] = useState(
+    cachedResourceSearch?.expanded ?? Boolean(initialResourceSearchGoal.trim())
+  )
+  const [collectedResources, setCollectedResources] = useState<LearningCollectedResource[]>(
+    cachedResourceSearch?.resources ?? []
+  )
+  const [acceptedResourceUrls, setAcceptedResourceUrls] = useState<Record<string, boolean>>(
+    cachedResourceSearch?.acceptedResourceUrls ?? {}
+  )
   const [acceptingResourceIds, setAcceptingResourceIds] = useState<Record<string, boolean>>({})
   const [profileDialogOpen, setProfileDialogOpen] = useState(false)
   const [profileForm, setProfileForm] = useState<LearningProfileForm>(DEFAULT_LEARNING_PROFILE_FORM)
-  const [isCollectingResources, setIsCollectingResources] = useState(false)
+  const [isCollectingResources, setIsCollectingResources] = useState(
+    cachedResourceSearch?.status === 'running'
+  )
   const [resourceSearchJobId, setResourceSearchJobId] = useState<string | null>(null)
   const [handledResourceSearchJobId, setHandledResourceSearchJobId] = useState<string | null>(null)
 
@@ -656,13 +671,13 @@ export function SourcesColumn({
   const { data: resourceSearchJob } = useQuery({
     queryKey: ['commands', 'job', resourceSearchJobId],
     queryFn: () => commandsApi.getJob(resourceSearchJobId as string),
-    enabled: Boolean(resourceSearchJobId),
+    enabled: Boolean(resourceSearchJobId) && !cachedResourceSearch,
     refetchInterval: resourceSearchJobId ? 1500 : false,
   })
   const profileSourceQuery = useQuery({
     queryKey: ['learning', 'profile-source', notebookId],
     queryFn: () => learningApi.ensureProfileSource(notebookId),
-    enabled: Boolean(notebookId),
+    enabled: Boolean(notebookId) && !cachedResourceSearch,
     staleTime: 0,
     refetchInterval: 15_000,
   })
@@ -685,8 +700,11 @@ export function SourcesColumn({
     [sources]
   )
   const displaySources = useMemo(
-    () => sources?.filter((source) => !isLearningProfileSource(source)) ?? [],
-    [sources]
+    () => sources?.filter(
+      (source) =>
+        !isLearningProfileSource(source) && !cachedHiddenSourceIds.includes(source.id)
+    ) ?? [],
+    [cachedHiddenSourceIds, sources]
   )
   const adaptiveLearningSummary = useMemo(
     () => buildAdaptiveLearningSummary(profileForm, displaySources.length),
@@ -718,8 +736,27 @@ export function SourcesColumn({
     ],
     [adaptiveLearningSummary]
   )
+  const displayedProfileSource =
+    cachedResourceSearch?.profileSource ?? profileSourceQuery.data
 
   useEffect(() => {
+    if (!cachedResourceSearch) return
+    setResourceSearchGoal(cachedResourceSearch.goal)
+    setResourceSearchExpanded(cachedResourceSearch.expanded ?? true)
+    setCollectedResources(cachedResourceSearch.resources)
+    setAcceptedResourceUrls(cachedResourceSearch.acceptedResourceUrls ?? {})
+    setIsCollectingResources(cachedResourceSearch.status === 'running')
+    setResourceSearchJobId(null)
+    setHandledResourceSearchJobId(null)
+    if (cachedResourceSearch.profileSource?.content && !profileDialogOpen) {
+      setProfileForm(
+        learningProfileFormFromContent(cachedResourceSearch.profileSource.content)
+      )
+    }
+  }, [cachedResourceSearch, profileDialogOpen])
+
+  useEffect(() => {
+    if (cachedResourceSearch) return
     const persisted = readPersistedResourceSearch(notebookId)
     if (!persisted) return
     if (!initialResourceSearchGoal.trim() && persisted.goal) {
@@ -732,23 +769,29 @@ export function SourcesColumn({
     if (persisted.jobId || persisted.resources.length) {
       setResourceSearchExpanded(true)
     }
-  }, [initialResourceSearchGoal, notebookId])
+  }, [cachedResourceSearch, initialResourceSearchGoal, notebookId])
 
   useEffect(() => {
-    if (profileSourceQuery.data?.content && !profileDialogOpen) {
-      setProfileForm(learningProfileFormFromContent(profileSourceQuery.data.content))
+    if (displayedProfileSource?.content && !profileDialogOpen) {
+      setProfileForm(learningProfileFormFromContent(displayedProfileSource.content))
     }
-  }, [profileDialogOpen, profileSourceQuery.data?.content])
+  }, [displayedProfileSource?.content, profileDialogOpen])
 
   useEffect(() => {
     if (profileOpenSignal <= 0 || profileOpenHandledRef.current === profileOpenSignal) return
     profileOpenHandledRef.current = profileOpenSignal
-    setProfileForm(learningProfileFormFromContent(profileSourceQuery.data?.content))
+    setProfileForm(learningProfileFormFromContent(displayedProfileSource?.content))
     setProfileDialogOpen(true)
-  }, [profileOpenSignal, profileSourceQuery.data?.content])
+  }, [displayedProfileSource?.content, profileOpenSignal])
 
   useEffect(() => {
-    if (!notebookId || isLoading || hasProfileSource || ensuringProfileRef.current === notebookId) {
+    if (
+      cachedResourceSearch ||
+      !notebookId ||
+      isLoading ||
+      hasProfileSource ||
+      ensuringProfileRef.current === notebookId
+    ) {
       return
     }
     ensuringProfileRef.current = notebookId
@@ -761,7 +804,7 @@ export function SourcesColumn({
       .finally(() => {
         ensuringProfileRef.current = null
       })
-  }, [notebookId, isLoading, hasProfileSource, onRefresh])
+  }, [cachedResourceSearch, notebookId, isLoading, hasProfileSource, onRefresh])
 
   // Handle scroll for infinite loading
   const handleScroll = useCallback(() => {
@@ -848,6 +891,10 @@ export function SourcesColumn({
     }
 
     setIsCollectingResources(true)
+    if (cachedResourceSearch) {
+      cachedResourceSearch.onCollect?.()
+      return
+    }
     let submitted = false
     try {
       const response = await learningApi.submitResourceSearchJob({
@@ -885,7 +932,14 @@ export function SourcesColumn({
         setIsCollectingResources(false)
       }
     }
-  }, [notebookId, notebookName, profileForm, resourceSearchGoal, sources])
+  }, [
+    cachedResourceSearch,
+    notebookId,
+    notebookName,
+    profileForm,
+    resourceSearchGoal,
+    sources,
+  ])
 
   useEffect(() => {
     const normalizedInitialGoal = initialResourceSearchGoal.trim()
@@ -919,6 +973,18 @@ export function SourcesColumn({
       ...previous,
       [resource.id]: true,
     }))
+    if (cachedResourceSearch) {
+      setAcceptedResourceUrls((previous) => ({
+        ...previous,
+        [resource.url as string]: true,
+      }))
+      setAcceptingResourceIds((previous) => ({
+        ...previous,
+        [resource.id]: false,
+      }))
+      cachedResourceSearch.onAccept?.(resource)
+      return
+    }
     try {
       await createSource.mutateAsync({
         type: 'link',
@@ -964,6 +1030,15 @@ export function SourcesColumn({
 
   const handleDeleteConfirm = async () => {
     if (!sourceToDelete) return
+    if (cachedResourceSearch) {
+      setCachedHiddenSourceIds((current) => (
+        current.includes(sourceToDelete) ? current : [...current, sourceToDelete]
+      ))
+      setDeleteDialogOpen(false)
+      setSourceToDelete(null)
+      toast.success('已从本次演示视图移除；重新打开会恢复缓存来源')
+      return
+    }
 
     try {
       await deleteSource.mutateAsync(sourceToDelete)
@@ -982,6 +1057,15 @@ export function SourcesColumn({
 
   const handleRemoveConfirm = async () => {
     if (!sourceToRemove) return
+    if (cachedResourceSearch) {
+      setCachedHiddenSourceIds((current) => (
+        current.includes(sourceToRemove) ? current : [...current, sourceToRemove]
+      ))
+      setRemoveDialogOpen(false)
+      setSourceToRemove(null)
+      toast.success('已从本次演示学习记录移除；重新打开会恢复缓存来源')
+      return
+    }
 
     try {
       await removeFromNotebook.mutateAsync({
@@ -997,6 +1081,10 @@ export function SourcesColumn({
   }
 
   const handleRetry = async (sourceId: string) => {
+    if (cachedResourceSearch) {
+      toast.success('该演示来源已使用预缓存解析结果')
+      return
+    }
     try {
       await retrySource.mutateAsync(sourceId)
     } catch (error) {
@@ -1005,11 +1093,25 @@ export function SourcesColumn({
   }
 
   const handleSourceClick = (sourceId: string) => {
+    if (cachedResourceSearch) {
+      const source = displaySources.find((candidate) => candidate.id === sourceId)
+      if (source?.asset?.url) {
+        window.open(source.asset.url, '_blank', 'noopener,noreferrer')
+      } else {
+        toast.info('该演示来源没有可打开的外部链接')
+      }
+      return
+    }
     openModal('source', sourceId)
   }
 
   const handleSaveProfile = async () => {
-    const sourceId = profileSourceQuery.data?.source_id
+    if (cachedResourceSearch) {
+      setProfileDialogOpen(false)
+      toast.success('学习画像已更新')
+      return
+    }
+    const sourceId = displayedProfileSource?.source_id
     if (!sourceId) {
       toast.error('学习画像来源还没有准备好')
       return
@@ -1052,10 +1154,10 @@ export function SourcesColumn({
               </div>
               <div className="flex items-center gap-2">
                 <LearningProfileAvatar
-                  profile={profileSourceQuery.data}
-                  isLoading={profileSourceQuery.isLoading}
+                  profile={displayedProfileSource}
+                  isLoading={!cachedResourceSearch && profileSourceQuery.isLoading}
                   onEdit={() => {
-                    setProfileForm(learningProfileFormFromContent(profileSourceQuery.data?.content))
+                    setProfileForm(learningProfileFormFromContent(displayedProfileSource?.content))
                     setProfileDialogOpen(true)
                   }}
                 />
@@ -1096,11 +1198,25 @@ export function SourcesColumn({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-52">
-                  <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
+                  <DropdownMenuItem onClick={() => {
+                    setDropdownOpen(false)
+                    if (cachedResourceSearch) {
+                      toast.info('演示学习记录保持预缓存状态；请在普通学习记录中添加新来源')
+                      return
+                    }
+                    setAddDialogOpen(true)
+                  }}>
                     <Plus className="h-4 w-4 mr-2" />
                     {t('sources.addSource')}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
+                  <DropdownMenuItem onClick={() => {
+                    setDropdownOpen(false)
+                    if (cachedResourceSearch) {
+                      toast.info('演示学习记录保持预缓存状态；请在普通学习记录中关联已有来源')
+                      return
+                    }
+                    setAddExistingDialogOpen(true)
+                  }}>
                     <Link2 className="h-4 w-4 mr-2" />
                     {t('sources.addExistingTitle')}
                   </DropdownMenuItem>
@@ -1134,7 +1250,9 @@ export function SourcesColumn({
                   <h3 className="text-sm font-medium">按目标搜集资料</h3>
                 </div>
                 <div className="flex items-center gap-2">
-                  <BadgeText>{collectedResources.length ? `${collectedResources.length} 条结果` : 'Web Search'}</BadgeText>
+                  <span className="shrink-0 rounded-md border bg-background px-2 py-0.5 text-xs text-muted-foreground">
+                    {collectedResources.length ? `${collectedResources.length} 条结果` : 'Web Search'}
+                  </span>
                   <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', resourceSearchExpanded && 'rotate-180')} />
                 </div>
               </button>
@@ -1163,117 +1281,15 @@ export function SourcesColumn({
                 )}
                 搜集外部资料
               </Button>
-              {collectedResources.length > 0 && (
-                <div className="mt-3 grid gap-3 2xl:grid-cols-2">
-                  {collectedResources.map((resource) => {
-                    const accepted = Boolean(resource.url && acceptedResourceUrls[resource.url])
-                    const isAccepting = Boolean(acceptingResourceIds[resource.id])
-                    const isVideo =
-                      resource.content_type === 'video' ||
-                      resource.resource_kind === 'video_lecture'
-                    return (
-                      <div key={resource.id} className="overflow-hidden rounded-xl border bg-background">
-                        {isVideo && (
-                          <a
-                            href={resource.url || undefined}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="group relative block aspect-video overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-primary/70"
-                            style={
-                              resource.thumbnail_url
-                                ? {
-                                    backgroundImage: `linear-gradient(to top, rgba(15,23,42,.58), rgba(15,23,42,.06)), url("${resource.thumbnail_url}")`,
-                                    backgroundPosition: 'center',
-                                    backgroundSize: 'cover',
-                                  }
-                                : undefined
-                            }
-                          >
-                            <span className="absolute inset-0 flex items-center justify-center">
-                              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-slate-950 shadow-lg transition-transform group-hover:scale-105">
-                                <PlayCircle className="h-7 w-7" />
-                              </span>
-                            </span>
-                            <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[11px] font-medium text-white">
-                              视频课程
-                            </span>
-                          </a>
-                        )}
-                        <div className="p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            {resource.url ? (
-                              <a
-                                href={resource.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex break-words text-sm font-medium hover:text-primary hover:underline"
-                              >
-                                {resource.title}
-                                <ExternalLink className="ml-1 mt-0.5 h-3.5 w-3.5 shrink-0" />
-                              </a>
-                            ) : (
-                              <p className="break-words text-sm font-medium">{resource.title}</p>
-                            )}
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {resource.content_type && (
-                                <BadgeText>
-                                  {RESOURCE_CONTENT_LABELS[resource.content_type] || resource.content_type}
-                                </BadgeText>
-                              )}
-                              {typeof resource.quality_score === 'number' && (
-                                <BadgeText>
-                                  质量 {Math.round(resource.quality_score * 100)}
-                                </BadgeText>
-                              )}
-                              {resource.resource_kind && (
-                                <BadgeText>{resource.resource_kind}</BadgeText>
-                              )}
-                              {resource.search_intent && (
-                                <BadgeText>{resource.search_intent}</BadgeText>
-                              )}
-                              {(resource.tags || []).map((tag) => (
-                                <BadgeText key={`${resource.id}-${tag}`}>{tag}</BadgeText>
-                              ))}
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={accepted ? 'secondary' : 'outline'}
-                            className="shrink-0"
-                            onClick={() => handleAcceptResource(resource)}
-                            disabled={accepted || isAccepting || !resource.url}
-                          >
-                            {isAccepting ? (
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            ) : accepted ? (
-                              <CheckCircle2 className="h-4 w-4 mr-2" />
-                            ) : (
-                              <Plus className="h-4 w-4 mr-2" />
-                            )}
-                            {accepted ? '已采纳' : '采纳'}
-                          </Button>
-                        </div>
-                        {resource.snippet && (
-                          <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                            {resource.snippet}
-                          </p>
-                        )}
-                        {resource.learning_value && (
-                          <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                            {resource.learning_value}
-                          </p>
-                        )}
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {resource.provider || 'Web Search'} · {resource.reason}
-                        </p>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+              <CollectedResourceList
+                resources={collectedResources}
+                acceptedResourceUrls={acceptedResourceUrls}
+                acceptingResourceIds={acceptingResourceIds}
+                onAccept={(resource) => {
+                  void handleAcceptResource(resource)
+                }}
+                className="mt-3"
+              />
                 </div>
               )}
             </section>
@@ -1321,11 +1337,13 @@ export function SourcesColumn({
         </Card>
       </CollapsibleColumn>
 
-      <AddSourceDialog
-        open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
-        defaultNotebookId={notebookId}
-      />
+      {!cachedResourceSearch ? (
+        <AddSourceDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          defaultNotebookId={notebookId}
+        />
+      ) : null}
 
       <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
         <DialogContent className="max-h-[90vh] sm:max-w-5xl">
@@ -1409,12 +1427,14 @@ export function SourcesColumn({
         </DialogContent>
       </Dialog>
 
-      <AddExistingSourceDialog
-        open={addExistingDialogOpen}
-        onOpenChange={setAddExistingDialogOpen}
-        notebookId={notebookId}
-        onSuccess={onRefresh}
-      />
+      {!cachedResourceSearch ? (
+        <AddExistingSourceDialog
+          open={addExistingDialogOpen}
+          onOpenChange={setAddExistingDialogOpen}
+          notebookId={notebookId}
+          onSuccess={onRefresh}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={deleteDialogOpen}
@@ -1423,7 +1443,7 @@ export function SourcesColumn({
         description={t('sources.deleteConfirm')}
         confirmText={t('common.delete')}
         onConfirm={handleDeleteConfirm}
-        isLoading={deleteSource.isPending}
+        isLoading={!cachedResourceSearch && deleteSource.isPending}
         confirmVariant="destructive"
       />
 
@@ -1434,17 +1454,9 @@ export function SourcesColumn({
         description={t('sources.removeConfirm')}
         confirmText={t('common.remove')}
         onConfirm={handleRemoveConfirm}
-        isLoading={removeFromNotebook.isPending}
+        isLoading={!cachedResourceSearch && removeFromNotebook.isPending}
         confirmVariant="default"
       />
     </>
-  )
-}
-
-function BadgeText({ children }: { children: ReactNode }) {
-  return (
-    <span className="shrink-0 rounded-md border bg-background px-2 py-0.5 text-xs text-muted-foreground">
-      {children}
-    </span>
   )
 }
