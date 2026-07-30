@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { ChevronDown } from 'lucide-react'
 
 import { EpisodeProfile, SpeakerProfile } from '@/lib/types/podcasts'
 import {
@@ -72,6 +73,7 @@ export function EpisodeProfileFormDialog({
   const updateProfile = useUpdateEpisodeProfile()
   const { data: languages = [] } = useLanguages()
   const { data: modelDefaults } = useModelDefaults()
+  const [languageOptionsOpen, setLanguageOptionsOpen] = useState(false)
 
   const getDefaults = useCallback((): EpisodeProfileFormValues => {
     const firstSpeaker = speakerProfiles[0]?.name ?? ''
@@ -312,21 +314,55 @@ export function EpisodeProfileFormDialog({
               render={({ field }) => (
                 <div className="space-y-2">
                   <Label htmlFor="language">{t('podcasts.language')}</Label>
-                  <Select
-                    value={field.value ?? ''}
-                    onValueChange={(v) => field.onChange(v || null)}
-                  >
-                    <SelectTrigger id="language">
-                      <SelectValue placeholder={t('podcasts.languagePlaceholder')} />
-                    </SelectTrigger>
-                    <SelectContent title={t('podcasts.language')}>
-                      {languages.map((lang) => (
-                        <SelectItem key={lang.code} value={lang.code}>
-                          {lang.name} ({lang.code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div id="language" className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 w-full justify-between"
+                      onClick={() => setLanguageOptionsOpen((open) => !open)}
+                    >
+                      <span className="truncate">
+                        {field.value
+                          ? languages.find((lang) => lang.code === field.value)?.name ?? field.value
+                          : '自动'}
+                      </span>
+                      <ChevronDown className={`h-4 w-4 transition-transform ${languageOptionsOpen ? 'rotate-180' : ''}`} />
+                    </Button>
+                    {languageOptionsOpen && (
+                      <div className="max-h-48 overflow-y-auto rounded-md border p-2">
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={!field.value ? 'default' : 'outline'}
+                            onClick={() => {
+                              field.onChange(null)
+                              setLanguageOptionsOpen(false)
+                            }}
+                          >
+                            自动
+                          </Button>
+                          {languages.map((lang) => (
+                            <Button
+                              key={lang.code}
+                              type="button"
+                              size="sm"
+                              variant={field.value === lang.code ? 'default' : 'outline'}
+                              className="justify-start"
+                              onClick={() => {
+                                field.onChange(lang.code)
+                                setLanguageOptionsOpen(false)
+                              }}
+                            >
+                              <span className="truncate">
+                                {lang.name} ({lang.code})
+                              </span>
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             />

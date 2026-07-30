@@ -43,6 +43,13 @@ export const OPENAI_COMPATIBLE_PRESETS: OpenAICompatiblePreset[] = [
     modalities: ['language', 'embedding'],
   },
   {
+    id: 'dashscope',
+    label: 'Alibaba Bailian / DashScope',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    docsUrl: 'https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope',
+    modalities: ['language', 'embedding', 'text_to_speech', 'speech_to_text', 'image'],
+  },
+  {
     id: 'together',
     label: 'Together AI',
     baseUrl: 'https://api.together.ai/v1',

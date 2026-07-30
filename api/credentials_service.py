@@ -18,7 +18,11 @@ from loguru import logger
 from pydantic import SecretStr
 
 from api.models import CredentialResponse
-from forgenote.ai.model_discovery import classify_model_type
+from forgenote.ai.model_discovery import (
+    DASHSCOPE_CURATED_MODELS,
+    DEEPSEEK_CURATED_MODELS,
+    classify_model_type,
+)
 from forgenote.domain.credential import Credential
 from forgenote.utils.encryption import get_secret_from_env
 
@@ -532,6 +536,39 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
             )
         return models
 
+    def append_curated_dashscope_models(
+        models: List[dict],
+        target_provider: str = "dashscope",
+    ) -> List[dict]:
+        seen = {str(model.get("name", "")).lower() for model in models}
+        for model_name in DASHSCOPE_CURATED_MODELS:
+            if model_name.lower() in seen:
+                continue
+            models.append(
+                {
+                    "name": model_name,
+                    "provider": target_provider,
+                    "model_type": classify_model_type(model_name, "dashscope"),
+                    "description": "Built-in DashScope/Bailian model",
+                }
+            )
+        return models
+
+    def append_curated_deepseek_models(models: List[dict]) -> List[dict]:
+        seen = {str(model.get("name", "")).lower() for model in models}
+        for model_name in DEEPSEEK_CURATED_MODELS:
+            if model_name.lower() in seen:
+                continue
+            models.append(
+                {
+                    "name": model_name,
+                    "provider": "deepseek",
+                    "model_type": classify_model_type(model_name, "deepseek"),
+                    "description": "Built-in DeepSeek language model",
+                }
+            )
+        return models
+
     # Static model lists for providers without a listing API
     STATIC_MODELS: Dict[str, List[str]] = {
         "anthropic": [
@@ -613,14 +650,20 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
                 )
                 response.raise_for_status()
                 data = response.json()
-                return append_curated_image_models([
+                discovered = append_curated_image_models([
                     model_payload(m.get("id", ""), "openai_compatible")
                     for m in data.get("data", [])
                     if m.get("id")
                 ], "openai_compatible")
+                if is_dashscope_endpoint(base_url):
+                    return append_curated_dashscope_models(discovered, "openai_compatible")
+                return discovered
         except Exception as e:
             logger.warning(f"Failed to discover openai_compatible models: {e}")
-            return append_curated_image_models([], "openai_compatible")
+            discovered = append_curated_image_models([], "openai_compatible")
+            if is_dashscope_endpoint(base_url):
+                return append_curated_dashscope_models(discovered, "openai_compatible")
+            return discovered
 
     if provider == "azure":
         endpoint = config.get("endpoint")
@@ -696,14 +739,28 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
             response.raise_for_status()
             data = response.json()
 
-            return append_curated_image_models([
+            discovered = append_curated_image_models([
                 model_payload(m.get("id", ""), provider, m.get("name"))
                 for m in data.get("data", [])
                 if m.get("id")
             ], provider)
+            if provider == "dashscope":
+                return append_curated_dashscope_models(discovered, "dashscope")
+            if is_dashscope_endpoint(base_url):
+                return append_curated_dashscope_models(discovered, provider)
+            if provider == "deepseek":
+                return append_curated_deepseek_models(discovered)
+            return discovered
     except Exception as e:
         logger.warning(f"Failed to discover {provider} models: {e}")
-        return append_curated_image_models([], provider)
+        discovered = append_curated_image_models([], provider)
+        if provider == "dashscope":
+            return append_curated_dashscope_models(discovered, "dashscope")
+        if is_dashscope_endpoint(base_url):
+            return append_curated_dashscope_models(discovered, provider)
+        if provider == "deepseek":
+            return append_curated_deepseek_models(discovered)
+        return discovered
 
 
 async def register_models(credential_id: str, models_data: list) -> dict:

@@ -118,7 +118,7 @@ export type LearningAssetInteractionEvent = {
 
 const LEARNING_ASSET_KIND_LABELS: Record<string, string> = {
   study_guide: '讲解文档',
-  blog: '博客讲解',
+  blog: '图文讲解',
   quiz: '测验',
   flashcards: '知识闪卡',
   mind_map: '知识导图',
