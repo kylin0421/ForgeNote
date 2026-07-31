@@ -99,7 +99,7 @@ http://localhost:5055
 健康检查：
 
 ```bash
-curl http://localhost:5055/api/health
+curl http://localhost:5055/health
 ```
 
 如果健康检查路径不可用，也可以访问：

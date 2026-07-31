@@ -95,7 +95,7 @@ docker compose ps
 
 ```powershell
 Invoke-WebRequest http://localhost:8502 -UseBasicParsing
-Invoke-WebRequest http://localhost:5055/api/health -UseBasicParsing
+Invoke-WebRequest http://localhost:5055/health -UseBasicParsing
 ```
 
 然后在浏览器打开 [http://localhost:8502](http://localhost:8502)。首次使用建议按以下顺序完成：
@@ -180,7 +180,7 @@ docker compose ps
 | 现象 | 优先检查 |
 | --- | --- |
 | 浏览器打不开 | `docker compose ps`、8502 端口、防火墙和 `docker compose logs forgenote` |
-| 页面能开但提示 API 不可用 | `http://服务器:5055/api/health`、直连模式是否放行 5055、`.env` 中是否误填客户端 `localhost` |
+| 页面能开但提示 API 不可用 | `http://服务器:5055/health`、直连模式是否放行 5055、`.env` 中是否误填客户端 `localhost` |
 | 公网页面能开但登录/请求失败 | `API_URL` 是否为完整 HTTPS origin、反向代理是否保留 Host/X-Forwarded-Proto、是否误暴露或改写了 `/api` |
 | 解析/生成一直等待 | `docker compose logs --tail=200 forgenote`，确认同一容器中的 worker 正常启动；再检查模型凭据和额度 |
 | 模型配置突然无法解密 | 是否更换了 `FORGENOTE_ENCRYPTION_KEY`；恢复原 key 后重启容器 |
