@@ -33,9 +33,9 @@ export function CollapsibleColumn({
               className={cn(
                 'flex flex-col items-center justify-center gap-3',
                 'w-12 h-full min-h-0',
-                'border rounded-lg',
-                'bg-card hover:bg-accent/50',
-                'transition-all duration-150',
+                'rounded-2xl border border-border/70',
+                'bg-card/95 shadow-sm hover:border-primary/30 hover:bg-accent/50',
+                'transition-all duration-150 ease-out',
                 'cursor-pointer group',
                 'py-6'
               )}
@@ -59,7 +59,7 @@ export function CollapsibleColumn({
   }
 
   return (
-    <div className="h-full min-h-0 transition-all duration-150">
+    <div className="h-full min-h-0 w-full min-w-0 overflow-hidden transition-all duration-150">
       {children}
     </div>
   )
@@ -68,7 +68,7 @@ export function CollapsibleColumn({
 // Factory function to create a collapse button for card headers
 export function createCollapseButton(onToggle: () => void, label: string) {
   return (
-    <div className="hidden lg:block">
+    <div className="hidden xl:block">
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>

@@ -25,8 +25,10 @@ export function useMediaQuery(query: string): boolean {
 }
 
 /**
- * Returns true if viewport is >= 1024px (Tailwind's 'lg' breakpoint)
+ * Returns true when the three-column notebook workspace has enough room.
+ * Narrower viewports use the single-column tab layout so media and controls
+ * never have to force the canvas wider than the viewport.
  */
 export function useIsDesktop(): boolean {
-  return useMediaQuery('(min-width: 1024px)')
+  return useMediaQuery('(min-width: 1280px)')
 }

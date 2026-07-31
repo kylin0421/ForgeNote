@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { InlineEdit } from '@/components/common/InlineEdit'
@@ -14,11 +14,12 @@ import { useNotebookSources } from '@/lib/hooks/use-sources'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { NotebookProfileBanner } from '@/components/notebooks/NotebookProfileBanner'
+import { NotebookDesktopLayout } from '@/components/notebooks/NotebookDesktopLayout'
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
 import { useIsDesktop } from '@/lib/hooks/use-media-query'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import {
   BookMarked,
@@ -43,21 +44,6 @@ import {
 import type { ContextMode, ContextSelections, NoteContextMode } from '@/lib/types/notebook-context'
 export type { ContextMode, ContextSelections, NoteContextMode }
 
-type NotebookColumnWidths = {
-  sources: number
-  chat: number
-  notes: number
-}
-
-const DEFAULT_NOTEBOOK_COLUMN_WIDTHS: NotebookColumnWidths = {
-  sources: 54,
-  chat: 24,
-  notes: 22,
-}
-
-const clampColumnWidth = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value))
-
 export default function NotebookPage() {
   const { t } = useTranslation()
   const params = useParams()
@@ -81,14 +67,6 @@ export default function NotebookPage() {
 
   // Get collapse states for dynamic layout
   const { sourcesCollapsed, notesCollapsed } = useNotebookColumnsStore()
-  const desktopLayoutRef = useRef<HTMLDivElement | null>(null)
-  const columnDragRef = useRef<{
-    handle: 'chat-sources' | 'sources-notes'
-    startX: number
-    containerWidth: number
-    startWidths: NotebookColumnWidths
-  } | null>(null)
-  const [columnWidths, setColumnWidths] = useState<NotebookColumnWidths>(DEFAULT_NOTEBOOK_COLUMN_WIDTHS)
 
   // Detect desktop to avoid double-mounting ChatColumn
   const isDesktop = useIsDesktop()
@@ -152,82 +130,6 @@ export default function NotebookPage() {
       JSON.stringify(learningProfileOptions)
     )
   }, [notebookId, learningProfileOptions])
-
-  useEffect(() => {
-    if (!notebookId) return
-    try {
-      const stored = window.localStorage.getItem(`notebook-column-widths:v2:${notebookId}`)
-      if (!stored) return
-      const parsed = JSON.parse(stored) as Partial<NotebookColumnWidths>
-      if (
-        typeof parsed.sources === 'number' &&
-        typeof parsed.chat === 'number' &&
-        typeof parsed.notes === 'number'
-      ) {
-        setColumnWidths({
-          sources: clampColumnWidth(parsed.sources, 40, 70),
-          chat: clampColumnWidth(parsed.chat, 18, 34),
-          notes: clampColumnWidth(parsed.notes, 18, 32),
-        })
-      }
-    } catch {
-      // Ignore malformed local layout state.
-    }
-  }, [notebookId])
-
-  useEffect(() => {
-    if (!notebookId) return
-    window.localStorage.setItem(
-      `notebook-column-widths:v2:${notebookId}`,
-      JSON.stringify(columnWidths)
-    )
-  }, [columnWidths, notebookId])
-
-  const startColumnResize = (
-    handle: 'chat-sources' | 'sources-notes',
-    event: ReactPointerEvent<HTMLDivElement>
-  ) => {
-    const rect = desktopLayoutRef.current?.getBoundingClientRect()
-    if (!rect) return
-    event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    columnDragRef.current = {
-      handle,
-      startX: event.clientX,
-      containerWidth: rect.width,
-      startWidths: columnWidths,
-    }
-  }
-
-  const updateColumnResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = columnDragRef.current
-    if (!drag) return
-    const delta = ((event.clientX - drag.startX) / Math.max(drag.containerWidth, 1)) * 100
-    const { startWidths } = drag
-
-    if (drag.handle === 'chat-sources') {
-      const total = startWidths.chat + startWidths.sources
-      const chat = clampColumnWidth(startWidths.chat + delta, 18, Math.min(34, total - 40))
-      setColumnWidths({
-        sources: total - chat,
-        chat,
-        notes: startWidths.notes,
-      })
-      return
-    }
-
-    const total = startWidths.sources + startWidths.notes
-    const sources = clampColumnWidth(startWidths.sources + delta, 40, total - 18)
-    setColumnWidths({
-      sources,
-      chat: startWidths.chat,
-      notes: total - sources,
-    })
-  }
-
-  const stopColumnResize = () => {
-    columnDragRef.current = null
-  }
 
   // Initialize and update selections when sources load or change
   useEffect(() => {
@@ -379,8 +281,8 @@ export default function NotebookPage() {
         notebookId={notebookId}
         notebookName={notebook?.name}
       />
-      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-        <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto p-3 lg:p-4 flex flex-col">
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-muted/10">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 lg:p-4">
           <div className="mb-3 flex items-center gap-2 md:hidden">
             {notebookActionButtons('h-9 flex-1 px-3')}
           </div>
@@ -394,173 +296,135 @@ export default function NotebookPage() {
 
           {/* Mobile: Tabbed interface - only render on mobile to avoid double-mounting */}
           {!isDesktop && (
-            <>
-              <div className="lg:hidden mb-3">
-                <Tabs value={mobileActiveTab} onValueChange={(value) => setMobileActiveTab(value as 'sources' | 'notes' | 'chat')}>
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="sources" className="gap-2">
-                      <FileText className="h-4 w-4" />
-                      学习资料
-                    </TabsTrigger>
-                    <TabsTrigger value="chat" className="gap-2">
-                      <MessageSquare className="h-4 w-4" />
-                      {t('common.chat')}
-                    </TabsTrigger>
-                    <TabsTrigger value="notes" className="gap-2">
-                      <StickyNote className="h-4 w-4" />
-                      Studio
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
+            <Tabs
+              value={mobileActiveTab}
+              onValueChange={(value) =>
+                setMobileActiveTab(value as 'sources' | 'notes' | 'chat')
+              }
+              className="min-h-0 flex-1 gap-0 xl:hidden"
+            >
+              <TabsList className="mb-3 grid h-11 w-full shrink-0 grid-cols-3 rounded-xl border bg-background/90 p-1 shadow-sm">
+                <TabsTrigger value="sources" className="gap-2">
+                  <FileText className="h-4 w-4" />
+                  学习资料
+                </TabsTrigger>
+                <TabsTrigger value="chat" className="gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  {t('common.chat')}
+                </TabsTrigger>
+                <TabsTrigger value="notes" className="gap-2">
+                  <StickyNote className="h-4 w-4" />
+                  Studio
+                </TabsTrigger>
+              </TabsList>
 
-              {/* Mobile: Show only active tab */}
-              <div className="flex-1 overflow-hidden lg:hidden">
-                {mobileActiveTab === 'sources' && (
-                  <SourcesColumn
-                    sources={sources}
-                    isLoading={sourcesLoading}
-                    notebookId={notebookId}
-                    notebookName={notebook?.name}
-                    onRefresh={refetchSources}
-                    contextSelections={contextSelections.sources}
-                    onContextModeChange={handleSourceContextModeChange}
-                    onBulkContextModeChange={handleBulkSourceContext}
-                    hasNextPage={hasNextPage}
-                    isFetchingNextPage={isFetchingNextPage}
-                    fetchNextPage={fetchNextPage}
-                    initialResourceSearchGoal={initialSourceSearch}
-                    autoCollectInitialResourceSearch
-                    profileOpenSignal={profileOpenSignal}
-                  />
-                )}
-                {mobileActiveTab === 'notes' && (
-                  <NotesColumn
-                    notes={notes}
-                    isLoading={notesLoading}
-                    notebookId={notebookId}
-                    notebookName={notebook?.name}
-                    sources={sources}
-                    profileOptions={learningProfileOptions}
-                    onProfileOptionsChange={setLearningProfileOptions}
-                    contextSelections={contextSelections.notes}
-                    onContextModeChange={handleNoteContextModeChange}
-                    onBulkContextModeChange={handleBulkNoteContext}
-                  />
-                )}
-                {mobileActiveTab === 'chat' && (
-                  <ChatColumn
-                    notebookId={notebookId}
-                    notebookName={notebook?.name}
-                    contextSelections={contextSelections}
-                    sources={sources}
-                    sourcesLoading={sourcesLoading}
-                    autoUpdateProfile={learningProfileOptions.autoUpdateProfile}
-                    useProfileSource={learningProfileOptions.useProfileSource}
-                  />
-                )}
-              </div>
-            </>
+              <TabsContent
+                value="sources"
+                className="mt-0 flex min-h-0 overflow-hidden"
+              >
+                <SourcesColumn
+                  sources={sources}
+                  isLoading={sourcesLoading}
+                  notebookId={notebookId}
+                  notebookName={notebook?.name}
+                  onRefresh={refetchSources}
+                  contextSelections={contextSelections.sources}
+                  onContextModeChange={handleSourceContextModeChange}
+                  onBulkContextModeChange={handleBulkSourceContext}
+                  hasNextPage={hasNextPage}
+                  isFetchingNextPage={isFetchingNextPage}
+                  fetchNextPage={fetchNextPage}
+                  initialResourceSearchGoal={initialSourceSearch}
+                  autoCollectInitialResourceSearch
+                  profileOpenSignal={profileOpenSignal}
+                  forceExpanded
+                />
+              </TabsContent>
+              <TabsContent
+                value="notes"
+                className="mt-0 flex min-h-0 overflow-hidden"
+              >
+                <NotesColumn
+                  notes={notes}
+                  isLoading={notesLoading}
+                  notebookId={notebookId}
+                  notebookName={notebook?.name}
+                  sources={sources}
+                  profileOptions={learningProfileOptions}
+                  onProfileOptionsChange={setLearningProfileOptions}
+                  contextSelections={contextSelections.notes}
+                  onContextModeChange={handleNoteContextModeChange}
+                  onBulkContextModeChange={handleBulkNoteContext}
+                  forceExpanded
+                />
+              </TabsContent>
+              <TabsContent
+                value="chat"
+                className="mt-0 flex min-h-0 overflow-hidden"
+              >
+                <ChatColumn
+                  notebookId={notebookId}
+                  notebookName={notebook?.name}
+                  contextSelections={contextSelections}
+                  sources={sources}
+                  sourcesLoading={sourcesLoading}
+                  autoUpdateProfile={learningProfileOptions.autoUpdateProfile}
+                  useProfileSource={learningProfileOptions.useProfileSource}
+                />
+              </TabsContent>
+            </Tabs>
           )}
 
           {/* Desktop: Collapsible columns layout */}
-          <div
-            ref={desktopLayoutRef}
-            className={cn(
-            'hidden lg:flex h-full min-h-0 gap-3 transition-all duration-150',
-            'flex-row'
-            )}
-            onPointerMove={updateColumnResize}
-            onPointerUp={stopColumnResize}
-            onPointerCancel={stopColumnResize}
-          >
-            {/* Chat Column - compact and always visible on the left */}
-            <div
-              className="min-w-[17rem] flex-none transition-all duration-150"
-              style={{
-                flexBasis: 0,
-                flexGrow: columnWidths.chat,
-              }}
-            >
-              <ChatColumn
-                notebookId={notebookId}
-                notebookName={notebook?.name}
-                contextSelections={contextSelections}
-                sources={sources}
-                sourcesLoading={sourcesLoading}
-                autoUpdateProfile={learningProfileOptions.autoUpdateProfile}
-                useProfileSource={learningProfileOptions.useProfileSource}
-              />
-            </div>
-
-            {!sourcesCollapsed && (
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                className="-mx-2 flex w-2 shrink-0 cursor-col-resize items-stretch justify-center"
-                onPointerDown={(event) => startColumnResize('chat-sources', event)}
-              >
-                <span className="my-2 w-px rounded-full bg-border transition-colors hover:bg-primary" />
-              </div>
-            )}
-
-            {/* Sources Column - the primary learning workspace */}
-            <div className={cn(
-              'transition-all duration-150',
-              sourcesCollapsed ? 'w-12 flex-shrink-0' : 'min-w-[32rem] flex-none'
-            )}
-              style={sourcesCollapsed ? undefined : { flexBasis: 0, flexGrow: columnWidths.sources }}
-            >
-              <SourcesColumn
-                sources={sources}
-                isLoading={sourcesLoading}
-                notebookId={notebookId}
-                notebookName={notebook?.name}
-                onRefresh={refetchSources}
-                contextSelections={contextSelections.sources}
-                onContextModeChange={handleSourceContextModeChange}
-                onBulkContextModeChange={handleBulkSourceContext}
-                hasNextPage={hasNextPage}
-                isFetchingNextPage={isFetchingNextPage}
-                fetchNextPage={fetchNextPage}
-                initialResourceSearchGoal={initialSourceSearch}
-                autoCollectInitialResourceSearch
-                profileOpenSignal={profileOpenSignal}
-              />
-            </div>
-
-            {!notesCollapsed && (
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                className="-mx-2 flex w-2 shrink-0 cursor-col-resize items-stretch justify-center"
-                onPointerDown={(event) => startColumnResize('sources-notes', event)}
-              >
-                <span className="my-2 w-px rounded-full bg-border transition-colors hover:bg-primary" />
-              </div>
-            )}
-
-            {/* Notes Column */}
-            <div className={cn(
-              'transition-all duration-150',
-              notesCollapsed ? 'w-12 flex-shrink-0' : 'min-w-[18rem] flex-none'
-            )}
-              style={notesCollapsed ? undefined : { flexBasis: 0, flexGrow: columnWidths.notes }}
-            >
-              <NotesColumn
-                notes={notes}
-                isLoading={notesLoading}
-                notebookId={notebookId}
-                notebookName={notebook?.name}
-                sources={sources}
-                profileOptions={learningProfileOptions}
-                onProfileOptionsChange={setLearningProfileOptions}
-                contextSelections={contextSelections.notes}
-                onContextModeChange={handleNoteContextModeChange}
-                onBulkContextModeChange={handleBulkNoteContext}
-              />
-            </div>
-          </div>
+          {isDesktop && (
+            <NotebookDesktopLayout
+              sourcesCollapsed={sourcesCollapsed}
+              notesCollapsed={notesCollapsed}
+              chat={
+                <ChatColumn
+                  notebookId={notebookId}
+                  notebookName={notebook?.name}
+                  contextSelections={contextSelections}
+                  sources={sources}
+                  sourcesLoading={sourcesLoading}
+                  autoUpdateProfile={learningProfileOptions.autoUpdateProfile}
+                  useProfileSource={learningProfileOptions.useProfileSource}
+                />
+              }
+              sources={
+                <SourcesColumn
+                  sources={sources}
+                  isLoading={sourcesLoading}
+                  notebookId={notebookId}
+                  notebookName={notebook?.name}
+                  onRefresh={refetchSources}
+                  contextSelections={contextSelections.sources}
+                  onContextModeChange={handleSourceContextModeChange}
+                  onBulkContextModeChange={handleBulkSourceContext}
+                  hasNextPage={hasNextPage}
+                  isFetchingNextPage={isFetchingNextPage}
+                  fetchNextPage={fetchNextPage}
+                  initialResourceSearchGoal={initialSourceSearch}
+                  autoCollectInitialResourceSearch
+                  profileOpenSignal={profileOpenSignal}
+                />
+              }
+              notes={
+                <NotesColumn
+                  notes={notes}
+                  isLoading={notesLoading}
+                  notebookId={notebookId}
+                  notebookName={notebook?.name}
+                  sources={sources}
+                  profileOptions={learningProfileOptions}
+                  onProfileOptionsChange={setLearningProfileOptions}
+                  contextSelections={contextSelections.notes}
+                  onContextModeChange={handleNoteContextModeChange}
+                  onBulkContextModeChange={handleBulkNoteContext}
+                />
+              }
+            />
+          )}
         </div>
       </div>
     </AppShell>

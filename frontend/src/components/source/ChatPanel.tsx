@@ -341,7 +341,7 @@ export function ChatPanel({
 
   return (
     <>
-    <Card className="flex flex-col h-full flex-1 overflow-hidden">
+    <Card className="flex h-full flex-1 flex-col overflow-hidden rounded-2xl border-border/70 bg-card/95 shadow-sm">
       <CardHeader className="pb-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">

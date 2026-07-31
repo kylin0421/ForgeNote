@@ -702,7 +702,6 @@ export const enUS = {
     failedToRetry: "Failed to retry episode",
     errorDetails: "Error details",
     language: "Language",
-    languagePlaceholder: "Select a language (optional)",
     podcastLanguage: "Podcast language",
     selectOutlineModel: "Select outline model",
     selectTranscriptModel: "Select transcript model",

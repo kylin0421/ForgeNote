@@ -29,7 +29,7 @@ export function NotebookProfileBanner({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex w-full shrink-0 flex-col gap-3 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-background px-3 py-2.5 text-left transition-colors hover:border-primary/40 xl:flex-row xl:items-center',
+        'flex w-full shrink-0 flex-col gap-3 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-background px-3 py-2.5 text-left shadow-sm transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-md md:flex-row md:items-center',
         className
       )}
     >
@@ -43,12 +43,12 @@ export function NotebookProfileBanner({
             8 维动态学生画像
             <Sparkles className="h-4 w-4 text-primary" />
           </span>
-          <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+          <span className="mt-0.5 hidden text-xs leading-5 text-muted-foreground lg:block">
             正在用于个性化对话、资料推荐和难度调整；每次对话、Quiz 与资料选择后自动更新。
           </span>
         </span>
       </span>
-      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground xl:justify-center">
+      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground md:justify-center">
         {items.map(([label, value, ready], index) => (
           <span key={label} className="flex items-center gap-1.5">
             <span

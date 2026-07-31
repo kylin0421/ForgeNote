@@ -603,6 +603,9 @@ interface SourcesColumnProps {
   initialResourceSearchGoal?: string
   autoCollectInitialResourceSearch?: boolean
   profileOpenSignal?: number
+  forceExpanded?: boolean
+  isCollapsed?: boolean
+  onToggleCollapse?: () => void
   cachedResourceSearch?: {
     expanded?: boolean
     goal: string
@@ -630,6 +633,9 @@ export function SourcesColumn({
   initialResourceSearchGoal = '',
   autoCollectInitialResourceSearch = false,
   profileOpenSignal = 0,
+  forceExpanded = false,
+  isCollapsed,
+  onToggleCollapse,
   cachedResourceSearch,
 }: SourcesColumnProps) {
   const { t } = useTranslation()
@@ -685,9 +691,11 @@ export function SourcesColumn({
   // Collapsible column state
   const { sourcesCollapsed, toggleSources } = useNotebookColumnsStore()
   const sourcesTitle = '学习资料'
+  const columnCollapsed = forceExpanded ? false : (isCollapsed ?? sourcesCollapsed)
+  const toggleColumn = onToggleCollapse ?? toggleSources
   const collapseButton = useMemo(
-    () => createCollapseButton(toggleSources, sourcesTitle),
-    [toggleSources, sourcesTitle]
+    () => createCollapseButton(toggleColumn, sourcesTitle),
+    [toggleColumn, sourcesTitle]
   )
 
   // Scroll container ref for infinite scroll
@@ -1138,12 +1146,12 @@ export function SourcesColumn({
   return (
     <>
       <CollapsibleColumn
-        isCollapsed={sourcesCollapsed}
-        onToggle={toggleSources}
+        isCollapsed={columnCollapsed}
+        onToggle={toggleColumn}
         collapsedIcon={FileText}
         collapsedLabel={sourcesTitle}
       >
-        <Card className="h-full flex flex-col flex-1 overflow-hidden">
+        <Card className="h-full flex flex-col flex-1 overflow-hidden rounded-2xl border-border/70 bg-card/95 shadow-sm">
           <CardHeader className="px-4 pb-3 pt-4 flex-shrink-0">
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">

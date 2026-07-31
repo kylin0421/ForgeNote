@@ -702,7 +702,6 @@ export const zhCN = {
     failedToRetry: "重试失败",
     errorDetails: "错误详情",
     language: "语言",
-    languagePlaceholder: "选择语言（可选）",
     podcastLanguage: "播客语言",
     selectOutlineModel: "选择大纲模型",
     selectTranscriptModel: "选择转录模型",

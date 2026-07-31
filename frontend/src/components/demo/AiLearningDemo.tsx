@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { BookMarked, Brain, TrendingUp } from 'lucide-react'
+import { BookMarked, Brain, FileText, MessageSquare, StickyNote, TrendingUp } from 'lucide-react'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { serializeLearningAssetNote } from '@/components/learning/LearningAssetPreview'
@@ -11,6 +11,7 @@ import {
   type CachedProfileOnboardingState,
 } from '@/components/learning/ProfileOnboardingDialog'
 import { NotebookProfileBanner } from '@/components/notebooks/NotebookProfileBanner'
+import { NotebookDesktopLayout } from '@/components/notebooks/NotebookDesktopLayout'
 import { CreateNotebookDialog } from '@/components/notebooks/CreateNotebookDialog'
 import { WorkflowSupervisorSurface } from '@/components/workflow/WorkflowSupervisorSurface'
 import { NotebookChatSurface } from '@/app/(dashboard)/notebooks/components/ChatColumn'
@@ -19,6 +20,8 @@ import { NotesColumn } from '@/app/(dashboard)/notebooks/components/NotesColumn'
 import { LearningCurveDialog } from '@/app/(dashboard)/notebooks/components/LearningCurveDialog'
 import { MistakeBookDialog } from '@/app/(dashboard)/notebooks/components/MistakeBookDialog'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useIsDesktop } from '@/lib/hooks/use-media-query'
 import type { CommandJob } from '@/lib/api/commands'
 import {
   AI_LEARNING_DEMO,
@@ -44,18 +47,6 @@ import type {
   LearningProfileInterviewResponse,
 } from '@/lib/types/learning'
 import type { PodcastEpisode } from '@/lib/types/podcasts'
-
-function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false
-  if (
-    target.closest(
-      'input, textarea, select, button, a[href], audio, video, [role="button"], [data-demo-space-owner]'
-    )
-  ) {
-    return true
-  }
-  return target.isContentEditable || Boolean(target.closest('[contenteditable="true"]'))
-}
 
 const DEMO_NOTEBOOK: NotebookResponse = {
   id: 'notebook:ai-learning-demo',
@@ -283,6 +274,10 @@ function NotebookScene({
   const [profileOpenSignal, setProfileOpenSignal] = useState(0)
   const [learningCurveOpen, setLearningCurveOpen] = useState(false)
   const [mistakeBookOpen, setMistakeBookOpen] = useState(false)
+  const [sourcesCollapsed, setSourcesCollapsed] = useState(false)
+  const [notesCollapsed, setNotesCollapsed] = useState(false)
+  const isDesktop = useIsDesktop()
+  const [mobileActiveTab, setMobileActiveTab] = useState<'sources' | 'chat' | 'notes'>('sources')
   const podcastEpisode = useDemoMediaEpisode('podcast')
   const videoEpisode = useDemoMediaEpisode('video')
   const runningVideoEpisode = useMemo<PodcastEpisode>(
@@ -407,6 +402,19 @@ function NotebookScene({
   }, [step])
 
   useEffect(() => {
+    if (isDesktop) return
+    if (step >= 12) {
+      setMobileActiveTab('notes')
+    } else if (step >= 6) {
+      setMobileActiveTab('sources')
+    } else if (step >= 4) {
+      setMobileActiveTab('chat')
+    } else {
+      setMobileActiveTab('sources')
+    }
+  }, [isDesktop, step])
+
+  useEffect(() => {
     const openProfile = () => {
       setProfileOpenSignal((current) => current + 1)
     }
@@ -463,6 +471,92 @@ function NotebookScene({
     )
   }
 
+  const chatSurface = (
+    <div className="flex min-h-0 min-w-0 flex-1" data-testid="demo-production-chat">
+      <NotebookChatSurface
+        messages={[...cachedMessages, ...interactiveMessages]}
+        isStreaming={false}
+        contextIndicators={null}
+        onSendMessage={handleCachedMessage}
+        modelOverride={chatModelOverride}
+        onModelChange={setChatModelOverride}
+        sessions={chatSessions}
+        currentSessionId={currentChatSessionId}
+        onCreateSession={createCachedSession}
+        onSelectSession={setCurrentChatSessionId}
+        onUpdateSession={(sessionId, title) => {
+          setChatSessions((current) =>
+            current.map((session) =>
+              session.id === sessionId
+                ? { ...session, title, updated: '2026-07-30T10:00:30.000Z' }
+                : session
+            )
+          )
+        }}
+        onDeleteSession={deleteCachedSession}
+        loadingSessions={false}
+        notebookContextStats={{
+          sourcesInsights: 0,
+          sourcesFull: demoSources.length,
+          notesCount: demoNotes.length,
+        }}
+        onSaveMessageToNote={(content) => {
+          setSavedChatNotes((current) => {
+            const created = '2026-07-30T10:00:31.000Z'
+            return [
+              ...current,
+              {
+                id: `note:ai-learning-demo-chat-${current.length + 1}`,
+                title: '来自对话的笔记',
+                content,
+                note_type: 'ai',
+                created,
+                updated: created,
+              },
+            ]
+          })
+        }}
+        inputAriaLabel="学习记录输入框"
+      />
+    </div>
+  )
+  const sourcesSurface = (
+    <SourcesColumn
+      sources={demoSources}
+      isLoading={false}
+      notebookId={demoNotebook.id}
+      notebookName={demoNotebook.name}
+      contextSelections={Object.fromEntries(
+        demoSources.map((source) => [source.id, 'full' as const])
+      )}
+      cachedResourceSearch={cachedResourceSearch}
+      profileOpenSignal={profileOpenSignal}
+      forceExpanded={!isDesktop}
+      isCollapsed={sourcesCollapsed}
+      onToggleCollapse={() => setSourcesCollapsed((current) => !current)}
+    />
+  )
+  const notesSurface = (
+    <NotesColumn
+      notes={demoNotes}
+      isLoading={false}
+      notebookId={demoNotebook.id}
+      notebookName={demoNotebook.name}
+      sources={demoSources}
+      forceExpanded={!isDesktop}
+      isCollapsed={notesCollapsed}
+      onToggleCollapse={() => setNotesCollapsed((current) => !current)}
+      cachedStudioState={{
+        episodes: demoEpisodes,
+        isGenerating: step === 12,
+        openNoteId:
+          step === 14
+            ? 'note:ai-learning-demo-quiz'
+            : null,
+      }}
+    />
+  )
+
   return (
     <>
       <LearningCurveDialog
@@ -479,110 +573,63 @@ function NotebookScene({
         notebookId={demoNotebook.id}
         notebookName={demoNotebook.name}
       />
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col overflow-x-auto overflow-y-auto p-3 lg:p-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 lg:p-4">
         <NotebookProfileBanner
           sourceCount={demoSources.length}
           assetCount={demoNotes.length + demoEpisodes.length}
           onClick={() => setProfileOpenSignal((current) => current + 1)}
           className="mb-3"
         />
-        <div className="hidden h-full min-h-0 flex-row gap-3 lg:flex">
-          <div
-            className="flex min-w-[17rem] flex-none"
-            style={{ flexBasis: 0, flexGrow: 24 }}
-            data-testid="demo-production-chat"
+        {isDesktop ? (
+          <NotebookDesktopLayout
+            sourcesCollapsed={sourcesCollapsed}
+            notesCollapsed={notesCollapsed}
+            chat={chatSurface}
+            sources={sourcesSurface}
+            notes={notesSurface}
+          />
+        ) : (
+          <Tabs
+            value={mobileActiveTab}
+            onValueChange={(value) =>
+              setMobileActiveTab(value as 'sources' | 'chat' | 'notes')
+            }
+            className="min-h-0 flex-1 gap-0 xl:hidden"
           >
-            <NotebookChatSurface
-              messages={[...cachedMessages, ...interactiveMessages]}
-              isStreaming={false}
-              contextIndicators={null}
-              onSendMessage={handleCachedMessage}
-              modelOverride={chatModelOverride}
-              onModelChange={setChatModelOverride}
-              sessions={chatSessions}
-              currentSessionId={currentChatSessionId}
-              onCreateSession={createCachedSession}
-              onSelectSession={setCurrentChatSessionId}
-              onUpdateSession={(sessionId, title) => {
-                setChatSessions((current) =>
-                  current.map((session) =>
-                    session.id === sessionId
-                      ? { ...session, title, updated: '2026-07-30T10:00:30.000Z' }
-                      : session
-                  )
-                )
-              }}
-              onDeleteSession={deleteCachedSession}
-              loadingSessions={false}
-              notebookContextStats={{
-                sourcesInsights: 0,
-                sourcesFull: demoSources.length,
-                notesCount: demoNotes.length,
-              }}
-              onSaveMessageToNote={(content) => {
-                setSavedChatNotes((current) => {
-                  const created = '2026-07-30T10:00:31.000Z'
-                  return [
-                    ...current,
-                    {
-                      id: `note:ai-learning-demo-chat-${current.length + 1}`,
-                      title: '来自对话的笔记',
-                      content,
-                      note_type: 'ai',
-                      created,
-                      updated: created,
-                    },
-                  ]
-                })
-              }}
-              inputAriaLabel="学习记录输入框"
-            />
-          </div>
-          <div className="-mx-2 flex w-2 shrink-0 items-stretch justify-center" aria-hidden="true">
-            <span className="my-2 w-px rounded-full bg-border" />
-          </div>
-          <div
-            className="flex min-w-[32rem] flex-none"
-            style={{ flexBasis: 0, flexGrow: 54 }}
-          >
-            <SourcesColumn
-              sources={demoSources}
-              isLoading={false}
-              notebookId={demoNotebook.id}
-              notebookName={demoNotebook.name}
-              contextSelections={Object.fromEntries(
-                demoSources.map((source) => [source.id, 'full' as const])
-              )}
-              cachedResourceSearch={cachedResourceSearch}
-              profileOpenSignal={profileOpenSignal}
-            />
-          </div>
-          <div className="-mx-2 flex w-2 shrink-0 items-stretch justify-center" aria-hidden="true">
-            <span className="my-2 w-px rounded-full bg-border" />
-          </div>
-          <div
-            className="flex min-w-[18rem] flex-none"
-            style={{ flexBasis: 0, flexGrow: 22 }}
-          >
-            <NotesColumn
-              notes={demoNotes}
-              isLoading={false}
-              notebookId={demoNotebook.id}
-              notebookName={demoNotebook.name}
-              sources={demoSources}
-              cachedStudioState={{
-                episodes: demoEpisodes,
-                isGenerating: step === 12,
-                openNoteId:
-                  step === 14
-                    ? 'note:ai-learning-demo-quiz'
-                    : null,
-              }}
-            />
-          </div>
-        </div>
-      </div>
+            <TabsList className="mb-3 grid h-11 w-full shrink-0 grid-cols-3 rounded-xl border bg-background/90 p-1 shadow-sm">
+              <TabsTrigger value="sources" className="gap-2">
+                <FileText className="h-4 w-4" />
+                学习资料
+              </TabsTrigger>
+              <TabsTrigger value="chat" className="gap-2">
+                <MessageSquare className="h-4 w-4" />
+                对话
+              </TabsTrigger>
+              <TabsTrigger value="notes" className="gap-2">
+                <StickyNote className="h-4 w-4" />
+                Studio
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent
+              value="sources"
+              className="mt-0 flex min-h-0 overflow-hidden"
+            >
+              {sourcesSurface}
+            </TabsContent>
+            <TabsContent
+              value="chat"
+              className="mt-0 flex min-h-0 overflow-hidden"
+            >
+              {chatSurface}
+            </TabsContent>
+            <TabsContent
+              value="notes"
+              className="mt-0 flex min-h-0 overflow-hidden"
+            >
+              {notesSurface}
+            </TabsContent>
+          </Tabs>
+        )}
       </div>
     </>
   )
@@ -806,7 +853,6 @@ export function AiLearningDemo() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const rawRequestedStep = searchParams?.get('step')
   const requestedStep = rawRequestedStep === null || rawRequestedStep === undefined
     ? Number.NaN
@@ -826,31 +872,26 @@ export function AiLearningDemo() {
   }, [initialStep])
 
   useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0
-    }
-  }, [step])
-
-  useEffect(() => {
     const advance = (event: KeyboardEvent) => {
       if (event.repeat || (event.code !== 'Space' && event.key !== ' ')) return
-      if (isEditableTarget(event.target)) return
-      event.preventDefault()
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      if (event.isComposing || event.keyCode === 229) return
       const next = Math.min(step + 1, AI_LEARNING_DEMO_TOTAL_STEPS)
       if (next === step) return
+      event.preventDefault()
+      event.stopPropagation()
       goToStep(next)
     }
 
-    window.addEventListener('keydown', advance)
-    return () => window.removeEventListener('keydown', advance)
+    window.addEventListener('keydown', advance, true)
+    return () => window.removeEventListener('keydown', advance, true)
   }, [goToStep, step])
 
   const scene = useMemo(() => AI_LEARNING_DEMO_STEPS[step].scene, [step])
 
   return (
     <div
-      ref={scrollContainerRef}
-      className="relative min-h-0 flex-1 overflow-y-auto bg-muted/10"
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/10"
       data-testid="ai-learning-demo"
       data-scene={scene}
       data-step={step}

@@ -1753,6 +1753,9 @@ interface NotesColumnProps {
   onBulkContextModeChange?: (action: NoteContextDefault) => void
   profileOptions?: LearningProfileOptions
   onProfileOptionsChange?: (options: LearningProfileOptions) => void
+  forceExpanded?: boolean
+  isCollapsed?: boolean
+  onToggleCollapse?: () => void
   cachedStudioState?: {
     episodes: PodcastEpisode[]
     isGenerating?: boolean
@@ -1772,6 +1775,9 @@ export function NotesColumn({
   onBulkContextModeChange,
   profileOptions = { autoUpdateProfile: true, useProfileSource: true },
   onProfileOptionsChange = () => {},
+  forceExpanded = false,
+  isCollapsed,
+  onToggleCollapse,
   cachedStudioState,
 }: NotesColumnProps) {
   const { t, language } = useTranslation()
@@ -2064,9 +2070,11 @@ export function NotesColumn({
 
   const { notesCollapsed, toggleNotes } = useNotebookColumnsStore()
   const notesLabel = '学习资产'
+  const columnCollapsed = forceExpanded ? false : (isCollapsed ?? notesCollapsed)
+  const toggleColumn = onToggleCollapse ?? toggleNotes
   const collapseButton = useMemo(
-    () => createCollapseButton(toggleNotes, notesLabel),
-    [toggleNotes, notesLabel]
+    () => createCollapseButton(toggleColumn, notesLabel),
+    [toggleColumn, notesLabel]
   )
 
   const currentAssetDetail = detailAssetKind
@@ -2834,12 +2842,12 @@ export function NotesColumn({
   return (
     <>
       <CollapsibleColumn
-        isCollapsed={notesCollapsed}
-        onToggle={toggleNotes}
+        isCollapsed={columnCollapsed}
+        onToggle={toggleColumn}
         collapsedIcon={StickyNote}
         collapsedLabel={notesLabel}
       >
-        <Card className="h-full flex flex-col flex-1 overflow-hidden">
+        <Card className="h-full flex flex-col flex-1 overflow-hidden rounded-2xl border-border/70 bg-card/95 shadow-sm">
           <CardHeader className="pb-3 flex-shrink-0">
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-lg">Studio</CardTitle>

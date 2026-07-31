@@ -6,6 +6,7 @@ import {
   AI_LEARNING_DEMO,
   AI_LEARNING_DEMO_RESOURCES,
 } from '@/lib/demo/ai-learning-demo'
+import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
 import { AiLearningDemo } from './AiLearningDemo'
 
 const navigation = vi.hoisted(() => ({
@@ -13,11 +14,17 @@ const navigation = vi.hoisted(() => ({
   search: '',
   push: vi.fn(),
 }))
+const viewport = vi.hoisted(() => ({
+  isDesktop: true,
+}))
 
 vi.mock('next/navigation', () => ({
   usePathname: () => navigation.pathname,
   useSearchParams: () => new URLSearchParams(navigation.search),
   useRouter: () => ({ push: navigation.push }),
+}))
+vi.mock('@/lib/hooks/use-media-query', () => ({
+  useIsDesktop: () => viewport.isDesktop,
 }))
 
 function pressSpace(repeat = false) {
@@ -43,6 +50,11 @@ describe('AiLearningDemo', () => {
     navigation.pathname = '/notebooks/ai-learning-demo'
     navigation.search = ''
     navigation.push.mockReset()
+    viewport.isDesktop = true
+    useNotebookColumnsStore.setState({
+      sourcesCollapsed: false,
+      notesCollapsed: false,
+    })
   })
 
   it('starts from a fresh notebook every time the entry page mounts', () => {
@@ -144,55 +156,57 @@ describe('AiLearningDemo', () => {
     expect(screen.getByTestId('ai-learning-demo')).toHaveAttribute('data-step', '15')
   }, 60_000)
 
-  it('ignores key repeat and spaces used by editable or interactive controls', () => {
+  it('reserves plain Space for demo advance while preserving repeat, modifiers, and IME', () => {
     renderDemo()
 
     pressSpace(true)
     expect(screen.getByTestId('ai-learning-demo')).toHaveAttribute('data-step', '0')
 
+    fireEvent.keyDown(window, { key: ' ', code: 'Space', shiftKey: true })
+    fireEvent.keyDown(window, { key: ' ', code: 'Space', ctrlKey: true })
+    fireEvent.keyDown(window, { key: ' ', code: 'Space', altKey: true })
+    fireEvent.keyDown(window, { key: ' ', code: 'Space', metaKey: true })
+    expect(screen.getByTestId('ai-learning-demo')).toHaveAttribute('data-step', '0')
+
     const createInput = screen.getByDisplayValue(AI_LEARNING_DEMO.notebookName)
     fireEvent.keyDown(createInput, { key: ' ', code: 'Space' })
-
-    const createButton = screen.getByRole('button', { name: 'notebooks.createNew' })
-    fireEvent.keyDown(createButton, { key: ' ', code: 'Space' })
-
-    expect(screen.getByTestId('ai-learning-demo')).toHaveAttribute('data-step', '0')
-    expect(navigation.push).not.toHaveBeenCalled()
-
-    pressSpace()
-    navigation.push.mockClear()
+    expect(screen.getByTestId('ai-learning-demo')).toHaveAttribute('data-step', '1')
+    expect(navigation.push).toHaveBeenLastCalledWith('/notebooks/ai-learning-demo?step=1')
 
     const input = screen.getByRole('textbox', { name: '学习画像回答输入框' })
-    fireEvent.keyDown(input, { key: ' ', code: 'Space' })
+    fireEvent.keyDown(input, { key: ' ', code: 'Space', isComposing: true })
+    fireEvent.keyDown(input, { key: ' ', code: 'Space', keyCode: 229 })
+    expect(screen.getByTestId('ai-learning-demo')).toHaveAttribute('data-step', '1')
 
     const button = screen.getByRole('button', { name: '会 Python' })
     fireEvent.keyDown(button, { key: ' ', code: 'Space' })
+    expect(screen.getByTestId('ai-learning-demo')).toHaveAttribute('data-step', '2')
 
-    const link = document.createElement('a')
-    link.href = '#demo'
-    document.body.appendChild(link)
-    fireEvent.keyDown(link, { key: ' ', code: 'Space' })
-    link.remove()
+    const textarea = document.createElement('textarea')
+    const textareaHandler = vi.fn()
+    textarea.addEventListener('keydown', textareaHandler)
+    document.body.appendChild(textarea)
+    const dispatched = fireEvent.keyDown(textarea, { key: ' ', code: 'Space' })
+    textarea.remove()
+    expect(dispatched).toBe(false)
+    expect(textareaHandler).not.toHaveBeenCalled()
+    expect(screen.getByTestId('ai-learning-demo')).toHaveAttribute('data-step', '3')
+  })
 
-    const roleButton = document.createElement('div')
-    roleButton.setAttribute('role', 'button')
-    document.body.appendChild(roleButton)
-    fireEvent.keyDown(roleButton, { key: ' ', code: 'Space' })
-    roleButton.remove()
+  it('releases Space back to the focused control after the final step', () => {
+    navigation.search = 'step=15'
+    renderDemo()
 
-    const media = document.createElement('video')
-    document.body.appendChild(media)
-    fireEvent.keyDown(media, { key: ' ', code: 'Space' })
-    media.remove()
+    const textarea = document.createElement('textarea')
+    const textareaHandler = vi.fn()
+    textarea.addEventListener('keydown', textareaHandler)
+    document.body.appendChild(textarea)
+    const dispatched = fireEvent.keyDown(textarea, { key: ' ', code: 'Space' })
+    textarea.remove()
 
-    const ownedControl = document.createElement('div')
-    ownedControl.setAttribute('data-demo-space-owner', 'true')
-    document.body.appendChild(ownedControl)
-    fireEvent.keyDown(ownedControl, { key: ' ', code: 'Space' })
-    ownedControl.remove()
-
-    expect(screen.getByTestId('ai-learning-demo')).toHaveAttribute('data-step', '1')
-    expect(navigation.push).not.toHaveBeenCalled()
+    expect(dispatched).toBe(true)
+    expect(textareaHandler).toHaveBeenCalledOnce()
+    expect(screen.getByTestId('ai-learning-demo')).toHaveAttribute('data-step', '15')
   })
 
   it('uses the first stage for a directly opened cross-page scene', () => {
@@ -235,14 +249,51 @@ describe('AiLearningDemo', () => {
     )
   })
 
-  it('returns the scene to the top after advancing', () => {
+  it('keeps the demo scene locked to the available viewport', () => {
     renderDemo()
 
     const demo = screen.getByTestId('ai-learning-demo')
-    demo.scrollTop = 480
     pressSpace()
 
+    expect(demo).toHaveClass('flex', 'min-h-0', 'overflow-hidden')
     expect(demo.scrollTop).toBe(0)
+  })
+
+  it('uses the same source, chat, and Studio tabs as a narrow production notebook', () => {
+    viewport.isDesktop = false
+    navigation.search = 'step=13'
+    useNotebookColumnsStore.setState({
+      sourcesCollapsed: true,
+      notesCollapsed: true,
+    })
+    renderDemo()
+
+    const studioTab = screen.getByRole('tab', { name: 'Studio' })
+    expect(studioTab).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    const studioPanelId = studioTab.getAttribute('aria-controls')
+    expect(studioPanelId).toBeTruthy()
+    expect(document.getElementById(studioPanelId as string)).toHaveAttribute(
+      'role',
+      'tabpanel'
+    )
+    expect(screen.queryByTestId('demo-production-chat')).not.toBeInTheDocument()
+    expect(screen.getAllByText(AI_LEARNING_DEMO_RESOURCES.blog.title)).not.toHaveLength(0)
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: '对话' }), {
+      button: 0,
+      ctrlKey: false,
+    })
+    const chatTab = screen.getByRole('tab', { name: '对话' })
+    const chatPanelId = chatTab.getAttribute('aria-controls')
+    expect(document.getElementById(chatPanelId as string)).toHaveAttribute(
+      'role',
+      'tabpanel'
+    )
+    expect(screen.getByTestId('demo-production-chat')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '学习记录输入框' })).toBeInTheDocument()
   })
 
   it('uses the formal asset previews and exposes playable cached media', async () => {

@@ -59,9 +59,12 @@ export function AppShell({
   const showHeaderCreate = pathname !== '/sources'
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex h-16 shrink-0 items-center border-b px-5">
-        <Link href="/notebooks" className="flex shrink-0 items-center">
+    <div className="flex h-screen h-dvh flex-col overflow-hidden bg-background text-foreground">
+      <header className="z-40 flex h-16 shrink-0 items-center border-b bg-background/90 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-5">
+        <Link
+          href="/notebooks"
+          className="flex shrink-0 items-center rounded-xl transition-opacity hover:opacity-80"
+        >
           <Image src="/logo.svg" alt="ForgeNote" width={32} height={32} />
         </Link>
         <div className="ml-2 min-w-0 flex-1 max-w-[min(42vw,36rem)]">
@@ -81,7 +84,7 @@ export function AppShell({
             </div>
           ) : null}
 
-          <nav className="hidden items-center gap-1 lg:flex">
+          <nav className="hidden items-center gap-1 xl:flex">
             {NAV_ITEMS.map((item) => {
               const active =
                 pathname === item.href ||
@@ -93,7 +96,7 @@ export function AppShell({
                   asChild
                   variant={active ? 'secondary' : 'ghost'}
                   size="sm"
-                  className="gap-2"
+                  className="gap-2 rounded-full px-3"
                 >
                   <Link href={item.href}>
                     <Icon className="h-4 w-4" />
@@ -106,7 +109,12 @@ export function AppShell({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="lg:hidden" aria-label="导航">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full xl:hidden"
+                aria-label="导航"
+              >
                 <SlidersHorizontal className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -128,7 +136,7 @@ export function AppShell({
           {showHeaderCreate && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" className="gap-2">
+              <Button size="sm" className="gap-2 rounded-full px-3">
                 <Plus className="h-4 w-4" />
                 {t('common.create')}
               </Button>
