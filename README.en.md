@@ -72,11 +72,19 @@ npm install
 npm run dev
 ```
 
-### Docker (optional)
+### Browser deployment (Docker, recommended)
+
+For browser-first use, Docker runs SurrealDB plus the Web frontend, API, and background worker. Copy `.env.example` to `.env`, set a stable `FORGENOTE_ENCRYPTION_KEY` and database password, then start the stack:
 
 ```powershell
+git clone https://github.com/kylin0421/ForgeNote.git
+cd ForgeNote
+Copy-Item .env.example .env
 docker compose up -d --build
+docker compose ps
 ```
+
+Open `http://localhost:8502` in Chrome or Edge. Add provider credentials under Models and assign the learning-asset models under Settings. LAN, HTTPS reverse proxy, persistence, backups, updates, and troubleshooting are documented in the [deployment guide](docs/deployment-and-demo.md).
 
 The Docker build downloads dependencies from Docker Hub, Debian, npm, and other external sources. On network-restricted Windows systems, use the desktop installer instead.
 

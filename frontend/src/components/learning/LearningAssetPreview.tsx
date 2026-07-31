@@ -1829,32 +1829,32 @@ type MindMapViewMode = 'tree' | 'table' | 'outline'
 const MAX_MIND_MAP_DEPTH = Number.POSITIVE_INFINITY
 const MIND_MAP_PALETTES = [
   {
-    module: 'border-blue-200 bg-blue-50 text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100',
-    leaf: 'text-blue-950 dark:text-blue-100',
-    line: 'border-blue-200 bg-blue-200 dark:border-blue-900 dark:bg-blue-900',
-    dot: 'bg-blue-400 dark:bg-blue-500',
-    stroke: '#93c5fd',
+    module: 'border-blue-200 bg-blue-50 text-blue-950 dark:border-blue-400/70 dark:bg-blue-500/15 dark:text-blue-50',
+    leaf: 'border-blue-200/70 bg-blue-50/60 text-blue-950 dark:border-blue-500/35 dark:bg-blue-500/10 dark:text-blue-50',
+    line: 'border-blue-200 bg-blue-200 dark:border-blue-400/65 dark:bg-blue-400/65',
+    dot: 'bg-blue-400 dark:bg-blue-300',
+    stroke: '#60a5fa',
   },
   {
-    module: 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100',
-    leaf: 'text-emerald-950 dark:text-emerald-100',
-    line: 'border-emerald-200 bg-emerald-200 dark:border-emerald-900 dark:bg-emerald-900',
-    dot: 'bg-emerald-400 dark:bg-emerald-500',
-    stroke: '#6ee7b7',
+    module: 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-400/70 dark:bg-emerald-500/15 dark:text-emerald-50',
+    leaf: 'border-emerald-200/70 bg-emerald-50/60 text-emerald-950 dark:border-emerald-500/35 dark:bg-emerald-500/10 dark:text-emerald-50',
+    line: 'border-emerald-200 bg-emerald-200 dark:border-emerald-400/65 dark:bg-emerald-400/65',
+    dot: 'bg-emerald-400 dark:bg-emerald-300',
+    stroke: '#34d399',
   },
   {
-    module: 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100',
-    leaf: 'text-amber-950 dark:text-amber-100',
-    line: 'border-amber-200 bg-amber-200 dark:border-amber-900 dark:bg-amber-900',
-    dot: 'bg-amber-400 dark:bg-amber-500',
-    stroke: '#fcd34d',
+    module: 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-300/75 dark:bg-amber-400/15 dark:text-amber-50',
+    leaf: 'border-amber-200/70 bg-amber-50/60 text-amber-950 dark:border-amber-400/35 dark:bg-amber-400/10 dark:text-amber-50',
+    line: 'border-amber-200 bg-amber-200 dark:border-amber-300/70 dark:bg-amber-300/70',
+    dot: 'bg-amber-400 dark:bg-amber-300',
+    stroke: '#fbbf24',
   },
   {
-    module: 'border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-100',
-    leaf: 'text-rose-950 dark:text-rose-100',
-    line: 'border-rose-200 bg-rose-200 dark:border-rose-900 dark:bg-rose-900',
-    dot: 'bg-rose-400 dark:bg-rose-500',
-    stroke: '#fda4af',
+    module: 'border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-400/70 dark:bg-rose-500/15 dark:text-rose-50',
+    leaf: 'border-rose-200/70 bg-rose-50/60 text-rose-950 dark:border-rose-500/35 dark:bg-rose-500/10 dark:text-rose-50',
+    line: 'border-rose-200 bg-rose-200 dark:border-rose-400/65 dark:bg-rose-400/65',
+    dot: 'bg-rose-400 dark:bg-rose-300',
+    stroke: '#fb7185',
   },
 ]
 
@@ -2687,7 +2687,7 @@ function MindMapGraphNodeView({
         'absolute flex items-center justify-center whitespace-normal break-words text-center leading-snug shadow-sm [overflow-wrap:anywhere]',
         canToggle && 'cursor-pointer transition-shadow hover:ring-2 hover:ring-primary/30',
         item.depth === 0 &&
-          'rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base font-semibold text-slate-950 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100',
+          'rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base font-semibold text-slate-950 dark:border-slate-500 dark:bg-slate-900 dark:text-slate-50',
         item.depth === 1 &&
           cn('rounded-md border px-4 py-3 text-sm font-medium', palette.module),
         item.depth >= 2 &&
@@ -2743,7 +2743,7 @@ function MindMapTreeView({
   return (
     <div
       className={cn(
-        'overflow-auto bg-slate-50/40 dark:bg-slate-950/10',
+        'overflow-auto bg-slate-50/70 dark:bg-slate-900/35',
         compact ? 'max-h-80' : expanded ? 'h-[calc(100vh-210px)]' : 'max-h-[620px]'
       )}
     >
@@ -2774,7 +2774,7 @@ function MindMapTreeView({
                 d={`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`}
                 fill="none"
                 stroke={palette.stroke}
-                strokeWidth={1.5}
+                strokeWidth={2}
                 strokeLinecap="round"
               />
             )

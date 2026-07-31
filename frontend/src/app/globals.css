@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* ThemeProvider owns the light/dark class; keep dark utilities in sync with it
+ * instead of letting the OS preference override an explicit user choice. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

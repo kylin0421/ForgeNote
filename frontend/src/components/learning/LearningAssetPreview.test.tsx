@@ -118,6 +118,11 @@ describe('LearningAssetPreview mind maps', () => {
     expect(screen.getByText('SSL')).toBeInTheDocument()
     expect(screen.getByText('Contrastive learning')).toBeInTheDocument()
     expect(screen.getByText('Generative learning')).toBeInTheDocument()
+    expect(screen.getByTitle('Contrastive learning')).toHaveClass(
+      'dark:border-blue-400/70',
+      'dark:bg-blue-500/15',
+      'dark:text-blue-50'
+    )
     expect(screen.queryByText('SimCLR')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Contrastive learning/ }))

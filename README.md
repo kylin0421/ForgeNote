@@ -41,40 +41,22 @@ powershell -ExecutionPolicy Bypass -File .\desktop\windows\build.ps1
 
 输出位于 `dist/windows/ForgeNote-Setup-0.1.5.exe`，打包与数据目录说明见 [Windows 打包文档](desktop/windows/README.md)。
 
-### 浏览器运行（Docker）
+### 浏览器运行（Docker，推荐）
 
-Docker 会同时启动数据库、API、后台 worker 和 Web 前端，适合直接在浏览器中使用。
-
-1. 在项目根目录复制配置文件，并修改 `FORGENOTE_ENCRYPTION_KEY`、`SURREAL_USER` 和 `SURREAL_PASSWORD`。投入使用后不要更换这些值。
+如果主要从 Chrome、Edge 或其他现代浏览器访问 ForgeNote，不需要安装桌面壳，推荐使用 Docker 部署。Docker 会启动 SurrealDB，并在 `forgenote` 容器内同时运行 Web 前端、API 和后台 worker。
 
 ```powershell
+git clone https://github.com/kylin0421/ForgeNote.git
+cd ForgeNote
 Copy-Item .env.example .env
-```
-
-2. 构建并启动：
-
-```powershell
+# 编辑 .env：至少替换 FORGENOTE_ENCRYPTION_KEY、SURREAL_USER、SURREAL_PASSWORD
 docker compose up -d --build
 docker compose ps
 ```
 
-3. `docker compose ps` 显示服务正常后，打开 [http://localhost:8502](http://localhost:8502)。调试 API 时可访问 [http://localhost:5055/docs](http://localhost:5055/docs)。
+服务正常后打开 [http://localhost:8502](http://localhost:8502)。首次进入“模型/API 配置”添加供应商凭据，再到“设置”分配通用文本、Embedding、图片、TTS 和 STT 模型。
 
-常用维护命令：
-
-```powershell
-docker compose logs -f forgenote
-docker compose down
-```
-
-上传内容和应用数据保存在 `notebook_data/` 与 `surreal_data/`；普通的 `docker compose down` 不会删除它们。网络受限的 Windows 环境建议使用桌面安装包。
-
-#### 从其他设备访问
-
-- 局域网：访问 `http://<服务器 IP>:8502`；防火墙只需向可信网络放行 `8502`。
-- 公网：使用 HTTPS 反向代理，只公开 `443`；不要直接暴露 API `5055` 或数据库 `8000`。
-
-反向代理、同源地址和安全配置见 [部署与演示](docs/deployment-and-demo.md)，模型与环境变量见 [配置指南](docs/configuration-guide.md)。
+浏览器部署的端口、局域网/公网访问、反向代理、备份、更新和故障排查见[浏览器部署指南](docs/deployment-and-demo.md#浏览器部署docker推荐)；不要把真实 API key 提交到 Git，也不要更换已经投入使用的 `FORGENOTE_ENCRYPTION_KEY`。
 
 ### 源码运行（浏览器开发）
 

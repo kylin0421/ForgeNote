@@ -36,7 +36,157 @@ SURREAL_DATABASE=forgenote
 
 只有某个功能需要独立模型时，再进入高级设置覆盖对应 Studio 功能。
 
-## Windows 安装包（推荐）
+## 浏览器部署（Docker，推荐）
+
+这是 ForgeNote 的主要部署方式：用户只需要浏览器，Docker 负责运行数据库、API、后台 command worker 和 Next.js Web 前端。单机、局域网和公网都使用同一套镜像；差别只在浏览器访问地址和反向代理配置。
+
+### 1. 准备主机与代码
+
+- Windows：安装 Docker Desktop，并确认使用 Linux containers；Linux：安装 Docker Engine 与 Compose plugin。
+- 浏览器：推荐最新版 Chrome 或 Edge；移动端浏览器也可以访问，但窄屏会自动切换为标签页布局。
+- 默认端口：Web `8502`、API `5055`、SurrealDB `8000`。公网部署通常只需要反向代理公开 `443`，不要把 `8000` 暴露到公网。
+
+```powershell
+git clone https://github.com/kylin0421/ForgeNote.git
+cd ForgeNote
+Copy-Item .env.example .env
+```
+
+### 2. 配置 `.env`
+
+打开 `.env`，至少修改以下值：
+
+```dotenv
+FORGENOTE_ENCRYPTION_KEY=请替换为长期保存的随机字符串
+SURREAL_USER=forgenote
+SURREAL_PASSWORD=请替换为数据库密码
+SURREAL_URL=ws://surrealdb:8000/rpc
+SURREAL_NAMESPACE=forgenote
+SURREAL_DATABASE=forgenote
+```
+
+`FORGENOTE_ENCRYPTION_KEY` 会用于加密数据库中的模型凭据。模型 key 保存后不能随意更换它，否则旧凭据无法解密。可以用 PowerShell 生成 32 字节随机值，再复制到 `.env`：
+
+```powershell
+$bytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+[Convert]::ToBase64String($bytes)
+```
+
+浏览器直连本机或局域网时，`API_URL` 和 `INTERNAL_API_URL` 留空即可，页面会根据访问地址自动发现 API。不要把 Docker 内部地址 `ws://surrealdb:8000/rpc` 改成 `localhost`；这是容器之间通信使用的地址。
+
+如果使用 HTTPS 反向代理，将下面两项加入 `.env`：
+
+```dotenv
+API_URL=https://forgenote.example.com
+INTERNAL_API_URL=http://localhost:5055
+```
+
+`API_URL` 必须是浏览器能访问的 Web origin，不要附加 `/api`；`INTERNAL_API_URL` 只由 Next.js 服务端使用。API key 可以在前端“模型/API 配置”页面录入，`.env` 不要提交到 Git。
+
+### 3. 启动与首次访问
+
+```powershell
+docker compose up -d --build
+docker compose ps
+```
+
+`forgenote` 容器内部会自动启动 API、worker 和 Web 前端；不需要再单独开 worker。确认状态后可以做两次连通性检查：
+
+```powershell
+Invoke-WebRequest http://localhost:8502 -UseBasicParsing
+Invoke-WebRequest http://localhost:5055/api/health -UseBasicParsing
+```
+
+然后在浏览器打开 [http://localhost:8502](http://localhost:8502)。首次使用建议按以下顺序完成：
+
+1. 进入“模型/API 配置”，添加供应商凭据并确认能发现模型。
+2. 进入“设置”，分配通用文本、Embedding、图片、TTS、STT 及学习资产模型。
+3. 新建一个普通学习记录，上传一份小型 PDF 或网页，确认解析和来源卡片正常。
+4. 再打开 `ai学习` 演示 notebook；演示内容与普通 notebook 共用正式页面，耗时结果使用预缓存数据。
+
+常用检查命令：
+
+```powershell
+docker compose logs -f forgenote
+docker compose logs --tail=200 surrealdb
+docker compose restart forgenote
+```
+
+### 4. 从其他设备访问
+
+#### 局域网直连
+
+在部署主机上查到局域网 IP，例如 `192.168.1.20`，其他设备打开：
+
+```text
+http://192.168.1.20:8502
+```
+
+直连模式下浏览器会自动把 API 解析为同一主机的 `5055` 端口，因此防火墙需要只向可信局域网放行 TCP `8502` 和 `5055`；不要放行 `8000`。若浏览器无法加载，优先检查主机防火墙和 `docker compose ps`，不要把 `API_URL` 填成客户端自己的 `localhost`。
+
+#### 公网或域名访问
+
+公网建议使用 Nginx、Caddy 或云负载均衡终止 TLS，只把 Web 端口 `8502` 代理到 HTTPS。Next.js 会在容器内部把 `/api/*` 转发到 `INTERNAL_API_URL`，所以反向代理不需要再单独暴露 `5055`：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name forgenote.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8502;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 3600;
+        proxy_buffering off;
+    }
+}
+```
+
+配置证书后重启容器，浏览器访问 `https://forgenote.example.com`。如果使用其他代理，至少要保留 `Host`、`X-Forwarded-Proto`，并关闭长任务/SSE 的过短读取超时；否则任务状态和流式回答可能看起来一直停在等待。
+
+### 5. 数据持久化、备份与更新
+
+Docker 部署把数据保存在项目目录：
+
+- `notebook_data/`：上传文件、应用数据和生成资产。
+- `surreal_data/`：SurrealDB 数据库。
+- `.env`：数据库凭据、加密 key 和部署地址。
+
+升级或重启不会删除这些目录。备份前先停服务，避免复制到一半：
+
+```powershell
+docker compose stop
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+Compress-Archive -Path notebook_data, surreal_data, .env -DestinationPath "forgenote-backup-$stamp.zip"
+docker compose start
+```
+
+从 Git 更新时，先确认本地没有未提交改动，再重建应用：
+
+```powershell
+git pull --ff-only origin main
+docker compose up -d --build
+docker compose ps
+```
+
+普通的 `docker compose down` 只会停止并移除容器，不会删除上述数据目录。除非明确要清空实例，不要使用 `docker compose down -v`，也不要手动删除 `notebook_data/` 或 `surreal_data/`。
+
+### 6. 浏览器部署故障排查
+
+| 现象 | 优先检查 |
+| --- | --- |
+| 浏览器打不开 | `docker compose ps`、8502 端口、防火墙和 `docker compose logs forgenote` |
+| 页面能开但提示 API 不可用 | `http://服务器:5055/api/health`、直连模式是否放行 5055、`.env` 中是否误填客户端 `localhost` |
+| 公网页面能开但登录/请求失败 | `API_URL` 是否为完整 HTTPS origin、反向代理是否保留 Host/X-Forwarded-Proto、是否误暴露或改写了 `/api` |
+| 解析/生成一直等待 | `docker compose logs --tail=200 forgenote`，确认同一容器中的 worker 正常启动；再检查模型凭据和额度 |
+| 模型配置突然无法解密 | 是否更换了 `FORGENOTE_ENCRYPTION_KEY`；恢复原 key 后重启容器 |
+| 更新后页面仍是旧版本 | `docker compose up -d --build` 后浏览器执行硬刷新，确认 `docker compose ps` 中容器已重建 |
+
+## Windows 安装包（桌面模式）
 
 运行 `ForgeNote-Setup-0.1.5.exe` 后，通过桌面或开始菜单的“ForgeNote”快捷方式启动。安装包会在后台依次启动本地数据库、API、任务 worker 和界面服务，并把现有 Next.js 前端加载到独立的 Windows WebView2 应用窗口中，不再启动外部浏览器。
 
